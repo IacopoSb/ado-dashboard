@@ -76,9 +76,10 @@ fun WorkItemRow(wi: WorkItem, now: Instant, onClick: () -> Unit, modifier: Modif
 }
 
 /**
- * A pull request: draft chip and title, then "!id · repo · branches" (with author when
- * [reviewing]) with the signals at the end of the same line: my vote when [reviewing], the
- * reviewers' votes otherwise. The details give way (ellipsis) to the signals; only more than
+ * A pull request: draft chip and title, then "author · age · !id · repo · branches" (author
+ * only when [reviewing]) with the signals at the end of the same line: my vote when
+ * [reviewing], the reviewers' votes otherwise. The details give way (ellipsis) to the
+ * signals, branches first, so who and when stay readable; only more than
  * [AVATARS_INLINE] reviewers move to a line of their own.
  */
 @Composable
@@ -99,8 +100,8 @@ fun PrRow(pr: PullRequest, me: Identity, reviewing: Boolean, now: Instant, onCli
         Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 listOfNotNull(
-                    "!${pr.id}", pr.repoName, "${pr.sourceBranch} → ${pr.targetBranch}",
                     pr.author.name.takeIf { reviewing }, ago(pr.createdAt, now),
+                    "!${pr.id}", pr.repoName, "${pr.sourceBranch} → ${pr.targetBranch}",
                 ).joinToString(" · "),
                 Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = c.textMuted,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
