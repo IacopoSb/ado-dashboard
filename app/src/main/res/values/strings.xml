@@ -3,10 +3,11 @@
     <string name="app_name" translatable="false">ADO Dashboard</string>
 
     <!-- Dashboard -->
-    <string name="dashboard_title" translatable="false">Azure DevOps · %1$s</string>
     <string name="dashboard_synced">%1$s · updated at %2$s</string>
     <string name="dashboard_syncing">Syncing…</string>
     <string name="dashboard_not_synced">Not synced yet</string>
+    <string name="view_global">Global view</string>
+    <string name="action_retry">Retry</string>
     <string name="action_refresh">Refresh</string>
     <string name="action_settings">Settings</string>
     <string name="panel_work_items">Assigned work items</string>
@@ -29,7 +30,7 @@
 
     <!-- A reviewer's vote, as shown on a pull request -->
     <string name="vote_approved">Approved</string>
-    <string name="vote_approved_with_suggestions">Approved with suggestions</string>
+    <string name="vote_approved_with_suggestions">With suggestions</string>
     <string name="vote_waiting">Waiting for author</string>
     <string name="vote_rejected">Rejected</string>
     <string name="vote_none">No vote</string>
@@ -83,8 +84,10 @@
     <!-- Settings -->
     <string name="settings_title">Settings</string>
     <string name="action_back">Back</string>
+    <string name="settings_section_account">Account</string>
+    <string name="settings_section_screen">Refresh &amp; screen</string>
+    <string name="settings_not_signed_in">Not signed in</string>
     <string name="settings_account">Azure DevOps account</string>
-    <string name="settings_signed_in_as">Signed in as %1$s</string>
     <string name="settings_auth_microsoft">Microsoft account</string>
     <string name="settings_auth_pat" translatable="false">PAT</string>
     <string name="action_sign_out">Sign out</string>
@@ -93,6 +96,14 @@
     <string name="settings_client_id">Application (client) ID</string>
     <string name="settings_tenant_id">Tenant ID (optional)</string>
     <string name="settings_tenant_id_hint">Leave empty for any organization (multitenant registration)</string>
+    <string name="settings_entra_title">Entra app registration</string>
+    <string name="settings_entra_hint">Only needed to sign in with Microsoft.</string>
+    <string name="settings_entra_values">To register in Entra</string>
+    <string name="settings_entra_path" translatable="false">Authentication → Add a platform → Android</string>
+    <string name="settings_package">Package name</string>
+    <string name="settings_signature_hash">Signature hash</string>
+    <string name="settings_use_pat">Use a Personal Access Token</string>
+    <string name="settings_use_pat_hint">Instead of signing in with Microsoft</string>
     <string name="action_sign_in_microsoft">Sign in with Microsoft</string>
     <string name="settings_more_options">More options</string>
     <string name="settings_pat" translatable="false">Personal Access Token</string>
@@ -105,7 +116,6 @@
     <string name="action_save">Save</string>
     <string name="settings_redirect_uri" translatable="false">Redirect URI</string>
     <string name="action_copy">Copy</string>
-    <string name="settings_redirect_uri_hint">In Entra: Authentication → Android, package %1$s and signature hash %2$s</string>
 
     <!-- About and updates -->
     <string name="about_title">About</string>
@@ -122,8 +132,8 @@
     <string name="action_download_install">Download and install</string>
     <string name="update_download_failed">Download failed: %1$s</string>
     <string name="update_available">Update %1$s available</string>
-    <string name="action_details">Details</string>
-    <string name="action_dismiss">Dismiss</string>
+    <string name="action_later">Later</string>
+    <string name="action_update">Update</string>
 
     <!-- Update errors, shown after "Couldn't check for updates: " or "Download failed: " -->
     <string name="update_error_rate_limited">GitHub rate limit reached, try again later</string>

@@ -4,6 +4,8 @@
     <string name="dashboard_synced">%1$s · aggiornato alle %2$s</string>
     <string name="dashboard_syncing">Sincronizzazione…</string>
     <string name="dashboard_not_synced">Non ancora sincronizzato</string>
+    <string name="view_global">Vista globale</string>
+    <string name="action_retry">Riprova</string>
     <string name="action_refresh">Aggiorna</string>
     <string name="action_settings">Impostazioni</string>
     <string name="panel_work_items">Work item assegnati</string>
@@ -25,11 +27,11 @@
     <string name="no_app_for_url">Nessuna app per aprire %1$s</string>
 
     <!-- A reviewer's vote, as shown on a pull request -->
-    <string name="vote_approved">approvata</string>
-    <string name="vote_approved_with_suggestions">approvata con suggerimenti</string>
-    <string name="vote_waiting">in attesa dell\'autore</string>
-    <string name="vote_rejected">rifiutata</string>
-    <string name="vote_none">nessun voto</string>
+    <string name="vote_approved">Approvata</string>
+    <string name="vote_approved_with_suggestions">Con suggerimenti</string>
+    <string name="vote_waiting">Attende autore</string>
+    <string name="vote_rejected">Rifiutata</string>
+    <string name="vote_none">Nessun voto</string>
 
     <!-- Relative times: "Bug · Contoso · 5 min fa" -->
     <string name="ago_now">ora</string>
@@ -82,15 +84,24 @@
     <!-- Settings -->
     <string name="settings_title">Impostazioni</string>
     <string name="action_back">Indietro</string>
+    <string name="settings_section_account">Account</string>
+    <string name="settings_section_screen">Aggiornamento e schermo</string>
+    <string name="settings_not_signed_in">Accesso non effettuato</string>
     <string name="settings_account">Account Azure DevOps</string>
-    <string name="settings_signed_in_as">Connesso come %1$s</string>
-    <string name="settings_auth_microsoft">account Microsoft</string>
+    <string name="settings_auth_microsoft">Account Microsoft</string>
     <string name="action_sign_out">Esci</string>
     <string name="settings_organization">Organizzazione</string>
     <string name="settings_organization_hint">Il nome in dev.azure.com/&lt;organizzazione&gt;, oppure l\'URL completo</string>
     <string name="settings_client_id">ID applicazione (client)</string>
     <string name="settings_tenant_id">ID tenant (facoltativo)</string>
     <string name="settings_tenant_id_hint">Vuoto: qualsiasi organizzazione (registrazione multi-tenant)</string>
+    <string name="settings_entra_title">Registrazione dell\'app in Entra</string>
+    <string name="settings_entra_hint">Servono solo per l\'accesso con Microsoft.</string>
+    <string name="settings_entra_values">Da registrare in Entra</string>
+    <string name="settings_package">Nome del pacchetto</string>
+    <string name="settings_signature_hash">Hash della firma</string>
+    <string name="settings_use_pat">Usa un Personal Access Token</string>
+    <string name="settings_use_pat_hint">Al posto dell\'accesso con Microsoft</string>
     <string name="action_sign_in_microsoft">Accedi con Microsoft</string>
     <string name="settings_more_options">Altre opzioni</string>
     <string name="settings_pat_hint">Permessi in lettura: Work Items, Code, Project and Team</string>
@@ -101,7 +112,6 @@
     <string name="settings_keep_screen_on">Schermo sempre acceso</string>
     <string name="action_save">Salva</string>
     <string name="action_copy">Copia</string>
-    <string name="settings_redirect_uri_hint">In Entra: Authentication → Android, package %1$s e hash della firma %2$s</string>
 
     <!-- About and updates -->
     <string name="about_title">Informazioni</string>
@@ -118,8 +128,8 @@
     <string name="action_download_install">Scarica e installa</string>
     <string name="update_download_failed">Download non riuscito: %1$s</string>
     <string name="update_available">Aggiornamento %1$s disponibile</string>
-    <string name="action_details">Dettagli</string>
-    <string name="action_dismiss">Ignora</string>
+    <string name="action_later">Più tardi</string>
+    <string name="action_update">Aggiorna</string>
 
     <!-- Update errors -->
     <string name="update_error_rate_limited">limite di richieste a GitHub raggiunto, riprova più tardi</string>

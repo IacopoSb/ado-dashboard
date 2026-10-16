@@ -107,9 +107,41 @@ class DashboardRenderTest {
     @Config(qualifiers = "+it")
     @Test fun settingsItalian() = signIn("settings-it")
 
-    private fun signIn(name: String) {
+    @Test fun settingsDark() = signIn("settings-dark", dark = true)
+
+    /** Narrow: the sections as a list first. */
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun settingsPhone() = signedIn("settings-phone", section = null)
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun settingsPhoneAccount() = signIn("settings-phone-account")
+
+    @Test fun settingsSignedIn() = signedIn("settings-account-signed-in", section = SettingsSection.ACCOUNT)
+
+    @Config(qualifiers = "+it")
+    @Test fun settingsSignedInItalian() = signedIn("settings-account-signed-in-it", section = SettingsSection.ACCOUNT)
+
+    @Test fun settingsScreen() = signedIn("settings-screen", section = SettingsSection.SCREEN)
+
+    @Config(qualifiers = "+it")
+    @Test fun settingsScreenItalian() = signedIn("settings-screen-it", section = SettingsSection.SCREEN)
+
+    private fun signedIn(name: String, section: SettingsSection?) {
         compose.setContent {
             AdoTheme(dark = false, dynamic = false) {
+                SettingsScreen(
+                    Settings(organization = "contoso", meId = "u1", meName = "Iacopo Sbalchiero"),
+                    busy = false, message = null, {}, { _, _ -> }, {}, {}, onBack = {},
+                    version = "0.0.2", initialSection = section,
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    private fun signIn(name: String, dark: Boolean = false) {
+        compose.setContent {
+            AdoTheme(dark = dark, dynamic = false) {
                 SettingsScreen(
                     Settings(organization = "contoso", entraClientId = "3f2a9c1e-7b4d-4e8a-9c21-5d6e7f809a1b"),
                     busy = false, message = null, {}, { _, _ -> }, {}, {}, onBack = null,
@@ -129,7 +161,7 @@ class DashboardRenderTest {
         "ado-dashboard-0.2.0.apk", "", 8_400_000,
     )
 
-    /** The "About" section, scrolled into view as from the update banner. */
+    /** The "About" section, opened as from the update banner. */
     private fun settingsUpdate(name: String, update: UpdateState, dark: Boolean = false) {
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
@@ -151,4 +183,10 @@ class DashboardRenderTest {
         UpdateState.DownloadFailed(release, context.errorText(UpdateException(UpdateException.Reason.CHECKSUM_MISMATCH))),
     )
     @Test fun settingsNoReleases() = settingsUpdate("settings-no-releases", UpdateState.NoReleases)
+
+    @Config(qualifiers = "+it")
+    @Test fun settingsUpdateAvailableItalian() = settingsUpdate("settings-update-available-it", UpdateState.Available(release))
+
+    @Config(qualifiers = "+it")
+    @Test fun tabletDarkItalian() = dashboard("dashboard-tablet-dark-it", dark = true)
 }
