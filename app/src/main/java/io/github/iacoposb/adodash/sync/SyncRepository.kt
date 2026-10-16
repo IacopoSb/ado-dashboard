@@ -52,7 +52,11 @@ class SyncRepository(
             settings.markSynced(now.toEpochMilli())
             _state.update { SyncState(snapshot = fetched.snapshot) }
         } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
+            if (e is kotlinx.coroutines.CancellationException) {
+                // Leaving the dashboard mid-sync: not syncing any more, and not an error
+                _state.update { it.copy(syncing = false) }
+                throw e
+            }
             _state.update { it.copy(syncing = false, error = texts.error(e)) }
         }
     }

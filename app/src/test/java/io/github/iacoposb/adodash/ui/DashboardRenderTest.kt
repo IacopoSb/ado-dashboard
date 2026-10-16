@@ -77,8 +77,13 @@ class DashboardRenderTest {
         )
     }
 
-    private fun dashboard(name: String, dark: Boolean, state: SyncState = SyncState(snapshot), update: String? = null) {
-        val events = events()
+    private fun dashboard(
+        name: String,
+        dark: Boolean,
+        state: SyncState = SyncState(snapshot),
+        update: String? = null,
+        events: List<Event> = events(),
+    ) {
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
                 DashboardScreen("contoso", state, events, {}, {}, {}, {}, {}, now = now, updateVersion = update)
@@ -91,6 +96,19 @@ class DashboardRenderTest {
     @Test fun tabletDark() = dashboard("dashboard-tablet-dark", dark = true)
     @Test fun tabletError() = dashboard(
         "dashboard-tablet-error", dark = false, SyncState(snapshot, error = context.getString(R.string.error_credentials)),
+    )
+
+    /** Opening the app: no data yet, the first sync running. */
+    @Test fun tabletLoading() = dashboard("dashboard-tablet-loading", dark = false, SyncState(syncing = true), events = emptyList())
+
+    @Config(qualifiers = "+it")
+    @Test fun tabletLoadingItalian() =
+        dashboard("dashboard-tablet-loading-it", dark = false, SyncState(syncing = true), events = emptyList())
+
+    /** The first sync failed: the error and the empty panels, no endless placeholder. */
+    @Test fun tabletFirstSyncFailed() = dashboard(
+        "dashboard-tablet-first-sync-failed", dark = false,
+        SyncState(error = context.getString(R.string.error_credentials)), events = emptyList(),
     )
 
     @Config(qualifiers = "+it")

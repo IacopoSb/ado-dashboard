@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,6 +58,7 @@ import io.github.iacoposb.adodash.ui.components.EventRow
 import io.github.iacoposb.adodash.ui.components.Panel
 import io.github.iacoposb.adodash.ui.components.PrRow
 import io.github.iacoposb.adodash.ui.components.SectionHeader
+import io.github.iacoposb.adodash.ui.components.SkeletonRows
 import io.github.iacoposb.adodash.ui.components.TextAction
 import io.github.iacoposb.adodash.ui.components.WorkItemRow
 import java.time.Instant
@@ -91,6 +93,7 @@ fun DashboardScreen(
         val myPrs = snapshot?.myPrs.orEmpty()
         val me = snapshot?.me ?: Identity("", "")
         val unread = events.count { !it.read }
+        val loading = state.awaitingFirstSync
 
         Column(Modifier.padding(horizontal = 12.dp)) {
             val top = Modifier.padding(top = 8.dp)
@@ -113,12 +116,13 @@ fun DashboardScreen(
         val mine = stringResource(R.string.section_mine)
         val noMyPrs = stringResource(R.string.empty_mine)
         val noEvents = stringResource(R.string.empty_activity)
+        val syncing = stringResource(R.string.dashboard_syncing)
         val bottom = PaddingValues(bottom = 12.dp)
 
         val workPanel: @Composable (Modifier) -> Unit = { m ->
             Panel(stringResource(R.string.panel_work_items), m, count = workItems.size) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = bottom) {
-                    if (workItems.isEmpty()) empty(noWorkItems)
+                    if (loading) skeleton(syncing) else if (workItems.isEmpty()) empty(noWorkItems)
                     items(workItems, key = { it.id }) { WorkItemRow(it, now, onClick = { onOpen(it.url) }) }
                 }
             }
@@ -126,6 +130,10 @@ fun DashboardScreen(
         val prPanel: @Composable (Modifier) -> Unit = { m ->
             Panel(stringResource(R.string.panel_pull_requests), m, count = reviewPrs.size + myPrs.size) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = bottom) {
+                    if (loading) {
+                        skeleton(syncing)
+                        return@LazyColumn
+                    }
                     item(key = "section-review") { SectionHeader(toReview, count = reviewPrs.size) }
                     if (reviewPrs.isEmpty()) empty(noReviews)
                     items(reviewPrs, key = { "r${it.id}" }) { PrRow(it, me, reviewing = true, now, onClick = { onOpen(it.url) }) }
@@ -141,7 +149,7 @@ fun DashboardScreen(
                 action = { if (unread > 0) TextAction(stringResource(R.string.action_mark_all_read), onMarkAllRead) },
             ) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = bottom) {
-                    if (events.isEmpty()) empty(noEvents)
+                    if (events.isEmpty()) if (loading) skeleton(syncing) else empty(noEvents)
                     items(events, key = { it.key }) { EventRow(it, now, onClick = { onEventOpen(it) }) }
                 }
             }
@@ -214,7 +222,7 @@ private fun DashboardBar(organization: String, state: SyncState, onRefresh: () -
             val snapshot = state.snapshot
             val status = when {
                 snapshot != null -> stringResource(R.string.dashboard_synced, snapshot.me.name, timeOfDay(snapshot.syncedAt))
-                state.syncing -> stringResource(R.string.dashboard_syncing)
+                state.awaitingFirstSync -> stringResource(R.string.dashboard_syncing)
                 else -> stringResource(R.string.dashboard_not_synced)
             }
             Text(
@@ -230,6 +238,18 @@ private fun DashboardBar(organization: String, state: SyncState, onRefresh: () -
         Spacer(Modifier.width(12.dp))
         IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.action_settings), tint = c.textMuted) }
     }
+}
+
+/**
+ * No data yet and none expected to be missing: a sync is running, or about to start (the
+ * moment between opening the dashboard and the first poll). After a failed sync the panels
+ * fall back to their empty texts, so a broken connection never shows an endless skeleton.
+ */
+internal val SyncState.awaitingFirstSync: Boolean
+    get() = snapshot == null && (syncing || error == null)
+
+private fun LazyListScope.skeleton(description: String) = item(key = "skeleton") {
+    SkeletonRows(Modifier.semantics { contentDescription = description })
 }
 
 private fun LazyListScope.empty(text: String) = item(key = "empty-$text") {
