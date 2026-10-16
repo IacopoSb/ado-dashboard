@@ -1,0 +1,52 @@
+name: release
+
+# Push a tag release/X.Y.Z to publish the signed APK. Installed apps look for
+# updates among these releases (see update/Updater.kt).
+on:
+  push:
+    tags: ["release/*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # release notes need the previous tag
+
+      - name: Version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#release/}" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build signed APK
+        env:
+          SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          test -n "$SIGNING_KEYSTORE_B64" || { echo "SIGNING_KEYSTORE_B64 secret missing" >&2; exit 1; }
+          echo "$SIGNING_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          export SIGNING_KEYSTORE="$RUNNER_TEMP/release.keystore"
+          # Debug unit tests: the screenshot tests need ui-test-manifest, a debug-only
+          # dependency; release differs only in signing (no minification)
+          ./gradlew --no-daemon testDebugUnitTest assembleRelease -PappVersion="$VERSION"
+          test -f app/build/outputs/apk/release/app-release.apk  # unsigned builds have another name
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/ado-dashboard-$VERSION.apk"
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd dist && sha256sum * > SHA256SUMS)
+          .github/release-notes.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" dist/* --title "ADO Dashboard $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" --latest
