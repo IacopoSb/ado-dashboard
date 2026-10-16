@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dashboard -->
+    <string name="dashboard_synced">%1$s · aggiornato alle %2$s</string>
+    <string name="dashboard_syncing">Sincronizzazione…</string>
+    <string name="dashboard_not_synced">Non ancora sincronizzato</string>
+    <string name="action_refresh">Aggiorna</string>
+    <string name="action_settings">Impostazioni</string>
+    <string name="panel_work_items">Work item assegnati</string>
+    <string name="empty_work_items">Nessun work item aperto</string>
+    <string name="panel_pull_requests">Pull request</string>
+    <string name="section_to_review">Da revisionare</string>
+    <string name="empty_to_review">Nessuna revisione in attesa</string>
+    <string name="section_mine">Le mie</string>
+    <string name="empty_mine">Nessuna PR aperta</string>
+    <string name="panel_activity">Attività</string>
+    <string name="action_mark_all_read">Segna come lette</string>
+    <string name="empty_activity">Le novità compariranno qui</string>
+    <string name="tab_work_items">Work item (%1$d)</string>
+    <string name="tab_pull_requests">PR (%1$d)</string>
+    <string name="tab_activity">Attività</string>
+    <string name="tab_activity_unread">Attività (%1$d)</string>
+    <string name="pr_draft">Bozza</string>
+    <string name="pr_vote_needed">Da votare</string>
+    <string name="no_app_for_url">Nessuna app per aprire %1$s</string>
+
+    <!-- A reviewer's vote, as shown on a pull request -->
+    <string name="vote_approved">approvata</string>
+    <string name="vote_approved_with_suggestions">approvata con suggerimenti</string>
+    <string name="vote_waiting">in attesa dell\'autore</string>
+    <string name="vote_rejected">rifiutata</string>
+    <string name="vote_none">nessun voto</string>
+
+    <!-- Relative times: "Bug · Contoso · 5 min fa" -->
+    <string name="ago_now">ora</string>
+    <plurals name="ago_minutes">
+        <item quantity="one">%d min fa</item>
+        <item quantity="many">%d min fa</item>
+        <item quantity="other">%d min fa</item>
+    </plurals>
+    <plurals name="ago_hours">
+        <item quantity="one">%d h fa</item>
+        <item quantity="many">%d h fa</item>
+        <item quantity="other">%d h fa</item>
+    </plurals>
+    <plurals name="ago_days">
+        <item quantity="one">%d g fa</item>
+        <item quantity="many">%d g fa</item>
+        <item quantity="other">%d g fa</item>
+    </plurals>
+
+    <!-- Activity events and their notifications -->
+    <string name="event_assigned">Assegnato a te: #%1$d %2$s</string>
+    <string name="event_work_item_mention">%1$s ti ha menzionato in #%2$d</string>
+    <string name="event_review_requested">Revisione richiesta: %1$s</string>
+    <string name="event_pr_mention">%1$s ti ha menzionato nella PR !%2$d</string>
+    <string name="event_pr_comment">%1$s ha commentato la PR !%2$d</string>
+    <string name="event_vote_approved">%1$s: PR approvata</string>
+    <string name="event_vote_approved_with_suggestions">%1$s: PR approvata con suggerimenti</string>
+    <string name="event_vote_waiting">%1$s: PR in attesa dell\'autore</string>
+    <string name="event_vote_rejected">%1$s: PR rifiutata</string>
+    <string name="event_vote_other">%1$s: PR nessun voto</string>
+
+    <!-- Sync warnings and errors -->
+    <string name="warning_mentions">Menzioni: %1$s</string>
+    <string name="warning_project">%1$s: %2$s</string>
+    <string name="warning_states">Stati di %1$s: %2$s</string>
+    <string name="error_no_readable_project">Nessun progetto leggibile</string>
+    <string name="error_credentials">Credenziali non valide o scadute</string>
+    <string name="error_sign_in_required">Sessione Microsoft scaduta: accedi di nuovo dalle impostazioni</string>
+    <string name="error_entra_client_id">ID applicazione di Entra mancante nelle impostazioni</string>
+    <string name="error_sign_in_failed">Accesso non riuscito: %1$s</string>
+    <string name="error_connection_failed">Connessione a %1$s fallita: %2$s</string>
+
+    <!-- Notifications -->
+    <string name="channel_mentions">Menzioni</string>
+    <string name="channel_work_items">Work item assegnati</string>
+    <string name="channel_pull_requests">Pull request</string>
+    <string name="channel_updates">Aggiornamenti dell\'app</string>
+    <string name="notification_update_text">Tocca per scaricarlo e installarlo</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Impostazioni</string>
+    <string name="action_back">Indietro</string>
+    <string name="settings_account">Account Azure DevOps</string>
+    <string name="settings_signed_in_as">Connesso come %1$s</string>
+    <string name="settings_auth_microsoft">account Microsoft</string>
+    <string name="action_sign_out">Esci</string>
+    <string name="settings_organization">Organizzazione</string>
+    <string name="settings_organization_hint">Il nome in dev.azure.com/&lt;organizzazione&gt;, oppure l\'URL completo</string>
+    <string name="settings_client_id">ID applicazione (client)</string>
+    <string name="settings_tenant_id">ID tenant (facoltativo)</string>
+    <string name="settings_tenant_id_hint">Vuoto: qualsiasi organizzazione (registrazione multi-tenant)</string>
+    <string name="action_sign_in_microsoft">Accedi con Microsoft</string>
+    <string name="settings_more_options">Altre opzioni</string>
+    <string name="settings_pat_hint">Permessi in lettura: Work Items, Code, Project and Team</string>
+    <string name="action_sign_in_pat">Accedi con il PAT</string>
+    <string name="settings_dashboard">Dashboard</string>
+    <string name="settings_poll">Aggiornamento con l\'app aperta (secondi)</string>
+    <string name="settings_poll_hint">In background Android controlla al massimo ogni 15 minuti</string>
+    <string name="settings_keep_screen_on">Schermo sempre acceso</string>
+    <string name="action_save">Salva</string>
+    <string name="action_copy">Copia</string>
+    <string name="settings_redirect_uri_hint">In Entra: Authentication → Android, package %1$s e hash della firma %2$s</string>
+
+    <!-- About and updates -->
+    <string name="about_title">Informazioni</string>
+    <string name="about_version">Versione %1$s</string>
+    <string name="action_check_updates">Cerca aggiornamenti</string>
+    <string name="update_up_to_date">Hai già l\'ultima versione</string>
+    <string name="update_no_releases">Nessun rilascio trovato</string>
+    <string name="update_check_failed">Impossibile controllare gli aggiornamenti: %1$s</string>
+    <string name="update_version_available">Versione %1$s disponibile</string>
+    <string name="update_downloading">Download in corso…</string>
+    <string name="update_downloading_progress">Download in corso… %1$d%%</string>
+    <string name="action_install">Installa</string>
+    <string name="update_install_hint">Se Android lo chiede, consenti l\'installazione da questa app e tocca di nuovo Installa.</string>
+    <string name="action_download_install">Scarica e installa</string>
+    <string name="update_download_failed">Download non riuscito: %1$s</string>
+    <string name="update_available">Aggiornamento %1$s disponibile</string>
+    <string name="action_details">Dettagli</string>
+    <string name="action_dismiss">Ignora</string>
+
+    <!-- Update errors -->
+    <string name="update_error_rate_limited">limite di richieste a GitHub raggiunto, riprova più tardi</string>
+    <string name="update_error_http">GitHub ha risposto HTTP %1$d</string>
+    <string name="update_error_invalid_response">risposta di GitHub non valida</string>
+    <string name="update_error_not_in_sums">%1$s non compare in SHA256SUMS</string>
+    <string name="update_error_checksum">il file scaricato non corrisponde a SHA256SUMS</string>
+    <string name="update_error_download_http">download non riuscito (HTTP %1$d)</string>
+    <string name="update_error_unreachable">GitHub non raggiungibile, controlla la connessione</string>
+</resources>
