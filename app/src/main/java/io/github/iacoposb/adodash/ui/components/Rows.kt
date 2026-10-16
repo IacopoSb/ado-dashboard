@@ -76,8 +76,10 @@ fun WorkItemRow(wi: WorkItem, now: Instant, onClick: () -> Unit, modifier: Modif
 }
 
 /**
- * A pull request: draft chip and title, "!id · repo · branches" (with author when [reviewing]),
- * then the signals: my vote when [reviewing], the reviewers' votes otherwise.
+ * A pull request: draft chip and title, then "!id · repo · branches" (with author when
+ * [reviewing]) with the signals at the end of the same line: my vote when [reviewing], the
+ * reviewers' votes otherwise. The details give way (ellipsis) to the signals; only more than
+ * [AVATARS_INLINE] reviewers move to a line of their own.
  */
 @Composable
 fun PrRow(pr: PullRequest, me: Identity, reviewing: Boolean, now: Instant, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -93,28 +95,37 @@ fun PrRow(pr: PullRequest, me: Identity, reviewing: Boolean, now: Instant, onCli
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
-        Spacer(Modifier.height(2.dp))
-        Text(
-            listOfNotNull(
-                "!${pr.id}", pr.repoName, "${pr.sourceBranch} → ${pr.targetBranch}",
-                pr.author.name.takeIf { reviewing }, ago(pr.createdAt, now),
-            ).joinToString(" · "),
-            style = MaterialTheme.typography.bodySmall, color = c.textMuted,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
-        if (reviewing) {
-            val myVote = pr.reviewers.firstOrNull { it.id == me.id }?.vote ?: Vote.NONE
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) { VoteBadge(myVote) }
-        } else if (pr.reviewers.isNotEmpty()) {
-            Row(
-                Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
-            ) {
-                pr.reviewers.take(6).forEach {
-                    ReviewerAvatar(it.name, it.vote, "${it.name}: ${stringResource(voteLabel(it.vote))}")
-                }
+        val avatarsInline = !reviewing && pr.reviewers.size <= AVATARS_INLINE
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                listOfNotNull(
+                    "!${pr.id}", pr.repoName, "${pr.sourceBranch} → ${pr.targetBranch}",
+                    pr.author.name.takeIf { reviewing }, ago(pr.createdAt, now),
+                ).joinToString(" · "),
+                Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = c.textMuted,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            if (reviewing) {
+                Spacer(Modifier.width(8.dp))
+                VoteBadge(pr.reviewers.firstOrNull { it.id == me.id }?.vote ?: Vote.NONE)
+            } else if (avatarsInline && pr.reviewers.isNotEmpty()) {
+                Spacer(Modifier.width(8.dp))
+                ReviewerAvatars(pr)
             }
         }
+        if (!reviewing && !avatarsInline) {
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) { ReviewerAvatars(pr) }
+        }
+    }
+}
+
+/** Reviewers that fit next to the details of a pull request; more go on a line below. */
+private const val AVATARS_INLINE = 4
+
+@Composable
+private fun ReviewerAvatars(pr: PullRequest) = Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    pr.reviewers.take(6).forEach {
+        ReviewerAvatar(it.name, it.vote, "${it.name}: ${stringResource(voteLabel(it.vote))}")
     }
 }
 
