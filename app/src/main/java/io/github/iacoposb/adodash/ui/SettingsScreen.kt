@@ -57,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
 import io.github.iacoposb.adodash.data.AuthMethod
+import io.github.iacoposb.adodash.data.Filters
 import io.github.iacoposb.adodash.data.Settings
 import io.github.iacoposb.adodash.ui.components.AdoButton
 import io.github.iacoposb.adodash.ui.components.AdoIcons
@@ -69,6 +70,7 @@ import io.github.iacoposb.adodash.ui.components.CopyField
 import io.github.iacoposb.adodash.ui.components.SectionCard
 import io.github.iacoposb.adodash.ui.components.SwitchRow
 import io.github.iacoposb.adodash.ui.components.TextAction
+import io.github.iacoposb.adodash.sync.CatalogState
 import io.github.iacoposb.adodash.update.Release
 import io.github.iacoposb.adodash.update.UpdateState
 import java.io.File
@@ -84,7 +86,7 @@ data class SettingsForm(
 )
 
 /** The settings' sections, in the order of the navigation. */
-enum class SettingsSection { ACCOUNT, SCREEN, ABOUT }
+enum class SettingsSection { ACCOUNT, FILTERS, SCREEN, ABOUT }
 
 @Composable
 fun SettingsScreen(
@@ -107,6 +109,13 @@ fun SettingsScreen(
     showUpdate: Boolean = false,
     /** The section shown first, if not the account (or "About" with [showUpdate]). */
     initialSection: SettingsSection? = null,
+    catalog: CatalogState = CatalogState(),
+    /** The filters section opened: time to (re)read projects, areas and types. */
+    onLoadCatalog: () -> Unit = {},
+    onFiltersChange: (Filters) -> Unit = {},
+    /** For the screenshots: the filters' tree as in the design. */
+    filtersExpanded: Set<String>? = null,
+    filtersQuery: String = "",
 ) {
     var organization by rememberSaveable { mutableStateOf(initial.organization) }
     var pat by rememberSaveable { mutableStateOf("") }
@@ -132,6 +141,22 @@ fun SettingsScreen(
     val content: @Composable ColumnScope.(wide: Boolean) -> Unit = { wide ->
         message?.let { Banner(it, BannerTone.Error) }
         when (section) {
+            SettingsSection.FILTERS -> if (initial.configured) {
+                FiltersSection(
+                    initial.filters, catalog, onFiltersChange, onLoadCatalog, wide,
+                    if (wide) Modifier.weight(1f) else Modifier,
+                    initiallyExpanded = filtersExpanded, initialQuery = filtersQuery,
+                )
+            } else {
+                Columns(wide, left = {
+                    SectionCard(stringResource(R.string.settings_section_filters)) {
+                        Text(
+                            stringResource(R.string.filters_sign_in_first),
+                            style = MaterialTheme.typography.bodyMedium, color = AdoTheme.colors.textMuted,
+                        )
+                    }
+                })
+            }
             SettingsSection.ACCOUNT -> if (initial.configured) {
                 Columns(wide, left = {
                     SignedInCard(initial, busy, onSignOut)
@@ -225,16 +250,21 @@ fun SettingsScreen(
         val wide = maxWidth >= 840.dp
         val inSection = !wide && sectionOpen
         BackHandler(enabled = inSection) { sectionOpen = false }
+        val filtersShown = section == SettingsSection.FILTERS && (wide || inSection) && initial.configured
+        LaunchedEffect(filtersShown) { if (filtersShown) onLoadCatalog() }
         Column(Modifier.fillMaxSize()) {
             SettingsBar(
                 title = if (inSection) stringResource(section.title) else stringResource(R.string.settings_title),
                 onBack = if (inSection) ({ sectionOpen = false }) else onBack,
+                subtitle = if (filtersShown) stringResource(R.string.settings_applied_now) else null,
             )
             if (wide) {
                 Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Navigation(initial, section, { section = it }, Modifier.width(300.dp).fillMaxHeight(), arrows = false)
+                    // The filters' tree scrolls inside its card, the other sections as a whole
                     Column(
-                        Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                        Modifier.weight(1f).fillMaxHeight()
+                            .then(if (filtersShown) Modifier else Modifier.verticalScroll(rememberScrollState())),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) { content(true) }
                 }
@@ -256,6 +286,7 @@ fun SettingsScreen(
 private val SettingsSection.title
     get() = when (this) {
         SettingsSection.ACCOUNT -> R.string.settings_section_account
+        SettingsSection.FILTERS -> R.string.settings_section_filters
         SettingsSection.SCREEN -> R.string.settings_section_screen
         SettingsSection.ABOUT -> R.string.about_title
     }
@@ -263,12 +294,13 @@ private val SettingsSection.title
 private val SettingsSection.icon: ImageVector
     get() = when (this) {
         SettingsSection.ACCOUNT -> Icons.Filled.Person
+        SettingsSection.FILTERS -> AdoIcons.FilterList
         SettingsSection.SCREEN -> Icons.Filled.Refresh
         SettingsSection.ABOUT -> AdoIcons.OpenInNew
     }
 
 @Composable
-private fun SettingsBar(title: String, onBack: (() -> Unit)?) {
+private fun SettingsBar(title: String, onBack: (() -> Unit)?, subtitle: String? = null) {
     val c = AdoTheme.colors
     Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         if (onBack != null) {
@@ -278,10 +310,15 @@ private fun SettingsBar(title: String, onBack: (() -> Unit)?) {
         } else {
             Spacer(Modifier.width(12.dp))
         }
-        Text(
-            title, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge, color = c.text,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
+        Column {
+            Text(
+                title, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge, color = c.text,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
     }
 }
 

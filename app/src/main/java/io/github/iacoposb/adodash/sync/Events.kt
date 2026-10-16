@@ -29,6 +29,8 @@ object Events {
                 body = "${wi.type} · ${wi.project} · ${wi.state}",
                 url = wi.url,
                 at = wi.changedAt.toEpochMilli(),
+                project = wi.project,
+                area = wi.areaPath,
             )
         }
 
@@ -41,6 +43,8 @@ object Events {
                     body = "${wi.title}\n${plainText(it.text, me)}",
                     url = wi.url,
                     at = it.createdAt.toEpochMilli(),
+                    project = wi.project,
+                    area = wi.areaPath,
                 )
             }
         }
@@ -53,6 +57,7 @@ object Events {
                 body = "${pr.author.name} · ${pr.repoName} · ${pr.sourceBranch} → ${pr.targetBranch}",
                 url = pr.url,
                 at = pr.createdAt.toEpochMilli(),
+                project = pr.project,
             )
         }
 
@@ -73,11 +78,26 @@ object Events {
                     body = pr.title,
                     url = pr.url,
                     at = snapshot.syncedAt.toEpochMilli(),
+                    project = pr.project,
                 )
             }
         }
         return events
     }
+
+    /**
+     * Splits [found] into history, stored as read and never shown, and news. On the first
+     * sync everything is history. After the filters changed ([filtersChangedAt] later than
+     * [lastSyncAt]) so is whatever happened before the last sync: what was already shown is
+     * stored by then, so only what the filters newly include ends there, and including a
+     * project again does not notify all of its work items.
+     */
+    fun splitHistory(found: List<Event>, firstSync: Boolean, lastSyncAt: Long, filtersChangedAt: Long): Pair<List<Event>, List<Event>> =
+        when {
+            firstSync -> found to emptyList()
+            filtersChangedAt > lastSyncAt -> found.partition { it.at <= lastSyncAt }
+            else -> emptyList<Event>() to found
+        }
 
     /**
      * Like Azure DevOps: the author of a PR hears about every comment, a
@@ -99,6 +119,7 @@ object Events {
             body = "${pr.title}\n${plainText(c.text, me)}",
             url = pr.url,
             at = c.publishedAt.toEpochMilli(),
+            project = pr.project,
         )
     }
 

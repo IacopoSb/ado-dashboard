@@ -67,6 +67,36 @@ class AdoClient(
         return list.value.associate { it.name to it.category }
     }
 
+    override suspend fun areas(project: String): AreaNode {
+        val root: ClassificationNodeDto = get(
+            url(project, "_apis", "wit", "classificationnodes", "areas") { addQueryParameter("\$depth", "$AREA_DEPTH") },
+        )
+        // The API's own paths read "\Project\Area\Sub"; work items and WIQL use "Project\Sub"
+        fun ClassificationNodeDto.toNode(path: String): AreaNode =
+            AreaNode(name, path, children.map { it.toNode("$path\\${it.name}") }.sortedBy { it.name.lowercase() })
+        return root.toNode(project).copy(name = project)
+    }
+
+    override suspend fun workItemTypes(project: String): List<WorkItemTypeInfo> {
+        val list: ValueList<WorkItemTypeDto> = get(url(project, "_apis", "wit", "workitemtypes"))
+        val hidden = runCatching {
+            get<TypeCategoryDto>(url(project, "_apis", "wit", "workitemtypecategories", "Microsoft.HiddenCategory"))
+                .workItemTypes.map { it.name }.toSet()
+        }.getOrDefault(emptySet())
+        return list.value.filterNot { it.isDisabled }.map { type ->
+            // Recent servers list the states with the type; older ones only through /states
+            val states = type.states.ifEmpty {
+                get<ValueList<StateDto>>(url(project, "_apis", "wit", "workitemtypes", type.name, "states")).value
+            }
+            WorkItemTypeInfo(
+                name = type.name,
+                color = type.color?.takeLast(6),
+                states = states.map { StateInfo(it.name, it.category) },
+                hidden = type.name in hidden,
+            )
+        }
+    }
+
     override suspend fun workItemComments(project: String, id: Int): List<Comment> {
         val list: CommentList = get(
             url(project, "_apis", "wit", "workItems", "$id", "comments", apiVersion = "7.1-preview.4") {
@@ -160,6 +190,7 @@ class AdoClient(
             changedAt = text("System.ChangedDate")?.let(Instant::parse) ?: Instant.EPOCH,
             url = baseUrl.newBuilder().addPathSegment(project).addPathSegment("_workitems")
                 .addPathSegment("edit").addPathSegment("$id").build().toString(),
+            areaPath = text("System.AreaPath") ?: project,
         )
     }
 
@@ -186,8 +217,10 @@ class AdoClient(
         private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
         private val WORK_ITEM_FIELDS = listOf(
             "System.Id", "System.TeamProject", "System.WorkItemType", "System.Title", "System.State",
-            "System.AssignedTo", "System.ChangedDate", "Microsoft.VSTS.Common.Priority",
+            "System.AssignedTo", "System.ChangedDate", "Microsoft.VSTS.Common.Priority", "System.AreaPath",
         )
+        /** Deep enough for any real area tree. */
+        private const val AREA_DEPTH = 10
         private val defaultHttp = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -209,6 +242,18 @@ class AdoClient(
 @Serializable private data class UserDto(val id: String, val providerDisplayName: String = "")
 @Serializable private data class ProjectDto(val name: String)
 @Serializable private data class StateDto(val name: String, val category: String = "")
+@Serializable private data class ClassificationNodeDto(
+    val name: String,
+    val children: List<ClassificationNodeDto> = emptyList(),
+)
+@Serializable private data class WorkItemTypeDto(
+    val name: String,
+    val color: String? = null,
+    val isDisabled: Boolean = false,
+    val states: List<StateDto> = emptyList(),
+)
+@Serializable private data class TypeCategoryDto(val workItemTypes: List<TypeRefDto> = emptyList())
+@Serializable private data class TypeRefDto(val name: String)
 @Serializable private data class WiqlResult(val workItems: List<WiqlRef> = emptyList())
 @Serializable private data class WiqlRef(val id: Int)
 @Serializable private data class WorkItemDto(val id: Int, val fields: JsonObject = JsonObject(emptyMap()))

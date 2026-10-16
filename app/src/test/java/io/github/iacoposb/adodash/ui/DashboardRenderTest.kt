@@ -15,8 +15,10 @@ import io.github.iacoposb.adodash.api.Reviewer
 import io.github.iacoposb.adodash.api.Vote
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.EventKind
+import io.github.iacoposb.adodash.data.Filters
 import io.github.iacoposb.adodash.data.Settings
 import io.github.iacoposb.adodash.errorText
+import io.github.iacoposb.adodash.sync.CatalogState
 import io.github.iacoposb.adodash.sync.ResourceSyncTexts
 import io.github.iacoposb.adodash.sync.Snapshot
 import io.github.iacoposb.adodash.sync.SyncState
@@ -143,6 +145,45 @@ class DashboardRenderTest {
 
     @Config(qualifiers = "+it")
     @Test fun settingsScreenItalian() = signedIn("settings-screen-it", section = SettingsSection.SCREEN)
+
+    /** As in the design: Contoso partly selected, Resolved hidden for the Epics. */
+    private val designFilters = Filters(areas = Fakes.designAreas, hiddenStates = mapOf("Epic" to setOf("Resolved")))
+
+    private fun filters(
+        name: String,
+        query: String = "",
+        catalog: CatalogState = CatalogState(Fakes.catalog),
+        dark: Boolean = false,
+    ) {
+        compose.setContent {
+            AdoTheme(dark = dark, dynamic = false) {
+                SettingsScreen(
+                    Settings(organization = "contoso", meId = "u1", meName = "Iacopo Sbalchiero", filters = designFilters),
+                    busy = false, message = null, {}, { _, _ -> }, {}, {}, onBack = {},
+                    initialSection = SettingsSection.FILTERS, catalog = catalog,
+                    filtersExpanded = setOf("Contoso", "Contoso\\Backend"), filtersQuery = query,
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    @Test fun settingsFilters() = filters("settings-filters")
+
+    @Config(qualifiers = "+it")
+    @Test fun settingsFiltersItalian() = filters("settings-filters-it")
+
+    @Test fun settingsFiltersSearch() = filters("settings-filters-search", query = "pag")
+
+    @Test fun settingsFiltersDark() = filters("settings-filters-dark", dark = true)
+
+    @Test fun settingsFiltersLoading() = filters("settings-filters-loading", catalog = CatalogState(loading = true))
+
+    @Test fun settingsFiltersError() =
+        filters("settings-filters-error", catalog = CatalogState(error = context.getString(R.string.error_credentials)))
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun settingsFiltersPhone() = filters("settings-filters-phone")
 
     private fun signedIn(name: String, section: SettingsSection?) {
         compose.setContent {

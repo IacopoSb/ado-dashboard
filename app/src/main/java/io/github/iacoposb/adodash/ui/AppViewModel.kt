@@ -8,11 +8,15 @@ import io.github.iacoposb.adodash.R
 import io.github.iacoposb.adodash.api.AdoClient
 import io.github.iacoposb.adodash.data.AuthMethod
 import io.github.iacoposb.adodash.data.Event
+import io.github.iacoposb.adodash.data.Filters
 import io.github.iacoposb.adodash.data.Settings
 import io.github.iacoposb.adodash.errorText
+import io.github.iacoposb.adodash.sync.CatalogState
+import io.github.iacoposb.adodash.sync.FilterCatalog
 import io.github.iacoposb.adodash.update.Release
 import io.github.iacoposb.adodash.update.UpdateState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -27,8 +32,16 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     /** Null until read from disk. */
     val settings: StateFlow<Settings?> = app.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val sync = app.sync.state
-    val events: StateFlow<List<Event>> =
-        app.database.events().recent().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Only what the filters include, also for what was stored before they changed. */
+    val events: StateFlow<List<Event>> = combine(app.database.events().recent(), app.settings.settings) { list, s ->
+        list.filter(s.filters::acceptsEvent)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _catalog = MutableStateFlow(CatalogState())
+    /** Projects, areas and types for the global filters, read when their section opens. */
+    val catalog = _catalog.asStateFlow()
+    private var catalogJob: Job? = null
+    private var filterSync: Job? = null
 
     val update = app.updater.state
     /** Version for the dashboard banner: known, newer and not dismissed. */
@@ -55,6 +68,31 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         while (true) {
             app.sync.sync()
             delay((settings.value?.pollSeconds ?: 60) * 1000L)
+        }
+    }
+
+    fun loadCatalog() {
+        val s = settings.value ?: return
+        if (!s.configured || catalogJob?.isActive == true) return
+        _catalog.update { it.copy(loading = true, error = null) }
+        catalogJob = viewModelScope.launch {
+            try {
+                _catalog.value = CatalogState(FilterCatalog.load(AdoClient(s.organization, app.authorization(s))))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _catalog.update { it.copy(loading = false, error = app.errorText(e)) }
+            }
+        }
+    }
+
+    /** Applied at once: saved now, synced once the taps stop. */
+    fun updateFilters(filters: Filters) {
+        viewModelScope.launch { app.settings.saveFilters(filters) }
+        filterSync?.cancel()
+        filterSync = viewModelScope.launch {
+            delay(FILTER_SYNC_DELAY_MS)
+            app.sync.sync()
         }
     }
 
@@ -87,6 +125,8 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     fun signOut() {
         viewModelScope.launch {
             runCatching { app.entra.signOut() }
+            catalogJob?.cancel()
+            _catalog.value = CatalogState()
             app.sync.reset()
             app.settings.signOut()
         }
@@ -119,5 +159,9 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
             onDone()
             app.sync.sync()
         }
+    }
+
+    private companion object {
+        const val FILTER_SYNC_DELAY_MS = 1_500L
     }
 }

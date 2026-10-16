@@ -17,6 +17,12 @@ interface AdoApi {
     /** State name to its category (Proposed, InProgress, Resolved, Completed, Removed). */
     suspend fun stateCategories(project: String, type: String): Map<String, String>
 
+    /** The project's area tree: the root is the project itself. */
+    suspend fun areas(project: String): AreaNode
+
+    /** The project's work item types with their states. */
+    suspend fun workItemTypes(project: String): List<WorkItemTypeInfo>
+
     /** Most recent comments first. */
     suspend fun workItemComments(project: String, id: Int): List<Comment>
 
@@ -41,7 +47,24 @@ data class WorkItem(
     val assignedTo: String?,
     val changedAt: Instant,
     val url: String,
+    /** "Project\\Area\\Sub-area"; the project name for items at the root. */
+    val areaPath: String = project,
 )
+
+/** An area; [path] is as in [WorkItem.areaPath] and in WIQL ("Project\\Area"). */
+data class AreaNode(val name: String, val path: String, val children: List<AreaNode> = emptyList())
+
+data class WorkItemTypeInfo(
+    val name: String,
+    /** Hex RGB without '#', as Azure Boards shows the type. */
+    val color: String?,
+    /** In the process' order. */
+    val states: List<StateInfo>,
+    /** In Microsoft.HiddenCategory (Code Review Request and the like): not for users. */
+    val hidden: Boolean = false,
+)
+
+data class StateInfo(val name: String, val category: String)
 
 data class Comment(
     val id: Int,

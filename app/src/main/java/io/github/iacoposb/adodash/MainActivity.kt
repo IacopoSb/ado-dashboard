@@ -56,6 +56,7 @@ class MainActivity : ComponentActivity() {
                 val save by vm.save.collectAsStateWithLifecycle()
                 val update by vm.update.collectAsStateWithLifecycle()
                 val updateBanner by vm.updateBanner.collectAsStateWithLifecycle()
+                val catalog by vm.catalog.collectAsStateWithLifecycle()
                 var editing by rememberSaveable { mutableStateOf(false) }
                 val close = { editing = false; showUpdate = false }
 
@@ -83,6 +84,9 @@ class MainActivity : ComponentActivity() {
                         onDownloadUpdate = vm::downloadUpdate,
                         onInstallUpdate = vm::installUpdate,
                         showUpdate = showUpdate,
+                        catalog = catalog,
+                        onLoadCatalog = vm::loadCatalog,
+                        onFiltersChange = vm::updateFilters,
                     )
                 } else {
                     // Polls only while the dashboard is visible; the worker covers the rest

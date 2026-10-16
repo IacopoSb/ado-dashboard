@@ -117,6 +117,53 @@
     <string name="settings_redirect_uri" translatable="false">Redirect URI</string>
     <string name="action_copy">Copy</string>
 
+    <!-- Global filters -->
+    <string name="settings_section_filters">Global filters</string>
+    <string name="settings_applied_now">Changes apply immediately</string>
+    <string name="filters_sign_in_first">Sign in to choose what the dashboard shows.</string>
+    <string name="filters_loading">Loading projects and areas…</string>
+    <string name="filters_load_failed">Couldn\'t load projects and areas: %1$s</string>
+    <string name="filters_areas_title">Projects and areas</string>
+    <string name="filters_areas_hint">Shows only the work items of the selected areas and their sub-areas. A selected project includes the areas added in the future.</string>
+    <string name="filters_search">Search projects and areas…</string>
+    <string name="action_clear_search">Clear search</string>
+    <string name="action_select_all">Select all</string>
+    <string name="action_deselect_all">Deselect all</string>
+    <string name="action_select_results">Select results</string>
+    <string name="action_deselect_results">Deselect results</string>
+    <string name="action_expand">Expand %1$s</string>
+    <string name="action_collapse">Collapse %1$s</string>
+    <!-- Next to an area: selected sub-areas of all of them -->
+    <string name="filters_area_count">%1$d of %2$d</string>
+    <!-- Next to a project: selected areas of all of them -->
+    <plurals name="filters_project_area_count">
+        <item quantity="one">%1$d of %2$d area</item>
+        <item quantity="other">%1$d of %2$d areas</item>
+    </plurals>
+    <string name="filters_no_areas">no areas</string>
+    <plurals name="filters_results">
+        <item quantity="one">%d result</item>
+        <item quantity="other">%d results</item>
+    </plurals>
+    <string name="filters_no_results">No project or area matches “%1$s”</string>
+    <!-- "1 project of 4 · 5 areas selected" -->
+    <plurals name="filters_summary_projects">
+        <item quantity="one">%1$d project of %2$d</item>
+        <item quantity="other">%1$d projects of %2$d</item>
+    </plurals>
+    <plurals name="filters_summary_areas">
+        <item quantity="one">%d area selected</item>
+        <item quantity="other">%d areas selected</item>
+    </plurals>
+    <string name="filters_long_press_hint">Long-press a node to select only that one</string>
+    <string name="filters_states_title">States to hide</string>
+    <string name="filters_states_hint">Work items in the chosen states disappear from the dashboard, the activity and the notifications. Some processes count states such as Resolved as in progress: hide them here.</string>
+    <string name="filters_states_empty">No work item types with open states</string>
+    <string name="filters_prs_title">Pull requests</string>
+    <string name="filters_show_drafts">Show draft PRs</string>
+    <string name="filters_show_drafts_hint">In the To review section</string>
+    <string name="filters_hide_approved">Hide PRs I already approved</string>
+
     <!-- About and updates -->
     <string name="about_title">About</string>
     <string name="about_version">Version %1$s</string>

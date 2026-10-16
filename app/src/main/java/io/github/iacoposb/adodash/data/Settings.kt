@@ -30,6 +30,9 @@ data class Settings(
     /** Entra app registration, set from the app only in the configurable (public) build. */
     val entraClientId: String = "",
     val entraTenantId: String = "",
+    val filters: Filters = Filters(),
+    /** Last change of [filters]: the next sync takes what they newly include as history. */
+    val filtersChangedAt: Long = 0,
 ) {
     val configured get() = organization.isNotBlank() && meId.isNotBlank() &&
         (authMethod == AuthMethod.ENTRA || pat.isNotBlank())
@@ -50,6 +53,8 @@ class SettingsStore(private val context: Context) {
         val lastSync = longPreferencesKey("last_sync_at")
         val entraClient = stringPreferencesKey("entra_client_id")
         val entraTenant = stringPreferencesKey("entra_tenant_id")
+        val filters = stringPreferencesKey("filters")
+        val filtersChanged = longPreferencesKey("filters_changed_at")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { it.toSettings() }
@@ -68,6 +73,8 @@ class SettingsStore(private val context: Context) {
         lastSyncAt = this[K.lastSync] ?: 0,
         entraClientId = this[K.entraClient].orEmpty(),
         entraTenantId = this[K.entraTenant].orEmpty(),
+        filters = Filters.decode(this[K.filters]),
+        filtersChangedAt = this[K.filtersChanged] ?: 0,
     )
 
     /** Saving a different account restarts the baseline. */
@@ -77,6 +84,8 @@ class SettingsStore(private val context: Context) {
                 it[K.baseline] = 0
                 it[K.lastSync] = 0
             }
+            // Another organization's projects and areas mean nothing here
+            if (it[K.org] != organization) it.remove(K.filters)
             it[K.org] = organization
             it[K.auth] = method.name
             if (method == AuthMethod.PAT) it[K.pat] = TokenCipher.encrypt(pat) else it.remove(K.pat)
@@ -89,6 +98,13 @@ class SettingsStore(private val context: Context) {
         context.dataStore.edit {
             it[K.poll] = pollSeconds
             it[K.keepOn] = keepScreenOn
+        }
+    }
+
+    suspend fun saveFilters(filters: Filters, at: Long = System.currentTimeMillis()) {
+        context.dataStore.edit {
+            it[K.filters] = filters.encode()
+            it[K.filtersChanged] = at
         }
     }
 

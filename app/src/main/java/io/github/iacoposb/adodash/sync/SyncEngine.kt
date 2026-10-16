@@ -7,6 +7,7 @@ import io.github.iacoposb.adodash.api.PrComment
 import io.github.iacoposb.adodash.api.PrFilter
 import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.WorkItem
+import io.github.iacoposb.adodash.data.Filters
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -46,24 +47,31 @@ class SyncEngine(
 
     /**
      * [since] is the previous sync; null on the first one, when comments are
-     * skipped since nothing before it is notified anyway.
+     * skipped since nothing before it is notified anyway. What [filters] hide is left out
+     * of everything, the events computed from the result included.
      */
-    suspend fun fetch(me: Identity, since: Instant?): Fetched = coroutineScope {
+    suspend fun fetch(me: Identity, since: Instant?, filters: Filters = Filters()): Fetched = coroutineScope {
         val limit = Semaphore(4)
         val warnings: MutableList<String> = Collections.synchronizedList(mutableListOf())
 
-        val assigned = async { openOnly(api.workItems(api.queryWorkItemIds(ASSIGNED_WIQL)), warnings) }
+        val assigned = async {
+            if (filters.selectsNothing) return@async emptyList()
+            // Filtered in the query, so the top 200 are all items to show, and here again
+            // for what the query cannot express exactly (case, renamed areas)
+            val items = api.workItems(api.queryWorkItemIds(assignedWiql(filters))).filter(filters::accepts)
+            openOnly(items, warnings)
+        }
         val mentioned = async {
-            if (since == null) return@async emptyList()
+            if (since == null || filters.selectsNothing) return@async emptyList()
             // @RecentMentions: work items where I was mentioned in the last 30 days
-            val ids = runCatching { api.queryWorkItemIds(MENTIONS_WIQL, top = 50) }
+            val ids = runCatching { api.queryWorkItemIds(mentionsWiql(filters), top = 50) }
                 .onFailure { warnings += texts.mentionsWarning(texts.error(it)) }
                 .getOrDefault(emptyList())
-            val changed = api.workItems(ids).filter { it.changedAt > since - OVERLAP }
+            val changed = api.workItems(ids).filter { it.changedAt > since - OVERLAP && filters.accepts(it) }
             changed.map { wi -> async { limit.withPermit { wi to api.workItemComments(wi.project, wi.id) } } }.awaitAll()
         }
 
-        val projects = api.projects()
+        val projects = api.projects().filter(filters::includesProject)
         val prs = projects.map { project ->
             async {
                 limit.withPermit {
@@ -76,9 +84,10 @@ class SyncEngine(
         }.awaitAll().filterNotNull()
         if (projects.isNotEmpty() && prs.isEmpty()) error(warnings.firstOrNull() ?: texts.noReadableProject())
 
-        val myPrs = prs.flatMap { it.second }.distinctBy { it.id }.sortedByDescending { it.createdAt }
+        val myPrs = prs.flatMap { it.second }.distinctBy { it.id }
+            .filter(filters::acceptsMine).sortedByDescending { it.createdAt }
         val reviewPrs = prs.flatMap { it.first }.distinctBy { it.id }
-            .filter { it.author.id != me.id }.sortedByDescending { it.createdAt }
+            .filter { it.author.id != me.id && filters.acceptsReview(it, me) }.sortedByDescending { it.createdAt }
 
         val prComments = if (since == null) emptyMap() else (reviewPrs + myPrs).map { pr ->
             async { limit.withPermit { pr.id to runCatching { api.pullRequestComments(pr) }.getOrDefault(emptyList()) } }
@@ -119,7 +128,7 @@ class SyncEngine(
     }
 
     companion object {
-        private val OPEN_CATEGORIES = setOf("Proposed", "InProgress")
+        val OPEN_CATEGORIES = setOf("Proposed", "InProgress")
 
         /** Late-indexed changes still get caught by the next sync. */
         private val OVERLAP = Duration.ofMinutes(10)
@@ -127,15 +136,15 @@ class SyncEngine(
         private val CLOSED_STATES = listOf("Closed", "Done", "Removed", "Completed", "Cut")
             .joinToString(",") { "'$it'" }
 
-        val ASSIGNED_WIQL = """
+        fun assignedWiql(filters: Filters = Filters()) = """
             SELECT [System.Id] FROM WorkItems
-            WHERE [System.AssignedTo] = @Me AND [System.State] NOT IN ($CLOSED_STATES)
+            WHERE [System.AssignedTo] = @Me AND [System.State] NOT IN ($CLOSED_STATES)${filters.wiqlConditions()}
             ORDER BY [System.ChangedDate] DESC
         """.trimIndent()
 
-        val MENTIONS_WIQL = """
+        fun mentionsWiql(filters: Filters = Filters()) = """
             SELECT [System.Id] FROM WorkItems
-            WHERE [System.Id] IN (@RecentMentions)
+            WHERE [System.Id] IN (@RecentMentions)${filters.wiqlConditions()}
             ORDER BY [System.ChangedDate] DESC
         """.trimIndent()
     }

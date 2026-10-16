@@ -113,6 +113,54 @@
     <string name="action_save">Salva</string>
     <string name="action_copy">Copia</string>
 
+    <!-- Filtri globali -->
+    <string name="settings_section_filters">Filtri globali</string>
+    <string name="settings_applied_now">Le modifiche si applicano subito</string>
+    <string name="filters_sign_in_first">Accedi per scegliere cosa mostra la dashboard.</string>
+    <string name="filters_loading">Caricamento di progetti e aree…</string>
+    <string name="filters_load_failed">Impossibile caricare progetti e aree: %1$s</string>
+    <string name="filters_areas_title">Progetti e aree</string>
+    <string name="filters_areas_hint">Mostra solo i work item delle aree selezionate e delle loro sotto-aree. Un progetto selezionato include le aree aggiunte in futuro.</string>
+    <string name="filters_search">Cerca progetti e aree…</string>
+    <string name="action_clear_search">Cancella la ricerca</string>
+    <string name="action_select_all">Seleziona tutto</string>
+    <string name="action_deselect_all">Deseleziona tutto</string>
+    <string name="action_select_results">Seleziona risultati</string>
+    <string name="action_deselect_results">Deseleziona risultati</string>
+    <string name="action_expand">Espandi %1$s</string>
+    <string name="action_collapse">Comprimi %1$s</string>
+    <string name="filters_area_count">%1$d di %2$d</string>
+    <plurals name="filters_project_area_count">
+        <item quantity="one">%1$d di %2$d area</item>
+        <item quantity="many">%1$d di %2$d aree</item>
+        <item quantity="other">%1$d di %2$d aree</item>
+    </plurals>
+    <string name="filters_no_areas">nessuna area</string>
+    <plurals name="filters_results">
+        <item quantity="one">%d risultato</item>
+        <item quantity="many">%d risultati</item>
+        <item quantity="other">%d risultati</item>
+    </plurals>
+    <string name="filters_no_results">Nessun progetto o area contiene “%1$s”</string>
+    <plurals name="filters_summary_projects">
+        <item quantity="one">%1$d progetto su %2$d</item>
+        <item quantity="many">%1$d progetti su %2$d</item>
+        <item quantity="other">%1$d progetti su %2$d</item>
+    </plurals>
+    <plurals name="filters_summary_areas">
+        <item quantity="one">%d area selezionata</item>
+        <item quantity="many">%d aree selezionate</item>
+        <item quantity="other">%d aree selezionate</item>
+    </plurals>
+    <string name="filters_long_press_hint">Tieni premuto su un nodo per selezionare solo quello</string>
+    <string name="filters_states_title">Stati da nascondere</string>
+    <string name="filters_states_hint">I work item negli stati scelti spariscono da dashboard, attività e notifiche. Alcuni processi contano stati come Resolved fra quelli in corso: qui si possono nascondere.</string>
+    <string name="filters_states_empty">Nessun tipo di work item con stati aperti</string>
+    <string name="filters_prs_title">Pull request</string>
+    <string name="filters_show_drafts">Mostra le PR in bozza</string>
+    <string name="filters_show_drafts_hint">Nella sezione Da revisionare</string>
+    <string name="filters_hide_approved">Nascondi le PR che ho già approvato</string>
+
     <!-- About and updates -->
     <string name="about_title">Informazioni</string>
     <string name="about_version">Versione %1$s</string>

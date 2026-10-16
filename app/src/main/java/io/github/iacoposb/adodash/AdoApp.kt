@@ -22,7 +22,7 @@ class AdoApp : Application() {
     /** Work that outlives the screens, such as an update download. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val database by lazy { Room.databaseBuilder(this, AppDatabase::class.java, "ado.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .build() }
     val settings by lazy { SettingsStore(this) }
     private val notifier by lazy { Notifier(this) }

@@ -44,10 +44,13 @@ class SyncRepository(
             val fetched = SyncEngine(apiFor(s), stateCategories, texts = texts).fetch(
                 me = Identity(s.meId, s.meName),
                 since = s.lastSyncAt.takeIf { it > 0 }?.let(Instant::ofEpochMilli),
+                filters = s.filters,
             )
             val firstSync = s.baselineAt == 0L
             val found = Events.from(fetched, if (firstSync) now else Instant.ofEpochMilli(s.baselineAt), texts)
-            if (firstSync) events.insertNew(found.map { it.copy(read = true, hidden = true) }) else notify(store(found))
+            val (history, news) = Events.splitHistory(found, firstSync, s.lastSyncAt, s.filtersChangedAt)
+            if (history.isNotEmpty()) events.insertNew(history.map { it.copy(read = true, hidden = true) })
+            if (!firstSync) notify(store(news))
             events.prune(before = now.minus(RETENTION).toEpochMilli())
             settings.markSynced(now.toEpochMilli())
             _state.update { SyncState(snapshot = fetched.snapshot) }

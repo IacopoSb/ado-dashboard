@@ -30,6 +30,10 @@ data class Event(
     val read: Boolean = false,
     /** What already existed at the first sync: kept to recognize it, never shown. */
     val hidden: Boolean = false,
+    /** What the event is about, to show it only while the filters include it; null before v3. */
+    val project: String? = null,
+    /** Area path of a work item; null for pull requests, which have none. */
+    val area: String? = null,
 )
 
 @Dao
@@ -54,7 +58,7 @@ interface EventDao {
     suspend fun prune(before: Long)
 }
 
-@Database(entities = [Event::class], version = 2, exportSchema = false)
+@Database(entities = [Event::class], version = 3, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun events(): EventDao
 
@@ -64,6 +68,14 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE events ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("UPDATE events SET hidden = 1")
+            }
+        }
+
+        /** v3 knows what each event is about, for the filters. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE events ADD COLUMN project TEXT")
+                db.execSQL("ALTER TABLE events ADD COLUMN area TEXT")
             }
         }
     }

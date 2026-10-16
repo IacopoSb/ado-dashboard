@@ -99,4 +99,23 @@ class EventsTest {
     @Test fun `plain text drops html and entities`() {
         assertEquals("a & b c", Events.plainText("<p>a &amp; b</p><div>c</div>", me))
     }
+
+    @Test fun `events know their project and area, for the filters`() {
+        val events = Events.from(
+            fetched(workItems = listOf(Fakes.workItem(1, area = "Contoso\\Backend")), reviewPrs = listOf(Fakes.pr(2, anna))),
+            baseline, Fakes.Texts,
+        )
+        assertEquals(listOf("Contoso" to "Contoso\\Backend", "Contoso" to null), events.map { it.project to it.area })
+    }
+
+    @Test fun `after a filter change what happened before the last sync is history`() {
+        fun e(key: String, at: Long) = io.github.iacoposb.adodash.data.Event(key, EventKind.ASSIGNED, "", "", "", at)
+        val found = listOf(e("old", 100), e("new", 300))
+        assertEquals(found to emptyList<Any>(), Events.splitHistory(found, firstSync = true, lastSyncAt = 200, filtersChangedAt = 0))
+        assertEquals(emptyList<Any>() to found, Events.splitHistory(found, firstSync = false, lastSyncAt = 200, filtersChangedAt = 150))
+        assertEquals(
+            listOf(found[0]) to listOf(found[1]),
+            Events.splitHistory(found, firstSync = false, lastSyncAt = 200, filtersChangedAt = 250),
+        )
+    }
 }
