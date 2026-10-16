@@ -1,0 +1,73 @@
+/* Colori · Chiaro */
+:root {
+  --bg: #F4F6F9;
+  --surface: #FFFFFF;
+  --surface-alt: #EEF1F5;
+  --outline: #DCE1E8;
+  --text: #1A1C20;
+  --text-muted: #5C6370;
+  --text-faint: #8A919C;
+  --primary: #0067B8;
+  --on-primary: #FFFFFF;
+  --primary-container: #DCEBFA;
+  --on-primary-container: #00365F;
+  --success: #107C10;
+  --success-container: #DFF3DC;
+  --suggest: #4F8A00;
+  --warning: #A15C00;
+  --warning-container: #FFF0D4;
+  --danger: #C42B30;
+  --danger-container: #FCE4E5;
+  --accent: #773B93;
+  --wi-bug: #CC293D;
+  --wi-task: #F2CB1D;
+  --wi-story: #009CCC;
+  --wi-feature: #773B93;
+  --wi-epic: #FF7B00;
+  --wi-chore: #8A8886;
+  --wi-doc: #339947;
+  --diff-add: #E6F6E4;
+  --diff-del: #FCE8E8;
+}
+/* Colori · Scuro */
+[data-colori="Scuro"] {
+  --bg: #101216;
+  --surface: #1A1D22;
+  --surface-alt: #242830;
+  --outline: #353A43;
+  --text: #E4E6EB;
+  --text-muted: #A3AAB5;
+  --text-faint: #727A86;
+  --primary: #6CB8F6;
+  --on-primary: #00284A;
+  --primary-container: #123A5C;
+  --on-primary-container: #CFE6FB;
+  --success: #6CCB5F;
+  --success-container: #1C3A1B;
+  --suggest: #A3D65E;
+  --warning: #F2B54A;
+  --warning-container: #3D2D10;
+  --danger: #FF8A8C;
+  --danger-container: #4A1C1E;
+  --accent: #CFA3E6;
+  --wi-bug: #CC293D;
+  --wi-task: #F2CB1D;
+  --wi-story: #009CCC;
+  --wi-feature: #9A5BB8;
+  --wi-epic: #FF7B00;
+  --wi-chore: #8A8886;
+  --wi-doc: #339947;
+  --diff-add: #17301A;
+  --diff-del: #3A1A1C;
+}
+/* Misure · Mode 1 */
+:root {
+  --space-xs: 4;
+  --space-sm: 8;
+  --space-md: 12;
+  --space-lg: 16;
+  --space-xl: 24;
+  --radius-chip: 6;
+  --radius-card: 12;
+  --radius-panel: 16;
+}

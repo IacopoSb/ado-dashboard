@@ -1,0 +1,146 @@
+[
+ {
+  "name": "Titolo/App",
+  "font": "Roboto",
+  "style": "Medium",
+  "size": 22.0,
+  "lineHeight": 28.0,
+  "letterSpacing": {
+   "unit": "percent",
+   "value": 0.0
+  },
+  "case": "original"
+ },
+ {
+  "name": "Titolo/Pannello",
+  "font": "Roboto",
+  "style": "Medium",
+  "size": 16.0,
+  "lineHeight": 24.0,
+  "letterSpacing": {
+   "unit": "percent",
+   "value": 0.0
+  },
+  "case": "original"
+ },
+ {
+  "name": "Titolo/Dettaglio",
+  "font": "Roboto",
+  "style": "Medium",
+  "size": 20.0,
+  "lineHeight": 28.0,
+  "letterSpacing": {
+   "unit": "percent",
+   "value": 0.0
+  },
+  "case": "original"
+ },
+ {
+  "name": "Numero/Grande",
+  "font": "Roboto",
+  "style": "Medium",
+  "size": 28.0,
+  "lineHeight": 32.0,
+  "letterSpacing": {
+   "unit": "percent",
+   "value": 0.0
+  },
+  "case": "original"
+ },
+ {
+  "name": "Corpo/Grande",
+  "font": "Roboto",
+  "style": "Regular",
+  "size": 16.0,
+  "lineHeight": 22.0,
+  "letterSpacing": {
+   "unit": "percent",
+   "value": 0.0
+  },
+  "case": "original"
+ },
+ {
+  "name": "Corpo/Medio",
+  "font": "Roboto",
+  "style": "Regular",
+  "size": 14.0,
+  "lineHeight": 20.0,
+  "letterSpacing": {
+   "unit": "percent",
+   "value": 0.0
+  },
+  "case": "original"
+ },
+ {
+  "name": "Corpo/Medio forte",
+  "font": "Roboto",
+  "style": "Medium",
+  "size": 14.0,
+  "lineHeight": 20.0,
+  "letterSpacing": {
+   "unit": "percent",
+   "value": 0.0
+  },
+  "case": "original"
+ },
+ {
+  "name": "Corpo/Piccolo",
+  "font": "Roboto",
+  "style": "Regular",
+  "size": 12.0,
+  "lineHeight": 16.0,
+  "letterSpacing": {
+   "unit": "percent",
+   "value": 0.0
+  },
+  "case": "original"
+ },
+ {
+  "name": "Etichetta/Chip",
+  "font": "Roboto",
+  "style": "Medium",
+  "size": 12.0,
+  "lineHeight": 16.0,
+  "letterSpacing": {
+   "unit": "percent",
+   "value": 0.0
+  },
+  "case": "original"
+ },
+ {
+  "name": "Etichetta/Sezione",
+  "font": "Roboto",
+  "style": "Medium",
+  "size": 11.0,
+  "lineHeight": 16.0,
+  "letterSpacing": {
+   "unit": "pixels",
+   "value": 0.8
+  },
+  "case": "upper"
+ },
+ {
+  "name": "Etichetta/Bottone",
+  "font": "Roboto",
+  "style": "Medium",
+  "size": 14.0,
+  "lineHeight": 20.0,
+  "letterSpacing": {
+   "unit": "percent",
+   "value": 0.0
+  },
+  "case": "original"
+ },
+ {
+  "name": "Codice",
+  "font": "DejaVu Sans Mono",
+  "style": "Book",
+  "size": 13.0,
+  "lineHeight": 20.0,
+  "letterSpacing": {
+   "unit": "percent",
+   "value": 0.0
+  },
+  "case": "original"
+ }
+]
