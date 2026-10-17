@@ -74,8 +74,13 @@ data class Shown(
     val myPrs: List<PullRequest>,
     /** For views showing every PR in reach: those that are neither in [reviewPrs] nor in [myPrs]. */
     val otherPrs: List<PullRequest> = emptyList(),
-    /** The pipeline tile's builds, most recent first (see [Pipelines.tile]); empty hides it. */
+    /** The pipeline tile's builds, most recent first (see [Pipelines.tile]). */
     val pipeline: List<Build> = emptyList(),
+    /**
+     * The project whose pipelines the tile lists: a board's, when its builds could be read and
+     * it has some. Null hides the tile, as in the global view.
+     */
+    val pipelineProject: String? = null,
 )
 
 /** A snapshot plus the comments needed to find new events. */
@@ -172,22 +177,6 @@ class SyncEngine(
         val reviewPrs = prs.flatMap { it.first }.distinctBy { it.id }
             .filter { it.author.id != me.id && filters.acceptsReview(it, me) }.sortedByDescending { it.createdAt }
 
-        // The builds of the view's projects and of my PRs' (for the notifications, whatever the view)
-        val buildProjects = (projects.filter { p -> scope == null || p.equals(scope.project, ignoreCase = true) } + myPrs.map { it.project })
-            .distinctBy { it.lowercase() }
-        val buildsRead = async { readBuilds(buildProjects, limit) }
-        // My PRs' and my reviews' threads: read at every sync, for the comments and the active ones
-        val tracked = (reviewPrs + myPrs).distinctBy { it.id }
-        val trackedThreads = tracked.map { pr ->
-            async { limit.withPermit { pr.id to runCatching { api.pullRequestThreads(pr) }.getOrNull() } }
-        }.awaitAll().toMap()
-        // Nothing before the first sync is notified anyway
-        val prComments = if (since == null) emptyMap() else tracked.associate { pr ->
-            pr.id to trackedThreads[pr.id].orEmpty().flatMap { it.comments }
-        }
-        val mentionedComments = mentioned.await()
-        val myItems = assigned.await().sortedWith(compareBy<WorkItem>({ it.priority ?: 9 }).thenByDescending { it.changedAt })
-
         val prPanel = view.pullRequests
         fun List<PullRequest>.forView(scopeOf: PrScope) =
             if (!prPanel.enabled || scopeOf !in prPanel.show) emptyList()
@@ -198,6 +187,23 @@ class SyncEngine(
         val shownOthers = allPrs.filter { it.id !in listed && filters.includesProject(it.project) }
             .forView(PrScope.ALL).sortedByDescending { it.createdAt }
 
+        // My PRs' projects for the notifications, whatever the view, and the projects of the
+        // other PRs with signals; a board's project too for its tile (the global view has none)
+        val tracked = (reviewPrs + myPrs).distinctBy { it.id }
+        val boardProject = scope?.let { s -> projects.firstOrNull { it.equals(s.project, ignoreCase = true) } }
+        val buildProjects = (listOfNotNull(boardProject) + (tracked + shownOthers).map { it.project }).distinctBy { it.lowercase() }
+        val buildsRead = async { readBuilds(buildProjects, limit, branchesOf = boardProject) }
+        // My PRs' and my reviews' threads: read at every sync, for the comments and the active ones
+        val trackedThreads = tracked.map { pr ->
+            async { limit.withPermit { pr.id to runCatching { api.pullRequestThreads(pr) }.getOrNull() } }
+        }.awaitAll().toMap()
+        // Nothing before the first sync is notified anyway
+        val prComments = if (since == null) emptyMap() else tracked.associate { pr ->
+            pr.id to trackedThreads[pr.id].orEmpty().flatMap { it.comments }
+        }
+        val mentionedComments = mentioned.await()
+        val myItems = assigned.await().sortedWith(compareBy<WorkItem>({ it.priority ?: 9 }).thenByDescending { it.changedAt })
+
         val (builds, buildsDenied) = buildsRead.await()
         val trackedIds = tracked.map { it.id }.toSet()
         val threads = trackedThreads + shownOthers.filter { it.id !in trackedIds }
@@ -207,11 +213,13 @@ class SyncEngine(
             async { pr.id to Signals.of(pr, policies(pr, threads[pr.id], limit), threads[pr.id], builds) }
         }.awaitAll().toMap()
 
-        val branches = buildProjects.mapNotNull { cache.defaultBranches[it] }.fold(emptyMap<String, String>()) { a, b -> a + b }
-        val pipeline = Pipelines.tile(
-            builds, myPrs.filter { scope == null || scope.accepts(it) }, branches,
+        // Only a board has a tile: its project's builds
+        val pipelineProject = boardProject?.takeIf { p -> !buildsDenied && builds.any { it.project.equals(p, ignoreCase = true) } }
+        val pipeline = if (scope == null || pipelineProject == null) emptyList() else Pipelines.tile(
+            builds, myPrs.filter { scope.accepts(it) },
+            cache.defaultBranches[pipelineProject].orEmpty(),
             acceptsRepo = { b ->
-                filters.includesProject(b.project) && (scope == null || b.project.equals(scope.project, ignoreCase = true)) &&
+                filters.includesProject(b.project) && b.project.equals(pipelineProject, ignoreCase = true) &&
                     (prPanel.repositories.isEmpty() || prPanel.repositories.any { it.equals(b.repoName, ignoreCase = true) })
             },
         )
@@ -228,6 +236,7 @@ class SyncEngine(
             myPrs = shownMine,
             otherPrs = shownOthers,
             pipeline = pipeline,
+            pipelineProject = pipelineProject,
         )
 
         Fetched(
@@ -251,8 +260,13 @@ class SyncEngine(
     /**
      * The latest builds of [projects] and whether builds are refused. A refusal is remembered for
      * [BUILDS_RETRY], so that a PAT without Build (read) costs one failed call now and then.
+     * The default branches of [branchesOf] are read too, once, for its tile.
      */
-    private suspend fun readBuilds(projects: List<String>, limit: Semaphore): Pair<List<Build>, Boolean> = coroutineScope {
+    private suspend fun readBuilds(
+        projects: List<String>,
+        limit: Semaphore,
+        branchesOf: String?,
+    ): Pair<List<Build>, Boolean> = coroutineScope {
         val deniedAt = cache.buildsDeniedAt
         if (deniedAt != null && Duration.between(deniedAt, now()) < BUILDS_RETRY) return@coroutineScope emptyList<Build>() to true
         if (projects.isEmpty()) return@coroutineScope emptyList<Build>() to false
@@ -280,13 +294,13 @@ class SyncEngine(
         }
         cache.buildsDeniedAt = null
         // Default branches change seldom: read once per project
-        projects.filter { p -> !cache.defaultBranches.containsKey(p) && builds.any { it.project.equals(p, ignoreCase = true) } }.map { project ->
-            async {
-                limit.withPermit {
-                    runCatching { api.defaultBranches(project) }.onSuccess { cache.defaultBranches[project] = it }
-                }
+        if (branchesOf != null && !cache.defaultBranches.containsKey(branchesOf) &&
+            builds.any { it.project.equals(branchesOf, ignoreCase = true) }
+        ) {
+            limit.withPermit {
+                runCatching { api.defaultBranches(branchesOf) }.onSuccess { cache.defaultBranches[branchesOf] = it }
             }
-        }.awaitAll()
+        }
         builds to false
     }
 

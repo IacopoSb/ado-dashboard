@@ -781,7 +781,11 @@ class DashboardRenderTest {
         val board = BoardRef("Contoso", "Backend")
         val views = designViews().openBoard(board)
         val view = views.current
-        val state = SyncState(snapshot.copy(shown = Shown(view.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs)))
+        val state = SyncState(
+            snapshot.copy(
+                shown = Shown(view.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs, pipeline = pipeline, pipelineProject = "Contoso"),
+            ),
+        )
         viewsDashboard("dashboard-board-view", views = views, state = state)
     }
 

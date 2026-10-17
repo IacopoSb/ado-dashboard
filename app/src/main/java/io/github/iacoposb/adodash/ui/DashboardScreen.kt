@@ -369,9 +369,10 @@ private fun DashboardBar(
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
-            // The view's builds: none, or none readable, hides the tile
-            val pipeline = state.snapshot?.takeIf { !it.buildsDenied }?.shownFor(view)?.pipeline.orEmpty()
-            if (pipeline.isNotEmpty()) {
+            // A board's builds: the global view has no tile, nor a board without readable builds
+            val shown = state.snapshot?.takeIf { !it.buildsDenied }?.shownFor(view)
+            val pipeline = shown?.pipeline.orEmpty()
+            if (shown?.pipelineProject != null) {
                 Spacer(Modifier.width(12.dp))
                 PipelineTile(pipeline, onOpenBuild, dots = dots)
                 Spacer(Modifier.width(20.dp))

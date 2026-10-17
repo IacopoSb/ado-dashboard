@@ -127,7 +127,7 @@ class BuildSyncTest {
         }
     }
 
-    @Test fun `the tile shows my PR builds and the default branches, read once`() = runTest {
+    @Test fun `a board's tile shows my PR builds and the default branches, read once`() = runTest {
         val api = FakeApi(
             mine = listOf(Fakes.pr(305, me)),
             builds = mapOf(
@@ -137,12 +137,33 @@ class BuildSyncTest {
         )
         val cache = SignalCache()
         val engine = SyncEngine(api, texts = Fakes.Texts, now = { now }, cache = cache)
-        val snapshot = engine.fetch(me, since = null).snapshot
+        val board = DashboardView.forBoard(BoardRef("Contoso", "Backend"))
+        val snapshot = engine.fetch(me, since = null, view = board).snapshot
         assertEquals(listOf(2, 1), snapshot.shown!!.pipeline.map { it.id })
+        assertEquals("Contoso", snapshot.shown!!.pipelineProject)
         assertFalse(snapshot.buildsDenied)
-        assertEquals(2, api.buildCalls)
-        engine.fetch(me, since = null)
-        assertEquals("default branches are cached", 2, api.branchCalls)
+        assertEquals("only the board's project", 1, api.buildCalls)
+        engine.fetch(me, since = null, view = board)
+        assertEquals("default branches are cached", 1, api.branchCalls)
+    }
+
+    @Test fun `the global view has no tile, only the builds of the PRs projects and no default branches`() = runTest {
+        val api = FakeApi(
+            mine = listOf(Fakes.pr(305, me)),
+            builds = mapOf(
+                "Contoso" to listOf(Fakes.build(2, BuildState.FAILED, prId = 305), Fakes.build(1, BuildState.SUCCEEDED, ago = 900)),
+                "Clienti" to listOf(Fakes.build(3, BuildState.RUNNING, project = "Clienti", repoId = "repo-9")),
+            ),
+        )
+        val fetched = SyncEngine(api, texts = Fakes.Texts, now = { now }).fetch(me, since = since)
+        val shown = fetched.snapshot.shown!!
+        assertTrue(shown.pipeline.isEmpty())
+        assertEquals(null, shown.pipelineProject)
+        assertEquals("Contoso only: where my PR is", 1, api.buildCalls)
+        assertEquals(0, api.branchCalls)
+        // The PR row's build and the notification stay
+        assertEquals(BuildSignal.FAILED, fetched.snapshot.signals[305]?.build)
+        assertEquals(listOf(2), fetched.failedPrBuilds.map { it.build.id })
     }
 
     @Test fun `a board's tile has only its project, the failed builds of my PRs stay`() = runTest {
@@ -156,6 +177,7 @@ class BuildSyncTest {
         val fetched = SyncEngine(api, texts = Fakes.Texts, now = { now })
             .fetch(me, since = since, view = DashboardView.forBoard(BoardRef("Clienti", "Team")))
         assertEquals(listOf(3), fetched.snapshot.shown!!.pipeline.map { it.id })
+        assertEquals("Clienti", fetched.snapshot.shown!!.pipelineProject)
         assertEquals("views do not change notifications", listOf(2), fetched.failedPrBuilds.map { it.build.id })
     }
 
