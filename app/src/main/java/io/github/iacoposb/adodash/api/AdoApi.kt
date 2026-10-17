@@ -32,6 +32,33 @@ interface AdoApi {
     /** All comments of all threads, system ones excluded. */
     suspend fun pullRequestComments(pr: PullRequest): List<PrComment>
 
+    /** The threads with their status and comments (system ones excluded). */
+    suspend fun pullRequestThreads(pr: PullRequest): List<PrThread> =
+        pullRequestComments(pr).groupBy { it.threadId }.map { (id, comments) -> PrThread(id, null, comments) }
+
+    /** The status of each policy of [pr]; needs [PullRequest.projectId]. */
+    suspend fun policyEvaluations(pr: PullRequest): List<PolicyEvaluation> = emptyList()
+
+    /**
+     * The project's latest builds, most recently queued first. Throws [AdoException] 401 or 403
+     * when the credentials cannot read builds (a PAT without Build (read)).
+     */
+    suspend fun builds(project: String, top: Int = 50): List<Build> = emptyList()
+
+    suspend fun build(project: String, id: Int): Build = throw AdoException(404, "No build $id")
+
+    suspend fun buildTimeline(project: String, id: Int): List<TimelineRecord> = emptyList()
+
+    /** Reruns the failed jobs of a finished build. */
+    suspend fun retryBuild(project: String, id: Int): Unit = throw AdoException(403, "Not supported")
+
+    suspend fun testRuns(project: String, buildId: Int): List<TestRun> = emptyList()
+
+    suspend fun failedTests(project: String, runId: Int, top: Int = 10): List<FailedTest> = emptyList()
+
+    /** Repository id to its default branch (without refs/heads/). */
+    suspend fun defaultBranches(project: String): Map<String, String> = emptyMap()
+
     /** The project's team names, sorted. */
     suspend fun teams(project: String): List<String> = emptyList()
 
@@ -116,7 +143,14 @@ data class PullRequest(
     val reviewers: List<Reviewer>,
     val createdAt: Instant,
     val url: String,
-)
+    val projectId: String = "",
+    /** "succeeded", "conflicts", "queued", "failure", "rejectedByPolicy"; null if unknown. */
+    val mergeStatus: String? = null,
+    /** The source branch's last commit merged: what the builds and policies ran on. */
+    val lastCommit: String? = null,
+) {
+    val hasConflicts get() = mergeStatus == "conflicts"
+}
 
 data class PrComment(
     val threadId: Int,

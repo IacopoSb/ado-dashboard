@@ -280,4 +280,73 @@
     <string name="view_desc_activity">attività: %1$s</string>
     <string name="settings_ask_view">Chiedi cosa vedere all\'avvio</string>
     <string name="settings_ask_view_hint">Altrimenti si apre l\'ultima vista</string>
+    <!-- Pull request signals -->
+    <string name="pr_build_ok">Build ok</string>
+    <string name="pr_build_failed">Build fallita</string>
+    <string name="pr_build_running">Build in corso</string>
+    <plurals name="pr_active_threads">
+        <item quantity="one">%d thread attivo</item>
+        <item quantity="many">%d thread attivi</item>
+        <item quantity="other">%d thread attivi</item>
+    </plurals>
+    <string name="pr_conflicts">Conflitti</string>
+    <string name="pr_ready">Pronta da completare</string>
+    <!-- Pipeline tile: "1 fallita · 1 in corso · 6 ok" -->
+    <string name="pipeline_title">Pipeline</string>
+    <plurals name="pipeline_failed">
+        <item quantity="one">%d fallita</item>
+        <item quantity="many">%d fallite</item>
+        <item quantity="other">%d fallite</item>
+    </plurals>
+    <plurals name="pipeline_running">
+        <item quantity="one">%d in corso</item>
+        <item quantity="many">%d in corso</item>
+        <item quantity="other">%d in corso</item>
+    </plurals>
+    <plurals name="pipeline_ok">
+        <item quantity="one">%d ok</item>
+        <item quantity="many">%d ok</item>
+        <item quantity="other">%d ok</item>
+    </plurals>
+    <string name="pipeline_open">Apri i dettagli della build</string>
+    <!-- Build details -->
+    <string name="build_state_succeeded">Riuscita</string>
+    <string name="build_state_partial">Parzialmente riuscita</string>
+    <string name="build_state_failed">Fallita</string>
+    <string name="build_state_canceled">Annullata</string>
+    <string name="build_state_running">In corso</string>
+    <string name="build_state_queued">In coda</string>
+    <string name="build_pr">PR !%1$d</string>
+    <string name="build_requested_by">avviata da %1$s</string>
+    <string name="build_stages">Fasi</string>
+    <string name="build_no_stages">Ancora nessuna fase</string>
+    <string name="build_failed_tests">Test non superati</string>
+    <string name="build_no_failed_tests">Nessun test non superato</string>
+    <string name="build_tests_unavailable">Impossibile leggere i risultati dei test</string>
+    <plurals name="build_more_tests">
+        <item quantity="one">+%d altro</item>
+        <item quantity="many">+%d altri</item>
+        <item quantity="other">+%d altri</item>
+    </plurals>
+    <string name="build_step_skipped">saltata</string>
+    <string name="build_step_waiting">in attesa</string>
+    <string name="build_loading">Caricamento della build…</string>
+    <string name="build_load_failed">Impossibile leggere la build: %1$s</string>
+    <string name="action_open_log">Apri il log</string>
+    <string name="action_rerun_failed">Riesegui fasi fallite</string>
+    <string name="action_all_builds">Tutte le build</string>
+    <string name="action_open_build">Apri in Azure DevOps</string>
+    <string name="build_rerun_started">Riesecuzione richiesta</string>
+    <string name="build_rerun_denied">Non puoi rieseguire questa build</string>
+    <string name="build_rerun_failed">Riesecuzione non riuscita: %1$s</string>
+    <string name="duration_s">%1$d s</string>
+    <string name="duration_min_s">%1$d min %2$d s</string>
+    <string name="duration_h_min">%1$d h %2$d min</string>
+    <string name="event_build_failed">Build fallita sulla tua PR !%1$d</string>
+    <plurals name="tests_failed">
+        <item quantity="one">%d test non superato</item>
+        <item quantity="many">%d test non superati</item>
+        <item quantity="other">%d test non superati</item>
+    </plurals>
+    <string name="settings_pat_no_builds">Aggiungi Build (read) per vedere le pipeline</string>
 </resources>

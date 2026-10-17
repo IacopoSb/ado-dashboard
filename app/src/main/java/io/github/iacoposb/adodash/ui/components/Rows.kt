@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -27,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +42,8 @@ import io.github.iacoposb.adodash.api.Vote
 import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.EventKind
+import io.github.iacoposb.adodash.sync.BuildSignal
+import io.github.iacoposb.adodash.sync.PrSignals
 import io.github.iacoposb.adodash.ui.AdoTheme
 import io.github.iacoposb.adodash.ui.ago
 import io.github.iacoposb.adodash.ui.voteLabel
@@ -77,13 +83,21 @@ fun WorkItemRow(wi: WorkItem, now: Instant, onClick: () -> Unit, modifier: Modif
 
 /**
  * A pull request: draft chip and title, then "author · age · !id · repo · branches" (author
- * only when [reviewing]) with the signals at the end of the same line: my vote when
- * [reviewing], the reviewers' votes otherwise. The details give way (ellipsis) to the
- * signals, branches first, so who and when stay readable; only more than
- * [AVATARS_INLINE] reviewers move to a line of their own.
+ * only when [reviewing]), then the signals: build, active threads, conflicts or "ready to
+ * complete" on the left ([signals], none while unknown), my vote when [reviewing] or the
+ * reviewers' votes otherwise on the right. Signals that do not fit wrap to a second line.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun PrRow(pr: PullRequest, me: Identity, reviewing: Boolean, now: Instant, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun PrRow(
+    pr: PullRequest,
+    me: Identity,
+    reviewing: Boolean,
+    now: Instant,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    signals: PrSignals? = null,
+) {
     val c = AdoTheme.colors
     Column(modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row {
@@ -96,32 +110,63 @@ fun PrRow(pr: PullRequest, me: Identity, reviewing: Boolean, now: Instant, onCli
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
-        val avatarsInline = !reviewing && pr.reviewers.size <= AVATARS_INLINE
-        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                listOfNotNull(
-                    pr.author.name.takeIf { reviewing }, ago(pr.createdAt, now),
-                    "!${pr.id}", pr.repoName, "${pr.sourceBranch} → ${pr.targetBranch}",
-                ).joinToString(" · "),
-                Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = c.textMuted,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+        Text(
+            listOfNotNull(
+                pr.author.name.takeIf { reviewing }, ago(pr.createdAt, now),
+                "!${pr.id}", pr.repoName, "${pr.sourceBranch} → ${pr.targetBranch}",
+            ).joinToString(" · "),
+            Modifier.fillMaxWidth().padding(top = 2.dp), style = MaterialTheme.typography.bodySmall, color = c.textMuted,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+        val items = signals?.let { signalItems(it) }.orEmpty()
+        val votes = reviewing || pr.reviewers.isNotEmpty()
+        if (items.isEmpty() && !votes) return@Column
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(
+                Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                items.forEach { SignalLabel(it) }
+            }
             if (reviewing) {
                 Spacer(Modifier.width(8.dp))
                 VoteBadge(pr.reviewers.firstOrNull { it.id == me.id }?.vote ?: Vote.NONE)
-            } else if (avatarsInline && pr.reviewers.isNotEmpty()) {
+            } else if (pr.reviewers.isNotEmpty()) {
                 Spacer(Modifier.width(8.dp))
                 ReviewerAvatars(pr)
             }
         }
-        if (!reviewing && !avatarsInline) {
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) { ReviewerAvatars(pr) }
-        }
     }
 }
 
-/** Reviewers that fit next to the details of a pull request; more go on a line below. */
-private const val AVATARS_INLINE = 4
+/** One signal of a pull request: icon, text and their colors. */
+private data class SignalItem(val icon: ImageVector, val text: String, val iconTint: Color, val textColor: Color)
+
+@Composable
+private fun signalItems(s: PrSignals): List<SignalItem> {
+    val c = AdoTheme.colors
+    return buildList {
+        when (s.build) {
+            BuildSignal.SUCCEEDED -> add(SignalItem(AdoIcons.CheckCircle, stringResource(R.string.pr_build_ok), c.success, c.textMuted))
+            BuildSignal.FAILED -> add(SignalItem(AdoIcons.Cancel, stringResource(R.string.pr_build_failed), c.danger, c.danger))
+            BuildSignal.RUNNING -> add(SignalItem(Icons.Filled.PlayArrow, stringResource(R.string.pr_build_running), c.primary, c.textMuted))
+            BuildSignal.NONE -> {}
+        }
+        s.activeThreads?.takeIf { it > 0 }?.let {
+            add(SignalItem(AdoIcons.ChatBubble, pluralStringResource(R.plurals.pr_active_threads, it, it), c.textMuted, c.textMuted))
+        }
+        if (s.conflicts) add(SignalItem(AdoIcons.MergeType, stringResource(R.string.pr_conflicts), c.danger, c.danger))
+        if (s.readyToComplete) add(SignalItem(AdoIcons.CheckCircle, stringResource(R.string.pr_ready), c.success, c.success))
+    }
+}
+
+@Composable
+private fun SignalLabel(item: SignalItem) = Row(Modifier.height(22.dp), verticalAlignment = Alignment.CenterVertically) {
+    Icon(item.icon, null, Modifier.size(16.dp), tint = item.iconTint)
+    Spacer(Modifier.width(4.dp))
+    Text(item.text, style = MaterialTheme.typography.bodySmall, color = item.textColor, maxLines = 1)
+}
 
 @Composable
 private fun ReviewerAvatars(pr: PullRequest) = Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -169,5 +214,6 @@ private fun eventIcon(kind: EventKind): Pair<ImageVector, Color> = AdoTheme.colo
         EventKind.PR_REVIEW -> AdoIcons.RateReview to accent
         EventKind.PR_COMMENT -> AdoIcons.ChatBubble to textMuted
         EventKind.PR_VOTE -> Icons.Filled.ThumbUp to success
+        EventKind.BUILD_FAILED -> AdoIcons.Cancel to danger
     }
 }

@@ -1,6 +1,8 @@
 package io.github.iacoposb.adodash
 
 import io.github.iacoposb.adodash.api.AreaNode
+import io.github.iacoposb.adodash.api.Build
+import io.github.iacoposb.adodash.api.BuildState
 import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.api.PrComment
 import io.github.iacoposb.adodash.api.PullRequest
@@ -35,6 +37,23 @@ object Fakes {
             id, project, "repo-1", "backend", title, author, "feature/x-$id", "main", draft, reviewers,
             now.minusSeconds(ago), "https://dev.azure.com/org/Contoso/_git/backend/pullrequest/$id",
         )
+
+    /** A build; [prId] makes it a pull request build of repo-1. [ago] is when it was queued. */
+    fun build(
+        id: Int, state: BuildState = BuildState.SUCCEEDED, prId: Int? = null, definition: Int = 1,
+        definitionName: String = "backend-ci", repoId: String = "repo-1", branch: String = "main",
+        ago: Long = 600, project: String = "Contoso", requestedBy: String = marco.name,
+    ) = Build(
+        id = id, number = "20261016.$id", project = project, definitionId = definition, definitionName = definitionName,
+        repoId = repoId, repoName = "backend",
+        sourceBranch = if (prId != null) "refs/pull/$prId/merge" else "refs/heads/$branch",
+        reason = if (prId != null) "pullRequest" else "individualCI",
+        prId = prId, prSourceBranch = prId?.let { "feature/x-$it" }, requestedBy = requestedBy, state = state,
+        queuedAt = now.minusSeconds(ago), startedAt = now.minusSeconds(ago - 10),
+        finishedAt = if (state.finished) now.minusSeconds(ago - 410) else null,
+        url = "https://dev.azure.com/org/$project/_build/results?buildId=$id",
+        definitionUrl = "https://dev.azure.com/org/$project/_build?definitionId=$definition",
+    )
 
     private fun area(parent: String, name: String, vararg children: String) =
         AreaNode(name, "$parent\\$name", children.map { AreaNode(it, "$parent\\$name\\$it") })
@@ -110,6 +129,9 @@ object Fakes {
         override fun prMention(author: String, id: Int) = "$author mentioned !$id"
         override fun prComment(author: String, id: Int) = "$author commented !$id"
         override fun prVote(reviewer: String, vote: Int) = "$reviewer voted $vote"
+        override fun buildFailed(prId: Int) = "build failed !$prId"
+        override fun buildFailedBody(pipeline: String, number: String, failedTests: Int?) =
+            "$pipeline #$number" + (failedTests?.let { " · $it failed" } ?: "")
         override fun mentionsWarning(error: String) = "mentions: $error"
         override fun projectWarning(project: String, error: String) = "$project: $error"
         override fun statesWarning(type: String, error: String) = "$type states: $error"

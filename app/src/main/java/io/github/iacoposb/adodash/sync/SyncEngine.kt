@@ -1,6 +1,11 @@
 package io.github.iacoposb.adodash.sync
 
 import io.github.iacoposb.adodash.api.AdoApi
+import io.github.iacoposb.adodash.api.AdoException
+import io.github.iacoposb.adodash.api.Build
+import io.github.iacoposb.adodash.api.BuildState
+import io.github.iacoposb.adodash.api.PolicyEvaluation
+import io.github.iacoposb.adodash.api.PrThread
 import io.github.iacoposb.adodash.api.Comment
 import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.api.PrComment
@@ -22,6 +27,8 @@ import kotlinx.coroutines.sync.withPermit
 import java.time.Duration
 import java.time.Instant
 import java.util.Collections
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * What a sync read. [workItems], [reviewPrs] and [myPrs] are always mine, whatever the view:
@@ -39,6 +46,10 @@ data class Snapshot(
     val warnings: List<String> = emptyList(),
     /** Null only for snapshots made before views (tests): then the view shows the above. */
     val shown: Shown? = null,
+    /** Build, threads, conflicts and readiness by pull request id, for every PR in [shown]. */
+    val signals: Map<Int, PrSignals> = emptyMap(),
+    /** The credentials cannot read builds (a PAT without Build (read)): no pipeline anywhere. */
+    val buildsDenied: Boolean = false,
 ) {
     /** What the dashboard shows for [view]: null while the last sync read another view. */
     fun shownFor(view: DashboardView): Shown? = shown?.takeIf { it.viewKey == view.queryKey }
@@ -57,6 +68,8 @@ data class Shown(
     val myPrs: List<PullRequest>,
     /** For views showing every PR in reach: those that are neither in [reviewPrs] nor in [myPrs]. */
     val otherPrs: List<PullRequest> = emptyList(),
+    /** The pipeline tile's builds, most recent first (see [Pipelines.tile]); empty hides it. */
+    val pipeline: List<Build> = emptyList(),
 )
 
 /** A snapshot plus the comments needed to find new events. */
@@ -64,7 +77,12 @@ data class Fetched(
     val snapshot: Snapshot,
     val mentionedWorkItems: List<Pair<WorkItem, List<Comment>>> = emptyList(),
     val prComments: Map<Int, List<PrComment>> = emptyMap(),
+    /** Failed builds of my pull requests: all of them on the first sync, then those finished since the last. */
+    val failedPrBuilds: List<FailedPrBuild> = emptyList(),
 )
+
+/** A failed build of one of my pull requests, with its failed tests when they could be counted. */
+data class FailedPrBuild(val pr: PullRequest, val build: Build, val failedTests: Int? = null)
 
 /** Reads from Azure DevOps everything one sync needs. */
 class SyncEngine(
@@ -75,6 +93,8 @@ class SyncEngine(
     private val teamAreas: MutableMap<BoardRef, List<TeamArea>> = mutableMapOf(),
     private val now: () -> Instant = Instant::now,
     private val texts: SyncTexts,
+    /** Policies, threads, branches and test counts; kept by the caller across syncs. */
+    private val cache: SignalCache = SignalCache(),
 ) {
 
     /**
@@ -146,9 +166,19 @@ class SyncEngine(
         val reviewPrs = prs.flatMap { it.first }.distinctBy { it.id }
             .filter { it.author.id != me.id && filters.acceptsReview(it, me) }.sortedByDescending { it.createdAt }
 
-        val prComments = if (since == null) emptyMap() else (reviewPrs + myPrs).map { pr ->
-            async { limit.withPermit { pr.id to runCatching { api.pullRequestComments(pr) }.getOrDefault(emptyList()) } }
+        // The builds of the view's projects and of my PRs' (for the notifications, whatever the view)
+        val buildProjects = (projects.filter { p -> scope == null || p.equals(scope.project, ignoreCase = true) } + myPrs.map { it.project })
+            .distinctBy { it.lowercase() }
+        val buildsRead = async { readBuilds(buildProjects, limit) }
+        // My PRs' and my reviews' threads: read at every sync, for the comments and the active ones
+        val tracked = (reviewPrs + myPrs).distinctBy { it.id }
+        val trackedThreads = tracked.map { pr ->
+            async { limit.withPermit { pr.id to runCatching { api.pullRequestThreads(pr) }.getOrNull() } }
         }.awaitAll().toMap()
+        // Nothing before the first sync is notified anyway
+        val prComments = if (since == null) emptyMap() else tracked.associate { pr ->
+            pr.id to trackedThreads[pr.id].orEmpty().flatMap { it.comments }
+        }
         val mentionedComments = mentioned.await()
         val myItems = assigned.await().sortedWith(compareBy<WorkItem>({ it.priority ?: 9 }).thenByDescending { it.changedAt })
 
@@ -159,6 +189,28 @@ class SyncEngine(
         val shownReview = reviewPrs.forView(PrScope.TO_REVIEW)
         val shownMine = myPrs.forView(PrScope.MINE)
         val listed = (shownReview + shownMine).map { it.id }.toSet()
+        val shownOthers = allPrs.filter { it.id !in listed && filters.includesProject(it.project) }
+            .forView(PrScope.ALL).sortedByDescending { it.createdAt }
+
+        val (builds, buildsDenied) = buildsRead.await()
+        val trackedIds = tracked.map { it.id }.toSet()
+        val threads = trackedThreads + shownOthers.filter { it.id !in trackedIds }
+            .map { pr -> async { pr.id to otherThreads(pr, limit) } }.awaitAll()
+        val signalPrs = (tracked + shownOthers).distinctBy { it.id }
+        val signals = signalPrs.map { pr ->
+            async { pr.id to Signals.of(pr, policies(pr, threads[pr.id], limit), threads[pr.id], builds) }
+        }.awaitAll().toMap()
+
+        val branches = buildProjects.mapNotNull { cache.defaultBranches[it] }.fold(emptyMap<String, String>()) { a, b -> a + b }
+        val pipeline = Pipelines.tile(
+            builds, myPrs.filter { scope == null || scope.accepts(it) }, branches,
+            acceptsRepo = { b ->
+                filters.includesProject(b.project) && (scope == null || b.project.equals(scope.project, ignoreCase = true)) &&
+                    (prPanel.repositories.isEmpty() || prPanel.repositories.any { it.equals(b.repoName, ignoreCase = true) })
+            },
+        )
+        val failedPrBuilds = failedBuildsOfMine(builds, myPrs, since, limit)
+
         val shown = Shown(
             viewKey = view.queryKey,
             workItems = if (!panel.enabled) emptyList() else panel.sort(
@@ -168,8 +220,8 @@ class SyncEngine(
             ),
             reviewPrs = shownReview,
             myPrs = shownMine,
-            otherPrs = allPrs.filter { it.id !in listed && filters.includesProject(it.project) }
-                .forView(PrScope.ALL).sortedByDescending { it.createdAt },
+            otherPrs = shownOthers,
+            pipeline = pipeline,
         )
 
         Fetched(
@@ -181,10 +233,106 @@ class SyncEngine(
                 syncedAt = now(),
                 warnings = warnings.toList(),
                 shown = shown,
+                signals = signals,
+                buildsDenied = buildsDenied,
             ),
             mentionedWorkItems = mentionedComments,
             prComments = prComments,
+            failedPrBuilds = failedPrBuilds,
         )
+    }
+
+    /**
+     * The latest builds of [projects] and whether builds are refused. A refusal is remembered for
+     * [BUILDS_RETRY], so that a PAT without Build (read) costs one failed call now and then.
+     */
+    private suspend fun readBuilds(projects: List<String>, limit: Semaphore): Pair<List<Build>, Boolean> = coroutineScope {
+        val deniedAt = cache.buildsDeniedAt
+        if (deniedAt != null && Duration.between(deniedAt, now()) < BUILDS_RETRY) return@coroutineScope emptyList<Build>() to true
+        if (projects.isEmpty()) return@coroutineScope emptyList<Build>() to false
+        val refused = AtomicBoolean(false)
+        val builds = projects.map { project ->
+            async {
+                limit.withPermit {
+                    try {
+                        api.builds(project)
+                    } catch (e: AdoException) {
+                        if (e.code == 401 || e.code == 403) refused.set(true)
+                        emptyList()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // One project's builds missing only leaves them out of the tile
+                        emptyList()
+                    }
+                }
+            }
+        }.awaitAll().flatten()
+        if (refused.get() && builds.isEmpty()) {
+            cache.buildsDeniedAt = now()
+            return@coroutineScope emptyList<Build>() to true
+        }
+        cache.buildsDeniedAt = null
+        // Default branches change seldom: read once per project
+        projects.filter { p -> !cache.defaultBranches.containsKey(p) && builds.any { it.project.equals(p, ignoreCase = true) } }.map { project ->
+            async {
+                limit.withPermit {
+                    runCatching { api.defaultBranches(project) }.onSuccess { cache.defaultBranches[project] = it }
+                }
+            }
+        }.awaitAll()
+        builds to false
+    }
+
+    /** Threads of a PR neither mine nor to review: only counted, so read again only now and then. */
+    private suspend fun otherThreads(pr: PullRequest, limit: Semaphore): List<PrThread>? {
+        val key = pr.lastCommit.orEmpty()
+        cache.threads[pr.id]?.takeIf { it.key == key && Duration.between(it.at, now()) < SIGNALS_TTL }?.let { return it.threads }
+        return limit.withPermit { runCatching { api.pullRequestThreads(pr) }.getOrNull() }
+            ?.also { cache.threads[pr.id] = SignalCache.Threads(key, it, now()) }
+            ?: cache.threads[pr.id]?.threads
+    }
+
+    /**
+     * A PR's policies, read again only when its commit, votes or active threads changed, when a
+     * policy was still running, or after [SIGNALS_TTL]; the last ones read if they cannot be.
+     */
+    private suspend fun policies(pr: PullRequest, threads: List<PrThread>?, limit: Semaphore): List<PolicyEvaluation>? {
+        val votes = pr.reviewers.sortedBy { it.id }.joinToString(",") { "${it.id}=${it.vote}" }
+        val key = "${pr.lastCommit}|$votes|${threads?.count { it.active }}"
+        val cached = cache.policies[pr.id]
+        if (cached != null && cached.key == key && !Signals.pending(cached.evaluations) &&
+            Duration.between(cached.at, now()) < SIGNALS_TTL
+        ) return cached.evaluations
+        return limit.withPermit { runCatching { api.policyEvaluations(pr) }.getOrNull() }
+            ?.also { cache.policies[pr.id] = SignalCache.Policies(key, it, now()) }
+            ?: cached?.evaluations
+    }
+
+    /**
+     * My PRs' failed builds: all of them on the first sync (history, never notified), then those
+     * finished since the last sync, with their failed tests counted (once per build).
+     */
+    private suspend fun failedBuildsOfMine(
+        builds: List<Build>,
+        myPrs: List<PullRequest>,
+        since: Instant?,
+        limit: Semaphore,
+    ): List<FailedPrBuild> = coroutineScope {
+        val mine = myPrs.associateBy { it.id }
+        builds.filter { b ->
+            b.state == BuildState.FAILED && b.prId != null && mine[b.prId]?.let { b.repoId.isEmpty() || it.repoId == b.repoId } == true &&
+                (since == null || b.at > since - OVERLAP)
+        }.map { b ->
+            async {
+                val pr = mine.getValue(b.prId!!)
+                if (since == null) return@async FailedPrBuild(pr, b)
+                val failed = cache.failedTests[b.id] ?: limit.withPermit {
+                    runCatching { api.testRuns(b.project, b.id).sumOf { it.failed } }.getOrNull()
+                }?.also { cache.failedTests[b.id] = it }
+                FailedPrBuild(pr, b, failed)
+            }
+        }.awaitAll()
     }
 
     /**
@@ -227,6 +375,12 @@ class SyncEngine(
 
         /** Late-indexed changes still get caught by the next sync. */
         private val OVERLAP = Duration.ofMinutes(10)
+
+        /** Policies and other people's threads of an unchanged PR are read again after this. */
+        val SIGNALS_TTL: Duration = Duration.ofMinutes(10)
+
+        /** Builds refused: tried again after this. */
+        val BUILDS_RETRY: Duration = Duration.ofHours(1)
 
         private val CLOSED_STATES = listOf("Closed", "Done", "Removed", "Completed", "Cut")
             .joinToString(",") { "'$it'" }
