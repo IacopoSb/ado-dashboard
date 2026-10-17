@@ -147,6 +147,15 @@ class AdoClientTest {
         assertTrue(body, body.contains("System.AreaPath"))
     }
 
+    @Test fun `encoded titles are shown decoded, once`() = runTest {
+        server.enqueue(json("""
+            {"value":[{"id":8,"fields":{"System.TeamProject":"Contoso","System.WorkItemType":"Task",
+              "System.Title":"Attuatore con pi&ugrave; comandi SET &amp;lt;x&amp;gt;","System.State":"New",
+              "System.ChangedDate":"2026-10-15T08:00:00Z"}}]}
+        """.trimIndent()))
+        assertEquals("Attuatore con più comandi SET &lt;x&gt;", client.workItems(listOf(8)).single().title)
+    }
+
     @Test fun `expired PAT redirecting to sign in is an auth error`() = runTest {
         server.enqueue(MockResponse().setResponseCode(203).setHeader("Content-Type", "text/html").setBody("<html/>"))
         val e = assertThrows(AdoException::class.java) { kotlinx.coroutines.runBlocking { client.me() } }

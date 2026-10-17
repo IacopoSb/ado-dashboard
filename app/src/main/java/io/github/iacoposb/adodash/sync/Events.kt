@@ -1,5 +1,6 @@
 package io.github.iacoposb.adodash.sync
 
+import io.github.iacoposb.adodash.api.HtmlEntities
 import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.api.PrComment
 import io.github.iacoposb.adodash.api.PullRequest
@@ -145,13 +146,12 @@ object Events {
     private val PR_MENTION = Regex("@<([0-9A-Fa-f-]{36})>")
     private val TAG = Regex("<[^>]+>")
     private val SPACES = Regex("\\s+")
-    private val ENTITIES = mapOf("&nbsp;" to " ", "&amp;" to "&", "&lt;" to "<", "&gt;" to ">", "&quot;" to "\"", "&#39;" to "'")
-
     /** Comment text for a notification: no HTML, mentions as names. */
     fun plainText(text: String, me: Identity): String {
         var out = PR_MENTION.replace(text) { if (it.groupValues[1].equals(me.id, true)) "@${me.name}" else "@…" }
         out = TAG.replace(out.replace(Regex("<br\\s*/?>|</p>|</div>"), " "), "")
-        ENTITIES.forEach { (k, v) -> out = out.replace(k, v) }
+        // One pass: "&amp;lt;" is the text "&lt;"
+        out = HtmlEntities.decode(out).replace('\u00A0', ' ')
         return SPACES.replace(out, " ").trim()
     }
 }

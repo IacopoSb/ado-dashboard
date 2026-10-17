@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import io.github.iacoposb.adodash.api.HtmlEntities
 
 /** A run of text with its style; [link] is the address it opens. */
 data class RichSpan(val text: String, val bold: Boolean = false, val italic: Boolean = false, val link: String? = null)
@@ -38,29 +39,15 @@ data class RichBlock(val spans: List<RichSpan>, val bullet: String? = null, val 
 object HtmlText {
     private val TOKEN = Regex("<!--[\\s\\S]*?-->|<(/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^>\"']|\"[^\"]*\"|'[^']*')*)/?>")
     private val HREF = Regex("href\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", RegexOption.IGNORE_CASE)
-    private val ENTITY = Regex("&(#[xX][0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);")
     private val SPACES = Regex("\\s+")
     private val BLOCKS = setOf(
         "p", "div", "blockquote", "tr", "table", "tbody", "thead", "section", "article", "header", "footer", "hr",
         "h1", "h2", "h3", "h4", "h5", "h6", "pre",
     )
     private val SKIPPED = setOf("script", "style", "head", "title")
-    private val NAMED = mapOf(
-        "nbsp" to " ", "amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'",
-        "ndash" to "–", "mdash" to "—", "hellip" to "…", "laquo" to "«", "raquo" to "»", "rsquo" to "’", "lsquo" to "‘",
-        "rdquo" to "”", "ldquo" to "“", "euro" to "€", "copy" to "©", "reg" to "®", "middot" to "·", "bull" to "•",
-    )
 
-    fun decode(text: String): String = ENTITY.replace(text) { m ->
-        val name = m.groupValues[1]
-        when {
-            name.startsWith("#x") || name.startsWith("#X") -> name.drop(2).toIntOrNull(16)?.let(::codePoint)
-            name.startsWith("#") -> name.drop(1).toIntOrNull()?.let(::codePoint)
-            else -> NAMED[name.lowercase()]
-        } ?: m.value
-    }
-
-    private fun codePoint(cp: Int): String? = runCatching { String(Character.toChars(cp)) }.getOrNull()
+    /** Entities decoded, no-break spaces as plain ones (the text is wrapped as it fits). */
+    fun decode(text: String): String = HtmlEntities.decode(text).replace('\u00A0', ' ')
 
     fun parse(html: String): List<RichBlock> = Parser().run(html)
 

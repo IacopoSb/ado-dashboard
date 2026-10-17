@@ -98,6 +98,8 @@ class EventsTest {
 
     @Test fun `plain text drops html and entities`() {
         assertEquals("a & b c", Events.plainText("<p>a &amp; b</p><div>c</div>", me))
+        // Decoded once: the text "&lt;b&gt;" stays as it was written
+        assertEquals("&lt;b&gt; più", Events.plainText("<p>&amp;lt;b&amp;gt;&nbsp;pi&ugrave;</p>", me))
     }
 
     @Test fun `events know their project and area, for the filters`() {
