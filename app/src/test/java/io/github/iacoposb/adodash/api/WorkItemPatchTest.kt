@@ -43,23 +43,4 @@ class WorkItemPatchTest {
         assertEquals("Contoso\\Web", detail.with(FieldChange.AreaPath("Contoso\\Web")).item.areaPath)
         assertEquals(4, detail.with(FieldChange.Priority(4)).item.priority)
     }
-
-    @Test fun `iterations current first, then next, past and undated`() {
-        val now = Instant.parse("2026-10-16T10:00:00Z")
-        fun it(name: String, start: String?, finish: String?) =
-            Iteration(name, "P\\$name", start?.let { Instant.parse("${it}T00:00:00Z") }, finish?.let { Instant.parse("${it}T00:00:00Z") })
-        val list = listOf(
-            Iteration("P", "P"),
-            it("Sprint 40", "2026-09-14", "2026-09-25"),
-            it("Sprint 41", "2026-09-28", "2026-10-09"),
-            it("Sprint 42", "2026-10-12", "2026-10-16"),
-            it("Sprint 44", "2026-11-09", "2026-11-20"),
-            it("Sprint 43", "2026-10-26", "2026-11-06"),
-            it("Backlog", null, null),
-        )
-        assertEquals(
-            listOf("Sprint 42", "Sprint 43", "Sprint 44", "Sprint 41", "Sprint 40", "P", "Backlog"),
-            Iterations.ordered(list, now).map { it.name },
-        )
-    }
 }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -50,6 +51,8 @@ fun DropdownField(
     enabled: Boolean = true,
     /** Open from the start, for the screenshots. */
     initiallyOpen: Boolean = false,
+    /** Shows the value in place of plain text; [value] is still what is read out. */
+    display: (@Composable RowScope.() -> Unit)? = null,
     menu: @Composable ColumnScope.(close: () -> Unit) -> Unit,
 ) {
     val c = AdoTheme.colors
@@ -66,10 +69,14 @@ fun DropdownField(
                 .padding(start = 12.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                value, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
-                color = if (enabled) c.text else c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+            if (display != null) {
+                display()
+            } else {
+                Text(
+                    value, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                    color = if (enabled) c.text else c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(Modifier.width(8.dp))
             Icon(Icons.Filled.KeyboardArrowDown, null, Modifier.size(20.dp), tint = c.textMuted)
         }

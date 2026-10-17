@@ -61,9 +61,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
-import io.github.iacoposb.adodash.api.AreaNode
 import io.github.iacoposb.adodash.api.FieldChange
-import io.github.iacoposb.adodash.api.Iteration
 import io.github.iacoposb.adodash.api.LinkKind
 import io.github.iacoposb.adodash.api.Person
 import io.github.iacoposb.adodash.api.StateInfo
@@ -105,17 +103,19 @@ fun WorkItemDetailsModal(
     now: Instant,
     actions: WorkItemActions,
     initialMenu: String? = null,
+    /** What the open menu's search starts with, for the screenshots. */
+    initialQuery: String = "",
 ) {
     val page = modal.page
     val item = page.item
     val title = item?.title ?: stringResource(R.string.wi_loading)
     ModalOverlay(title, onDismiss = actions.onClose, onBack = actions.onBack, maxWidth = 1040.dp, maxHeight = 700.dp) { fullScreen ->
-        if (fullScreen) PhonePage(modal, now, actions, initialMenu) else TabletModal(modal, now, actions, initialMenu)
+        if (fullScreen) PhonePage(modal, now, actions, initialMenu, initialQuery) else TabletModal(modal, now, actions, initialMenu, initialQuery)
     }
 }
 
 @Composable
-private fun ColumnScope.TabletModal(modal: WorkItemModal, now: Instant, actions: WorkItemActions, initialMenu: String?) {
+private fun ColumnScope.TabletModal(modal: WorkItemModal, now: Instant, actions: WorkItemActions, initialMenu: String?, initialQuery: String) {
     val c = AdoTheme.colors
     val page = modal.page
     val item = page.item
@@ -158,14 +158,14 @@ private fun ColumnScope.TabletModal(modal: WorkItemModal, now: Instant, actions:
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Fields(modal, now, actions, initialMenu, twoPerRow = false)
+            Fields(modal, now, actions, initialMenu, initialQuery, twoPerRow = false)
             Text(stringResource(R.string.wi_saved_at_once), style = MaterialTheme.typography.bodySmall, color = c.textMuted)
         }
     }
 }
 
 @Composable
-private fun ColumnScope.PhonePage(modal: WorkItemModal, now: Instant, actions: WorkItemActions, initialMenu: String?) {
+private fun ColumnScope.PhonePage(modal: WorkItemModal, now: Instant, actions: WorkItemActions, initialMenu: String?, initialQuery: String) {
     val c = AdoTheme.colors
     val page = modal.page
     val item = page.item
@@ -203,7 +203,7 @@ private fun ColumnScope.PhonePage(modal: WorkItemModal, now: Instant, actions: W
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Fields(modal, now, actions, initialMenu, twoPerRow = true)
+            Fields(modal, now, actions, initialMenu, initialQuery, twoPerRow = true)
         }
         Body(page, actions)
     }
@@ -354,7 +354,14 @@ private fun prStatusText(status: String, draft: Boolean): String = when {
  * per row ([twoPerRow], phones).
  */
 @Composable
-private fun Fields(modal: WorkItemModal, now: Instant, actions: WorkItemActions, initialMenu: String?, twoPerRow: Boolean) {
+private fun Fields(
+    modal: WorkItemModal,
+    now: Instant,
+    actions: WorkItemActions,
+    initialMenu: String?,
+    initialQuery: String,
+    twoPerRow: Boolean,
+) {
     val c = AdoTheme.colors
     val page = modal.page
     val detail = page.detail
@@ -400,18 +407,25 @@ private fun Fields(modal: WorkItemModal, now: Instant, actions: WorkItemActions,
         })
         add(WiFields.ITERATION to { m ->
             Field(stringResource(R.string.wi_iteration), WiFields.ITERATION, page, m, actions.onReload) {
-                val path = detail?.iterationPath.orEmpty()
-                DropdownField(path.substringAfterLast('\\'), stringResource(R.string.wi_iteration), enabled = enabled) { close ->
-                    IterationOptions(page.iterations, path, now) { close(); actions.onChange(FieldChange.IterationPath(it)) }
-                }
+                val project = item?.project.orEmpty()
+                val tree = remember(project, page.iterations) { page.iterations?.let { PathTree.fromIterations(project, it) } }
+                PathPickerField(
+                    detail?.iterationPath ?: project, stringResource(R.string.wi_iteration), tree, now,
+                    stringResource(R.string.wi_search_iterations), enabled,
+                    onPick = { actions.onChange(FieldChange.IterationPath(it)) },
+                    initiallyOpen = initialMenu == WiFields.ITERATION, initialQuery = initialQuery,
+                )
             }
         })
         add(WiFields.AREA to { m ->
             Field(stringResource(R.string.wi_area), WiFields.AREA, page, m, actions.onReload) {
-                val path = item?.areaPath.orEmpty()
-                DropdownField(path, stringResource(R.string.wi_area), enabled = enabled) { close ->
-                    AreaOptions(page.areas, path) { close(); actions.onChange(FieldChange.AreaPath(it)) }
-                }
+                val tree = remember(page.areas) { page.areas?.let(PathTree::fromArea) }
+                PathPickerField(
+                    item?.areaPath.orEmpty(), stringResource(R.string.wi_area), tree, null,
+                    stringResource(R.string.wi_search_areas), enabled,
+                    onPick = { actions.onChange(FieldChange.AreaPath(it)) },
+                    initiallyOpen = initialMenu == WiFields.AREA, initialQuery = initialQuery,
+                )
             }
         })
         if (page.hasRemainingWork) {
@@ -570,35 +584,6 @@ private fun PersonOption(person: Person?, selected: Boolean, onClick: () -> Unit
             if (selected) Icon(Icons.Filled.Check, null, Modifier.size(18.dp), tint = c.primary)
         },
     )
-}
-
-@Composable
-private fun IterationOptions(iterations: List<Iteration>?, selected: String, now: Instant, onPick: (String) -> Unit) {
-    val c = AdoTheme.colors
-    if (iterations == null) {
-        CircularProgressIndicator(Modifier.padding(16.dp).size(20.dp), color = c.primary, strokeWidth = 2.dp)
-        return
-    }
-    val current = stringResource(R.string.wi_iteration_current)
-    iterations.forEach { it ->
-        val isCurrent = it.start != null && it.finish != null && it.start <= now && now <= it.finish.plusSeconds(86_400)
-        DropdownOption(if (isCurrent) "${it.name} · $current" else it.name, it.path.equals(selected, ignoreCase = true)) { onPick(it.path) }
-    }
-}
-
-@Composable
-private fun AreaOptions(root: AreaNode?, selected: String, onPick: (String) -> Unit) {
-    val c = AdoTheme.colors
-    if (root == null) {
-        CircularProgressIndicator(Modifier.padding(16.dp).size(20.dp), color = c.primary, strokeWidth = 2.dp)
-        return
-    }
-    fun flatten(node: AreaNode, depth: Int): List<Pair<AreaNode, Int>> = listOf(node to depth) + node.children.flatMap { flatten(it, depth + 1) }
-    flatten(root, 0).forEach { (node, depth) ->
-        Box(Modifier.padding(start = (depth * 16).dp)) {
-            DropdownOption(node.name, node.path.equals(selected, ignoreCase = true)) { onPick(node.path) }
-        }
-    }
 }
 
 /** Hours as a number, saved when done or when the field loses focus. */

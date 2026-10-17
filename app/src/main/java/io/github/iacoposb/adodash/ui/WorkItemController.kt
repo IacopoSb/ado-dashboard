@@ -5,7 +5,6 @@ import io.github.iacoposb.adodash.api.AdoException
 import io.github.iacoposb.adodash.api.AreaNode
 import io.github.iacoposb.adodash.api.FieldChange
 import io.github.iacoposb.adodash.api.Iteration
-import io.github.iacoposb.adodash.api.Iterations
 import io.github.iacoposb.adodash.api.LinkKind
 import io.github.iacoposb.adodash.api.Person
 import io.github.iacoposb.adodash.api.StateInfo
@@ -28,7 +27,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.time.Instant
 
 /** A link of the work item open, with what is known of its target. */
 data class LinkRow(
@@ -106,7 +104,6 @@ class WorkItemController(
     /** After a save: the dashboard row and, for my own assignment, no notification. */
     private val onSaved: suspend (WorkItem, assignedToMe: Boolean) -> Unit,
     private val errorText: (Throwable) -> String,
-    private val now: () -> Instant = Instant::now,
 ) {
     private val _state = MutableStateFlow<WorkItemModal?>(null)
     val state: StateFlow<WorkItemModal?> = _state.asStateFlow()
@@ -225,7 +222,7 @@ class WorkItemController(
     private suspend fun iterations(api: AdoApi, project: String): List<Iteration> {
         val key = project.lowercase()
         iterationsCache[key]?.let { return it }
-        val read = runCatchingNotCancelled { Iterations.ordered(api.iterations(project), now()) } ?: return emptyList()
+        val read = runCatchingNotCancelled { api.iterations(project) } ?: return emptyList()
         iterationsCache[key] = read
         return read
     }

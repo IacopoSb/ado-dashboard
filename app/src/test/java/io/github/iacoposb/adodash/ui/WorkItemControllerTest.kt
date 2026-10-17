@@ -63,7 +63,7 @@ class WorkItemControllerTest {
 
     private fun TestScope.controller(api: Api) = WorkItemController(
         this, { api }, { null }, { Person(Fakes.me.id, Fakes.me.name, "") },
-        onSaved = { wi, mine -> saved += wi to mine }, errorText = { it.message ?: "" }, now = { Fakes.now },
+        onSaved = { wi, mine -> saved += wi to mine }, errorText = { it.message ?: "" },
     )
 
     @Test fun `opens with the row, then the work item and its states`() = runTest {

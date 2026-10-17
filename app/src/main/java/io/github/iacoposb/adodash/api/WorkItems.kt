@@ -122,22 +122,3 @@ val AdoException.isConflict: Boolean
 
 /** The credentials may read but not change. */
 val AdoException.isDenied: Boolean get() = code == 401 || code == 403
-
-/** The order the iteration menu lists them in. */
-object Iterations {
-    /**
-     * The current iterations first (those whose dates include [now]), then the next ones by start,
-     * then the past ones from the latest, then those without dates in tree order.
-     */
-    fun ordered(iterations: List<Iteration>, now: Instant): List<Iteration> {
-        val dated = iterations.filter { it.start != null && it.finish != null }
-        val current = dated.filter { it.start!! <= now && now <= it.finish!!.plusSeconds(DAY_SECONDS) }.sortedBy { it.start }
-        val future = dated.filter { it.start!! > now }.sortedBy { it.start }
-        val past = (dated - current.toSet() - future.toSet()).sortedByDescending { it.finish }
-        val undated = iterations.filter { it.start == null || it.finish == null }
-        return current + future + past + undated
-    }
-
-    /** Iterations end at the start of their last day: that day still counts. */
-    private const val DAY_SECONDS = 24 * 60 * 60L
-}

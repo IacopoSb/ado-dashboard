@@ -149,17 +149,44 @@ class DashboardRenderTest {
         build: BuildDetail? = null,
         workItem: WorkItemModal? = null,
         workItemMenu: String? = null,
+        workItemMenuQuery: String = "",
     ) {
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
                 DashboardScreen(
                     "contoso", state, events, {}, {}, {}, {}, {}, now = now, updateVersion = update, buildDetail = build,
-                    workItem = workItem, workItemMenu = workItemMenu,
+                    workItem = workItem, workItemMenu = workItemMenu, workItemMenuQuery = workItemMenuQuery,
                 )
             }
         }
         // A field's menu is a popup: the whole screen, its windows included
         if (workItemMenu != null) captureScreenRoboImage("$name.png") else compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    /**
+     * Releases as folders of two-week sprints, listed as the API does (root first, depth first):
+     * Sprint 42 is the current one, Release 2 is over, the backlog has no dates.
+     */
+    private val designIterations = run {
+        fun day(d: String) = java.time.Instant.parse("${d}T00:00:00Z")
+        fun sprint(release: String, n: Int, start: String, finish: String) =
+            Iteration("Sprint $n", "Contoso\\$release\\Sprint $n", day(start), day(finish))
+        fun folder(name: String) = Iteration(name, "Contoso\\$name")
+        listOf(
+            Iteration("Contoso", "Contoso"),
+            folder("Backlog"),
+            folder("Release 2"),
+            sprint("Release 2", 38, "2026-08-17", "2026-08-28"),
+            sprint("Release 2", 39, "2026-08-31", "2026-09-11"),
+            folder("Release 3"),
+            sprint("Release 3", 40, "2026-09-14", "2026-09-25"),
+            sprint("Release 3", 41, "2026-09-28", "2026-10-09"),
+            sprint("Release 3", 42, "2026-10-12", "2026-10-23"),
+            sprint("Release 3", 43, "2026-10-26", "2026-11-06"),
+            folder("Release 4"),
+            sprint("Release 4", 44, "2026-11-09", "2026-11-20"),
+            sprint("Release 4", 45, "2026-11-23", "2026-12-04"),
+        )
     }
 
     /** The design's bug: description, a pull request and its parent, three comments, every field. */
@@ -177,7 +204,7 @@ class DashboardRenderTest {
         }
         val detail = WorkItemDetail(
             item, rev = 7, descriptionHtml = description, assignee = Person(me.id, me.name, "iacopo@contoso.com"),
-            iterationPath = "Contoso\\Sprint 42", remainingWork = 3.0, changedBy = anna.name, commentCount = 3,
+            iterationPath = "Contoso\\Release 3\\Sprint 42", remainingWork = 3.0, changedBy = anna.name, commentCount = 3,
             links = listOf(WorkItemLink(LinkKind.PULL_REQUEST, 311, ""), WorkItemLink(LinkKind.PARENT, 4790, "")),
         )
         val links = listOf(
@@ -187,12 +214,7 @@ class DashboardRenderTest {
         val page = WorkItemPage(
             item.id, item, saved = detail, links = links, fieldError = fieldError,
             states = listOf("New", "Active", "Resolved", "Closed", "Removed").map { StateInfo(it, "") },
-            iterations = listOf(
-                Iteration("Sprint 42", "Contoso\\Sprint 42", now.minusSeconds(4 * 86_400), now.plusSeconds(7 * 86_400)),
-                Iteration("Sprint 43", "Contoso\\Sprint 43", now.plusSeconds(10 * 86_400), now.plusSeconds(21 * 86_400)),
-                Iteration("Sprint 41", "Contoso\\Sprint 41", now.minusSeconds(18 * 86_400), now.minusSeconds(7 * 86_400)),
-                Iteration("Contoso", "Contoso"),
-            ),
+            iterations = designIterations,
             areas = Fakes.projects.first(),
             hasRemainingWork = true,
         )
@@ -208,6 +230,26 @@ class DashboardRenderTest {
 
     @Test fun workItemModalStateMenu() =
         dashboard("work-item-modal-state-menu", dark = false, workItem = designWorkItem(), workItemMenu = WiFields.STATE)
+
+    /** The iterations as a tree: the way to the current sprint open, with the dates. */
+    @Test fun workItemIterationPicker() = dashboard(
+        "work-item-iteration-picker", dark = false, workItem = designWorkItem(), workItemMenu = WiFields.ITERATION,
+    )
+
+    @Config(qualifiers = "+it")
+    @Test fun workItemIterationPickerItalian() = dashboard(
+        "work-item-iteration-picker-it", dark = false, workItem = designWorkItem(), workItemMenu = WiFields.ITERATION,
+    )
+
+    /** Searching: the matches highlighted with the folders that lead to them. */
+    @Test fun workItemIterationPickerSearch() = dashboard(
+        "work-item-iteration-picker-search", dark = false, workItem = designWorkItem(),
+        workItemMenu = WiFields.ITERATION, workItemMenuQuery = "Sprint 4",
+    )
+
+    @Test fun workItemAreaPicker() = dashboard(
+        "work-item-area-picker", dark = false, workItem = designWorkItem(), workItemMenu = WiFields.AREA,
+    )
 
     /** A change refused because someone else saved first: the saved value again, with the reason. */
     @Test fun workItemModalError() = dashboard(
@@ -231,6 +273,17 @@ class DashboardRenderTest {
 
     @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
     @Test fun workItemPhone() = dashboard("work-item-phone", dark = false, workItem = designWorkItem())
+
+    /** A path too long for the field: the nodes before the last left out from the start. */
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun workItemPhoneLongPath() = dashboard(
+        "work-item-phone-long-path", dark = false,
+        workItem = designWorkItem().let { m ->
+            val page = m.page
+            val path = "Contoso\\Programme 2026\\Release 3\\Hardening\\Sprint 42"
+            m.copy(pages = listOf(page.copy(saved = page.saved!!.copy(iterationPath = path))))
+        },
+    )
 
     @Config(qualifiers = "it-w411dp-h891dp-xxhdpi")
     @Test fun workItemPhoneItalian() = dashboard("work-item-phone-it", dark = false, workItem = designWorkItem())

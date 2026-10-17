@@ -121,6 +121,8 @@ fun DashboardScreen(
     workItemActions: WorkItemActions = WorkItemActions(),
     /** For the screenshots: a field's menu open in the work item details. */
     workItemMenu: String? = null,
+    /** For the screenshots: what that menu's search starts with. */
+    workItemMenuQuery: String = "",
 ) {
     val c = AdoTheme.colors
     val view = choices.views.current
@@ -163,7 +165,7 @@ fun DashboardScreen(
             )
         }
         buildDetail?.let { BuildDetailsModal(it, now, onOpen, onRerunBuild, onCloseBuild) }
-        workItem?.let { WorkItemDetailsModal(it, now, workItemActions, initialMenu = workItemMenu) }
+        workItem?.let { WorkItemDetailsModal(it, now, workItemActions, initialMenu = workItemMenu, initialQuery = workItemMenuQuery) }
     }
 }
 

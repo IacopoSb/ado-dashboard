@@ -374,8 +374,11 @@
     <string name="wi_assigned_to">Assigned to</string>
     <string name="wi_priority">Priority</string>
     <string name="wi_iteration">Iteration</string>
-    <string name="wi_iteration_current">current</string>
+    <string name="wi_iteration_current">Current</string>
+    <string name="wi_search_iterations">Search iterations</string>
     <string name="wi_area">Area</string>
+    <string name="wi_search_areas">Search areas</string>
+    <string name="wi_tree_no_results">Nothing matches “%1$s”</string>
     <string name="wi_remaining_work">Remaining work</string>
     <string name="wi_hours_unit">h</string>
     <string name="wi_unassigned">Unassigned</string>
