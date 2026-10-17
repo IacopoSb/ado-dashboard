@@ -181,6 +181,37 @@ class DashboardRenderTest {
 
     @Test fun buildModalDark() = dashboard("build-modal-dark", dark = true, build = buildDetail())
 
+    /** A build without failed tests: the stages take the whole width, long names on two lines. */
+    private fun buildDetailNoTests(): BuildDetail {
+        val build = Fakes.build(982, BuildState.SUCCEEDED, ago = 1500)
+        fun step(name: String, start: Long, seconds: Long) =
+            BuildStep(name, BuildState.SUCCEEDED, false, now.minusSeconds(start), now.minusSeconds(start - seconds))
+        val names = if (italian) listOf(
+            "Checkout", "Ripristino dipendenze",
+            "Analisi vulnerabilità (Grype, fail-on medium) sull'immagine del container e sulle dipendenze",
+            "Compilazione", "Test unitari e di integrazione con copertura",
+            "Pubblicazione dell'immagine nel registro aziendale, firma con cosign e attestazione SBOM per la catena di fornitura del software",
+        ) else listOf(
+            "Checkout", "Restore dependencies",
+            "Scan vulnerabilities (Grype, fail-on medium) in the container image and its dependencies",
+            "Build", "Unit and integration tests with coverage",
+            "Publish the image to the company registry, sign it with cosign and attach the SBOM attestation for the software supply chain",
+        )
+        return BuildDetail(
+            "Contoso", build.id, build,
+            steps = listOf(
+                step(names[0], 1490, 6), step(names[1], 1484, 64), step(names[2], 1420, 362),
+                step(names[3], 1300, 140), step(names[4], 1160, 312), step(names[5], 848, 41),
+            ),
+            tests = TestsState.Loaded(emptyList(), total = 0),
+        )
+    }
+
+    @Test fun buildModalNoTests() = dashboard("build-modal-no-tests", dark = false, build = buildDetailNoTests())
+
+    @Config(qualifiers = "+it")
+    @Test fun buildModalNoTestsItalian() = dashboard("build-modal-no-tests-it", dark = false, build = buildDetailNoTests())
+
     /** Opened from an event: the build is being read. */
     @Test fun buildModalLoading() = dashboard("build-modal-loading", dark = false, build = BuildDetail("Contoso", 981))
 

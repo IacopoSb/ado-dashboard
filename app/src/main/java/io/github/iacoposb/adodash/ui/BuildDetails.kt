@@ -225,13 +225,14 @@ fun BuildDetailsModal(
             build == null -> Column(body, horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(Modifier.padding(top = 48.dp).size(32.dp), color = c.primary, strokeWidth = 3.dp)
             }
-            fullScreen -> Column(body, verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            // Two columns only for failed tests: otherwise the stages take the whole width
+            fullScreen || !hasFailedTests(build, detail.tests) -> Column(body, verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 Column { Steps(detail.steps, now) }
                 if (build.state != BuildState.SUCCEEDED) Column { Tests(detail.tests) }
             }
             else -> Row(body, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Column(Modifier.weight(1f)) { Steps(detail.steps, now) }
-                Column(Modifier.weight(1f)) { if (build.state != BuildState.SUCCEEDED) Tests(detail.tests) }
+                Column(Modifier.weight(1f)) { Tests(detail.tests) }
             }
         }
 
@@ -282,6 +283,13 @@ private fun SectionLabel(text: String) = Text(
     style = MaterialTheme.typography.labelSmall, color = AdoTheme.colors.textMuted,
 )
 
+/** The width of the stages' durations, so that they line up. */
+private val StepTimeWidth = 72.dp
+
+/** Whether the build has failed tests to show next to its stages. */
+private fun hasFailedTests(build: Build, tests: TestsState) =
+    build.state != BuildState.SUCCEEDED && tests is TestsState.Loaded && tests.tests.isNotEmpty()
+
 @Composable
 private fun Steps(steps: List<BuildStep>?, now: Instant) {
     val c = AdoTheme.colors
@@ -298,8 +306,8 @@ private fun Steps(steps: List<BuildStep>?, now: Instant) {
                 }
                 Spacer(Modifier.width(12.dp))
                 Text(
-                    step.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = c.text,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    step.name, Modifier.weight(1f).padding(vertical = 4.dp), style = MaterialTheme.typography.bodyMedium,
+                    color = c.text, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.width(8.dp))
                 val time = when {
@@ -308,7 +316,10 @@ private fun Steps(steps: List<BuildStep>?, now: Instant) {
                     !step.state.finished -> stringResource(R.string.build_step_waiting)
                     else -> ""
                 }
-                Text(time, style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
+                Text(
+                    time, Modifier.width(StepTimeWidth), style = MaterialTheme.typography.bodySmall, color = c.textMuted,
+                    textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
