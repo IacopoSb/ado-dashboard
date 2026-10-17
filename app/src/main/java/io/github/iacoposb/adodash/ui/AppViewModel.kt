@@ -147,6 +147,7 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         me = { settings.value?.takeIf { it.meId.isNotEmpty() }?.let { Person(it.meId, it.meName, "") } },
         onSaved = { item, mine -> app.sync.applyOwnChange(item, mine) },
         errorText = app::errorText,
+        onCommented = { item, comment -> app.sync.applyOwnComment(item, comment) },
     )
     val workItem = workItems.state
     /** A change was refused for lack of permission: for the hint in the settings. */
@@ -166,6 +167,12 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         onReload = workItems::reload,
         onBack = workItems::back,
         onClose = workItems::close,
+        onDraftChange = workItems::editDraft,
+        onSend = workItems::sendComment,
+        onSearchMentions = workItems::searchMentions,
+        onLoadEarlierComments = workItems::loadEarlierComments,
+        onRetryComments = workItems::retryComments,
+        onTargetShown = workItems::targetShown,
     )
 
     fun closeBuild() {

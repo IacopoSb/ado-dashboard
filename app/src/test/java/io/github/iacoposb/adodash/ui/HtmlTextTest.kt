@@ -73,6 +73,23 @@ class HtmlTextTest {
         assertEquals(listOf("ok"), texts("""<span title="a > b">ok</span>"""))
     }
 
+    @Test fun `a comment's mentions and code`() {
+        val blocks = HtmlText.parse(
+            """<div><a href="#" data-vss-mention="version:2.0,aaaa-1111">@Iacopo Sbalchiero</a> try <code>guest01</code>:</div>""" +
+                "<pre>val x = 1\n  y</pre>",
+        )
+        assertEquals(
+            listOf(
+                RichSpan("@Iacopo Sbalchiero", mention = true),
+                RichSpan(" try "),
+                RichSpan("guest01", code = true),
+                RichSpan(":"),
+            ),
+            blocks[0].spans,
+        )
+        assertEquals(listOf(RichSpan("val x = 1\n  y", code = true)), blocks[1].spans)
+    }
+
     @Test fun `empty or blank html has no blocks`() {
         assertEquals(emptyList<String>(), texts(""))
         assertEquals(emptyList<String>(), texts("<div>&nbsp;</div><div><br></div>"))

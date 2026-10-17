@@ -1,6 +1,7 @@
 package io.github.iacoposb.adodash.sync
 
 import io.github.iacoposb.adodash.api.AdoApi
+import io.github.iacoposb.adodash.api.Comment
 import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.api.TeamArea
 import io.github.iacoposb.adodash.api.WorkItem
@@ -126,6 +127,12 @@ class SyncRepository(
             )
         }
         _state.update { s -> s.snapshot?.let { s.copy(snapshot = it.replacing(item)) } ?: s }
+    }
+
+    /** A comment I posted from the app: never notified back to me (see [Events.ownComment]). */
+    suspend fun applyOwnComment(item: WorkItem, comment: Comment) {
+        val s = settings.current()
+        events.insertNew(listOf(Events.ownComment(item, comment, Identity(s.meId, s.meName), texts)))
     }
 
     suspend fun markRead(key: String) = events.markRead(key)

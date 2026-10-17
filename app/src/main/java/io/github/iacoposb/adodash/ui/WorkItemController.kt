@@ -3,6 +3,7 @@ package io.github.iacoposb.adodash.ui
 import io.github.iacoposb.adodash.api.AdoApi
 import io.github.iacoposb.adodash.api.AdoException
 import io.github.iacoposb.adodash.api.AreaNode
+import io.github.iacoposb.adodash.api.Comment
 import io.github.iacoposb.adodash.api.FieldChange
 import io.github.iacoposb.adodash.api.Iteration
 import io.github.iacoposb.adodash.api.LinkKind
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.time.Instant
 
 /** A link of the work item open, with what is known of its target. */
 data class LinkRow(
@@ -50,6 +52,33 @@ data class FieldError(val field: String, val problem: SaveProblem, val message: 
 /** "Assigned to"'s search: [results] are for [query]. */
 data class PeopleSearch(val query: String = "", val loading: Boolean = false, val results: List<Person> = emptyList())
 
+/** A comment posted from the composer, shown at once while it is sent. */
+data class SendingComment(val localId: Int, val draft: Draft, val html: String, val at: Instant)
+
+/** Why a comment was not posted: its text is back in the composer. */
+data class CommentError(val problem: SaveProblem, val message: String = "")
+
+/**
+ * The comments of a work item, oldest first: [earlier] reads those before them; [total] all of
+ * them, also those not read yet.
+ */
+data class CommentsState(
+    val loaded: Boolean = false,
+    val items: List<Comment> = emptyList(),
+    val error: String? = null,
+    val earlier: String? = null,
+    val loadingEarlier: Boolean = false,
+    val total: Int = 0,
+    val sending: List<SendingComment> = emptyList(),
+    val sendError: CommentError? = null,
+)
+
+/**
+ * What the composer shows. [revision] changes only when the controller sets the draft (a reply,
+ * a failed send, a sent one cleared): the text field takes it then, and otherwise keeps its own.
+ */
+data class ComposerState(val draft: Draft = Draft(), val revision: Int = 0)
+
 /**
  * A work item in the details. [saved] is what Azure DevOps has (null while it is read, [known]
  * from the dashboard row standing in); [pending] the changes being saved, shown already.
@@ -68,6 +97,13 @@ data class WorkItemPage(
     val areas: AreaNode? = null,
     /** The type has Remaining Work (tasks and the like). */
     val hasRemainingWork: Boolean = false,
+    val comments: CommentsState = CommentsState(),
+    val composer: ComposerState = ComposerState(),
+    /**
+     * The comment to show (from a mention): scrolled to and highlighted once read, with the
+     * composer focused for the reply; null once shown.
+     */
+    val target: Int? = null,
 ) {
     /** As shown: saved, with the pending changes over it. */
     val detail: WorkItemDetail? get() = saved?.let { pending.values.fold(it) { d, c -> d.with(c) } }
@@ -87,6 +123,8 @@ data class WorkItemModal(
     val people: PeopleSearch = PeopleSearch(),
     /** Me, offered first in "Assigned to". */
     val me: Person? = null,
+    /** The people offered for the mention being typed in the composer. */
+    val mentions: PeopleSearch = PeopleSearch(),
 ) {
     val page: WorkItemPage get() = pages.last()
     val canGoBack get() = pages.size > 1
@@ -104,6 +142,9 @@ class WorkItemController(
     /** After a save: the dashboard row and, for my own assignment, no notification. */
     private val onSaved: suspend (WorkItem, assignedToMe: Boolean) -> Unit,
     private val errorText: (Throwable) -> String,
+    /** After a comment is posted: stored as seen, so that it never comes back as a notification. */
+    private val onCommented: suspend (WorkItem, Comment) -> Unit = { _, _ -> },
+    private val clock: () -> Instant = Instant::now,
 ) {
     private val _state = MutableStateFlow<WorkItemModal?>(null)
     val state: StateFlow<WorkItemModal?> = _state.asStateFlow()
@@ -120,24 +161,40 @@ class WorkItemController(
     private val fieldsCache = mutableMapOf<String, Set<String>>()
     private val membersCache = mutableMapOf<String, List<Person>>()
 
-    fun open(id: Int, known: WorkItem? = null) {
+    /** What was typed in each work item's composer and not sent: kept for the session. */
+    private val drafts = mutableMapOf<Int, Draft>()
+    /** The people mentioned from the app, the latest first: offered first. */
+    private val recentMentions = ArrayDeque<Person>()
+    private var revisions = 0
+    private var localIds = 0
+    private var mentionSearch: Job? = null
+
+    /** [commentId]: from a mention, that comment shown and the reply to its author ready. */
+    fun open(id: Int, known: WorkItem? = null, commentId: Int? = null) {
         cancelAll()
-        _state.value = WorkItemModal(listOf(WorkItemPage(id, known)), readOnly = _readOnly.value, me = me())
+        _state.value = WorkItemModal(listOf(newPage(id, known, commentId)), readOnly = _readOnly.value, me = me())
         load(id)
     }
+
+    private fun newPage(id: Int, known: WorkItem? = null, target: Int? = null) =
+        WorkItemPage(id, known, composer = ComposerState(drafts[id] ?: Draft(), ++revisions), target = target)
 
     /** A linked work item, over the one open. */
     fun openLinked(id: Int) {
         val modal = _state.value ?: return open(id)
         if (modal.page.id == id) return
-        _state.value = modal.copy(pages = modal.pages + WorkItemPage(id), people = PeopleSearch())
+        _state.value = modal.copy(pages = modal.pages + newPage(id), people = PeopleSearch(), mentions = PeopleSearch())
         load(id)
     }
 
     /** Back to the previous work item, or closed. */
     fun back() {
         val modal = _state.value ?: return
-        if (modal.canGoBack) _state.value = modal.copy(pages = modal.pages.dropLast(1), people = PeopleSearch()) else close()
+        if (modal.canGoBack) {
+            _state.value = modal.copy(pages = modal.pages.dropLast(1), people = PeopleSearch(), mentions = PeopleSearch())
+        } else {
+            close()
+        }
     }
 
     fun close() {
@@ -148,21 +205,22 @@ class WorkItemController(
     /** Reads the work item shown again, after a conflict. */
     fun reload() {
         val page = _state.value?.page ?: return
-        updatePage(page.id) { WorkItemPage(page.id, page.saved?.item ?: page.known) }
-        load(page.id)
+        updatePage(page.id) { WorkItemPage(page.id, page.saved?.item ?: page.known, comments = it.comments, composer = it.composer) }
+        load(page.id, withComments = false)
     }
 
     private fun cancelAll() {
         jobs.forEach { it.cancel() }
         jobs.clear()
         search?.cancel()
+        mentionSearch?.cancel()
     }
 
     private fun updatePage(id: Int, change: (WorkItemPage) -> WorkItemPage) {
         _state.update { modal -> modal?.copy(pages = modal.pages.map { if (it.id == id) change(it) else it }) }
     }
 
-    private fun load(id: Int) {
+    private fun load(id: Int, withComments: Boolean = true) {
         jobs += scope.launch {
             val api = api()
             val detail = try {
@@ -175,6 +233,7 @@ class WorkItemController(
             }
             updatePage(id) { it.copy(saved = detail, error = null) }
             val item = detail.item
+            if (withComments) launch { comments(api, item.project, id) }
             launch { links(api, detail).let { l -> updatePage(id) { it.copy(links = l) } } }
             launch { states(api, item).let { l -> updatePage(id) { it.copy(states = l) } } }
             launch { iterations(api, item.project).let { l -> updatePage(id) { it.copy(iterations = l) } } }
@@ -336,6 +395,195 @@ class WorkItemController(
         return read
     }
 
+    /**
+     * The latest comments; for a [WorkItemPage.target] not among them, the pages before too
+     * (a few at most). Then the reply to the target's author is put in an empty composer.
+     */
+    private suspend fun comments(api: AdoApi, project: String, id: Int) {
+        try {
+            var page = api.workItemCommentPage(project, id)
+            var items = page.comments
+            val target = _state.value?.pages?.firstOrNull { it.id == id }?.target
+            var extra = 0
+            while (target != null && items.none { it.id == target } && page.continuation != null && extra < MAX_TARGET_PAGES) {
+                page = api.workItemCommentPage(project, id, page.continuation)
+                items = page.comments + items
+                extra++
+            }
+            val earlier = page.continuation
+            updatePage(id) { p ->
+                val known = items.map { it.id }.toSet()
+                p.copy(
+                    comments = p.comments.copy(
+                        loaded = true, error = null, earlier = earlier,
+                        // Posted meanwhile: after those read
+                        items = items + p.comments.items.filter { it.id !in known },
+                        total = maxOf(page.total, items.size),
+                    ),
+                )
+            }
+            val comment = target?.let { t -> items.firstOrNull { it.id == t } }
+            if (comment == null) {
+                updatePage(id) { it.copy(target = null) }
+            } else {
+                val author = Person(comment.author.id, comment.author.name, "")
+                val mine = me()?.id?.equals(author.id, ignoreCase = true) == true
+                updatePage(id) { p ->
+                    if (p.composer.draft.isBlank && !mine && author.name.isNotBlank()) {
+                        val draft = MentionTyping.reply(author)
+                        drafts[id] = draft
+                        p.copy(composer = ComposerState(draft, ++revisions))
+                    } else {
+                        p
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            updatePage(id) { it.copy(comments = it.comments.copy(loaded = true, error = errorText(e)), target = null) }
+        }
+    }
+
+    /** The comments read again, after an error. */
+    fun retryComments() {
+        val page = _state.value?.page ?: return
+        val project = page.item?.project ?: return
+        updatePage(page.id) { it.copy(comments = it.comments.copy(loaded = false, error = null)) }
+        jobs += scope.launch { comments(api(), project, page.id) }
+    }
+
+    /** "Load earlier comments". */
+    fun loadEarlierComments() {
+        val page = _state.value?.page ?: return
+        val project = page.item?.project ?: return
+        val token = page.comments.earlier ?: return
+        if (page.comments.loadingEarlier) return
+        val id = page.id
+        updatePage(id) { it.copy(comments = it.comments.copy(loadingEarlier = true)) }
+        jobs += scope.launch {
+            try {
+                val read = api().workItemCommentPage(project, id, token)
+                updatePage(id) { p ->
+                    val known = p.comments.items.map { it.id }.toSet()
+                    p.copy(
+                        comments = p.comments.copy(
+                            items = read.comments.filter { it.id !in known } + p.comments.items,
+                            earlier = read.continuation, loadingEarlier = false, error = null,
+                        ),
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updatePage(id) { it.copy(comments = it.comments.copy(loadingEarlier = false, error = errorText(e))) }
+            }
+        }
+    }
+
+    /** The comment of [WorkItemPage.target] was scrolled to: not again. */
+    fun targetShown() {
+        val page = _state.value?.page ?: return
+        updatePage(page.id) { it.copy(target = null) }
+    }
+
+    /** Typed in the composer: kept for the session, also once the work item is closed. */
+    fun editDraft(draft: Draft) {
+        val page = _state.value?.page ?: return
+        if (draft.isBlank && draft.text.isEmpty()) drafts.remove(page.id) else drafts[page.id] = draft
+        updatePage(page.id) {
+            it.copy(composer = it.composer.copy(draft = draft), comments = it.comments.copy(sendError = null))
+        }
+    }
+
+    /**
+     * Posts the composer's text, shown at once as being sent. Refused, it goes back to the
+     * composer (unless something else was typed meanwhile) with the reason.
+     */
+    fun sendComment() {
+        val modal = _state.value ?: return
+        val page = modal.page
+        val item = page.item ?: return
+        val draft = page.composer.draft.pruned()
+        if (draft.isBlank) return
+        val id = page.id
+        val sending = SendingComment(++localIds, draft, CommentMarkup.build(draft), clock())
+        drafts.remove(id)
+        updatePage(id) {
+            it.copy(
+                composer = ComposerState(Draft(), ++revisions),
+                comments = it.comments.copy(sending = it.comments.sending + sending, sendError = null),
+            )
+        }
+        draft.mentions.forEach { p ->
+            recentMentions.removeAll { it.id == p.id }
+            recentMentions.addFirst(p)
+        }
+        jobs += scope.launch {
+            try {
+                val posted = api().addWorkItemComment(item.project, id, sending.html)
+                updatePage(id) { p ->
+                    p.copy(
+                        comments = p.comments.copy(
+                            items = p.comments.items.filterNot { it.id == posted.id } + posted,
+                            sending = p.comments.sending.filterNot { it.localId == sending.localId },
+                            total = p.comments.total + 1,
+                        ),
+                    )
+                }
+                onCommented(item, posted)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val problem = if (e is AdoException && e.isDenied) SaveProblem.DENIED else SaveProblem.OTHER
+                updatePage(id) { p ->
+                    val restore = p.composer.draft.isBlank
+                    if (restore) drafts[id] = draft
+                    p.copy(
+                        composer = if (restore) ComposerState(draft, ++revisions) else p.composer,
+                        comments = p.comments.copy(
+                            sending = p.comments.sending.filterNot { it.localId == sending.localId },
+                            sendError = CommentError(problem, errorText(e)),
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * People for the mention being typed: those mentioned lately and the authors of the
+     * comments first, at once, then the directory's search (the project's teams where it is
+     * not available).
+     */
+    fun searchMentions(query: String) {
+        val modal = _state.value ?: return
+        val q = query.trim()
+        mentionSearch?.cancel()
+        if (q.isEmpty()) {
+            _state.update { it?.copy(mentions = PeopleSearch()) }
+            return
+        }
+        val myId = me()?.id
+        val authors = modal.page.comments.items.asReversed().map { Person(it.author.id, it.author.name, "") }
+        val recent = (recentMentions + authors)
+            .filter { it.name.isNotBlank() && !it.id.equals(myId, ignoreCase = true) && matches(it, q) }
+            .distinctBy { it.id.lowercase() }
+        _state.update { it?.copy(mentions = PeopleSearch(q, loading = true, results = recent.take(MAX_SUGGESTIONS))) }
+        val project = modal.page.item?.project
+        mentionSearch = scope.launch {
+            delay(SEARCH_DELAY_MS)
+            val api = api()
+            val found = runCatchingNotCancelled { api.searchPeople(q) }?.takeIf { it.isNotEmpty() }
+                ?: project?.let { p -> members(api, p).filter { matches(it, q) } }.orEmpty()
+            val all = (recent + found.filter { it.id.isNotBlank() }).distinctBy { it.id.lowercase() }
+            _state.update { it?.copy(mentions = PeopleSearch(q, loading = false, results = all.take(MAX_SUGGESTIONS))) }
+        }
+    }
+
+    /** "an" finds "Anna Verdi" and "Marco Ancona". */
+    private fun matches(p: Person, q: String) = p.name.contains(q, ignoreCase = true)
+
     private suspend fun <T> runCatchingNotCancelled(block: suspend () -> T): T? = try {
         block()
     } catch (e: CancellationException) {
@@ -348,5 +596,8 @@ class WorkItemController(
         const val SEARCH_DELAY_MS = 250L
         const val MAX_PEOPLE = 20
         const val MAX_TEAMS = 5
+        const val MAX_SUGGESTIONS = 8
+        /** Pages read before the latest to find a mentioned comment. */
+        const val MAX_TARGET_PAGES = 4
     }
 }

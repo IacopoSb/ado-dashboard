@@ -27,6 +27,17 @@ interface AdoApi {
     /** Most recent comments first. */
     suspend fun workItemComments(project: String, id: Int): List<Comment>
 
+    /**
+     * A page of a work item's comments for its details: the latest [CommentPage.PAGE_SIZE] (or,
+     * with [continuation], those before them), oldest first.
+     */
+    suspend fun workItemCommentPage(project: String, id: Int, continuation: String? = null): CommentPage =
+        CommentPage(workItemComments(project, id).reversed(), null)
+
+    /** Adds a comment ([html] as Azure DevOps stores it) and returns it as saved. */
+    suspend fun addWorkItemComment(project: String, id: Int, html: String): Comment =
+        throw AdoException(403, "Not supported")
+
     suspend fun activePullRequests(project: String, filter: PrFilter): List<PullRequest>
 
     /** All comments of all threads, system ones excluded. */
@@ -151,9 +162,19 @@ data class Comment(
     val id: Int,
     val workItemId: Int,
     val author: Identity,
+    /** HTML, mentions as `<a href="#" data-vss-mention="version:2.0,<id>">@Name</a>`. */
     val text: String,
     val createdAt: Instant,
+    /** Changed after it was posted. */
+    val edited: Boolean = false,
 )
+
+/** Comments oldest first; [continuation] reads those before them, null when there are none. */
+data class CommentPage(val comments: List<Comment>, val continuation: String?, val total: Int = comments.size) {
+    companion object {
+        const val PAGE_SIZE = 50
+    }
+}
 
 sealed interface PrFilter {
     data class Reviewer(val id: String) : PrFilter

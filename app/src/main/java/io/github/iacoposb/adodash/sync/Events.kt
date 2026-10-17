@@ -1,7 +1,9 @@
 package io.github.iacoposb.adodash.sync
 
+import io.github.iacoposb.adodash.api.Comment
 import io.github.iacoposb.adodash.api.HtmlEntities
 import io.github.iacoposb.adodash.api.Identity
+import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.api.PrComment
 import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.Vote
@@ -38,7 +40,7 @@ object Events {
         fetched.mentionedWorkItems.forEach { (wi, comments) ->
             comments.filter { it.author.id != me.id && it.createdAt > baselineAt && mentions(it.text, me) }.forEach {
                 events += Event(
-                    key = "wi:${wi.id}:c${it.id}",
+                    key = Event.workItemCommentKey(wi.id, it.id),
                     kind = EventKind.MENTION,
                     title = texts.workItemMention(it.author.name, wi.id),
                     body = "${wi.title}\n${plainText(it.text, me)}",
@@ -98,6 +100,23 @@ object Events {
         }
         return events
     }
+
+    /**
+     * A comment I posted from the app, stored as read and hidden: whatever it says (a mention
+     * of myself included), the next sync finds its key taken and does not notify it.
+     */
+    fun ownComment(item: WorkItem, comment: Comment, me: Identity, texts: SyncTexts) = Event(
+        key = Event.workItemCommentKey(item.id, comment.id),
+        kind = EventKind.MENTION,
+        title = texts.workItemMention(comment.author.name.ifBlank { me.name }, item.id),
+        body = "${item.title}\n${plainText(comment.text, me)}",
+        url = item.url,
+        at = comment.createdAt.toEpochMilli(),
+        read = true,
+        hidden = true,
+        project = item.project,
+        area = item.areaPath,
+    )
 
     /**
      * Splits [found] into history, stored as read and never shown, and news. On the first

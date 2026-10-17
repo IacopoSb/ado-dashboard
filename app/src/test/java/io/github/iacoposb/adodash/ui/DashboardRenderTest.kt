@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
@@ -151,6 +152,8 @@ class DashboardRenderTest {
         workItem: WorkItemModal? = null,
         workItemMenu: String? = null,
         workItemMenuQuery: String = "",
+        /** The work item page scrolled to its end: the comments. */
+        scrollWorkItem: Boolean = false,
     ) {
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
@@ -159,6 +162,10 @@ class DashboardRenderTest {
                     workItem = workItem, workItemMenu = workItemMenu, workItemMenuQuery = workItemMenuQuery,
                 )
             }
+        }
+        if (scrollWorkItem) {
+            compose.onNodeWithTag(COMMENTS_TAG, useUnmergedTree = true).performScrollTo()
+            compose.waitForIdle()
         }
         // A field's menu is a popup: the whole screen, its windows included
         if (workItemMenu != null) captureScreenRoboImage("$name.png") else compose.onRoot().captureRoboImage("$name.png")
@@ -222,9 +229,88 @@ class DashboardRenderTest {
             iterations = designIterations,
             areas = Fakes.projects.first(),
             hasRemainingWork = true,
+            comments = designComments(),
         )
         return WorkItemModal(listOf(page), readOnly = readOnly, me = Person(me.id, me.name, ""))
     }
+
+    private val luca = io.github.iacoposb.adodash.api.Identity("dddddddd-1111-2222-3333-444444444444", "Luca Rossi")
+    private fun mentionOf(id: String, name: String) = "<a href=\"#\" data-vss-mention=\"version:2.0,$id\">@$name</a>"
+
+    /** The design's thread: Anna's note, Marco's (edited) with code, Luca's mention of me last. */
+    private fun designComments(): CommentsState {
+        val it = italian
+        fun c(id: Int, who: io.github.iacoposb.adodash.api.Identity, html: String, ago: Long, edited: Boolean = false) =
+            io.github.iacoposb.adodash.api.Comment(id, 4812, who, html, now.minusSeconds(ago), edited)
+        return CommentsState(
+            loaded = true,
+            total = 3,
+            items = listOf(
+                c(
+                    1, anna,
+                    if (it) "Riprodotto in staging: il token scade dopo <b>60 minuti</b> esatti." else "Reproduced on staging: the token expires after exactly <b>60 minutes</b>.",
+                    7200,
+                ),
+                c(
+                    2, marco,
+                    if (it) "Nei log c'è <code>AADSTS700084</code>, vedi <a href=\"https://contoso.example/logs/4812\">il log</a>."
+                    else "The logs show <code>AADSTS700084</code>, see <a href=\"https://contoso.example/logs/4812\">the log</a>.",
+                    3000, edited = true,
+                ),
+                c(
+                    3, luca,
+                    "${mentionOf(me.id, me.name)} " + if (it) "riesci a riprodurlo con l'account di test guest01?" else "can you reproduce it with the guest01 test account?",
+                    240,
+                ),
+            ),
+        )
+    }
+
+    /** The design's modal with something done to its comments. */
+    private fun withComments(change: (WorkItemPage) -> WorkItemPage) = designWorkItem().let { m -> m.copy(pages = listOf(change(m.page))) }
+
+    @Test fun workItemComments() = dashboard("work-item-comments", dark = false, workItem = designWorkItem(), scrollWorkItem = true)
+
+    @Config(qualifiers = "+it")
+    @Test fun workItemCommentsItalian() = dashboard("work-item-comments-it", dark = false, workItem = designWorkItem(), scrollWorkItem = true)
+
+    @Test fun workItemCommentsDark() = dashboard("work-item-comments-dark", dark = true, workItem = designWorkItem(), scrollWorkItem = true)
+
+    /** "@an" typed: the people offered above the composer, those of the thread first. */
+    @Test fun workItemMentionSuggestions() = dashboard(
+        "work-item-mention-suggestions", dark = false,
+        workItem = withComments { it.copy(composer = ComposerState(Draft("Thanks, @an"), 1)) }.copy(
+            mentions = PeopleSearch(
+                "an",
+                results = listOf(
+                    Person(anna.id, anna.name, "anna.verdi@contoso.com"),
+                    Person("eeee", "Annabel Neri", "annabel.neri@contoso.com"),
+                    Person("ffff", "Giovanni Bianchi", "giovanni.bianchi@contoso.com"),
+                ),
+            ),
+        ),
+    )
+
+    /** Just sent: the comment at the bottom of the thread, "Sending…", the composer empty. */
+    @Test fun workItemCommentSending() = dashboard(
+        "work-item-comment-sending", dark = false, scrollWorkItem = true,
+        workItem = withComments { p ->
+            val draft = Draft("@Luca Rossi yes, with guest01 it fails after an hour.", listOf(Person(luca.id, luca.name, "")))
+            p.copy(comments = p.comments.copy(sending = listOf(SendingComment(1, draft, CommentMarkup.build(draft), now))))
+        },
+    )
+
+    /** Refused: the text back in the composer, with the permission hint. */
+    @Test fun workItemCommentError() = dashboard(
+        "work-item-comment-error", dark = false, scrollWorkItem = true,
+        workItem = withComments { p ->
+            val draft = Draft("@Luca Rossi yes, with guest01 it fails after an hour.", listOf(Person(luca.id, luca.name, "")))
+            p.copy(composer = ComposerState(draft, 2), comments = p.comments.copy(sendError = CommentError(SaveProblem.DENIED, "HTTP 403")))
+        },
+    )
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun workItemPhoneComments() = dashboard("work-item-phone-comments", dark = false, workItem = designWorkItem(), scrollWorkItem = true)
 
     @Test fun workItemModal() = dashboard("work-item-modal", dark = false, workItem = designWorkItem())
 

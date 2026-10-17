@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
@@ -53,7 +54,8 @@ fun ModalOverlay(
     BackHandler(onBack = onBack)
     val c = AdoTheme.colors
     BoxWithConstraints(
-        Modifier.fillMaxSize()
+        // The keyboard: a card's fields (a composer at its bottom) stay above it
+        Modifier.fillMaxSize().imePadding()
             .background(if (scrim) Color.Black.copy(alpha = 0.32f) else c.bg)
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
     ) {

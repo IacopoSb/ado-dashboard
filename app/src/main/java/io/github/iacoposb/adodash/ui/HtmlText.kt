@@ -15,6 +15,8 @@ import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -23,8 +25,20 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.api.HtmlEntities
 
-/** A run of text with its style; [link] is the address it opens. */
-data class RichSpan(val text: String, val bold: Boolean = false, val italic: Boolean = false, val link: String? = null)
+/**
+ * A run of text with its style; [link] is the address it opens, [mention] a person mentioned
+ * ("@Name"), [code] inline code or a code block.
+ */
+data class RichSpan(
+    val text: String,
+    val bold: Boolean = false,
+    val italic: Boolean = false,
+    val link: String? = null,
+    val mention: Boolean = false,
+    val code: Boolean = false,
+) {
+    fun sameStyle(other: RichSpan) = copy(text = "") == other.copy(text = "")
+}
 
 /** A paragraph, a heading or a list item ([bullet] "•" or "1."), [indent] levels deep. */
 data class RichBlock(val spans: List<RichSpan>, val bullet: String? = null, val indent: Int = 0) {
@@ -32,13 +46,14 @@ data class RichBlock(val spans: List<RichSpan>, val bullet: String? = null, val 
 }
 
 /**
- * Azure DevOps' HTML (descriptions, repro steps) as readable text: paragraphs, headings, lists,
- * links, bold and italic. Images, scripts, styles and every other tag are left out, their text
- * kept.
+ * Azure DevOps' HTML (descriptions, repro steps, comments) as readable text: paragraphs,
+ * headings, lists, links, mentions, code, bold and italic. Images, scripts, styles and every
+ * other tag are left out, their text kept.
  */
 object HtmlText {
     private val TOKEN = Regex("<!--[\\s\\S]*?-->|<(/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^>\"']|\"[^\"]*\"|'[^']*')*)/?>")
     private val HREF = Regex("href\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", RegexOption.IGNORE_CASE)
+    private val MENTION = Regex("data-vss-mention\\s*=", RegexOption.IGNORE_CASE)
     private val SPACES = Regex("\\s+")
     private val BLOCKS = setOf(
         "p", "div", "blockquote", "tr", "table", "tbody", "thead", "section", "article", "header", "footer", "hr",
@@ -62,6 +77,8 @@ object HtmlText {
         var skip = 0
         var pre = 0
         val links = ArrayDeque<String?>()
+        val mentions = ArrayDeque<Boolean>()
+        var code = 0
         val lists = ArrayDeque<ListLevel>()
         /** The bullet of a list item whose text has not started yet. */
         var bullet: String? = null
@@ -88,8 +105,9 @@ object HtmlText {
                 in BLOCKS -> {
                     flush()
                     if (tag.length == 2 && tag[0] == 'h' && tag[1].isDigit()) heading++
-                    if (tag == "pre") pre++
+                    if (tag == "pre") { pre++; code++ }
                 }
+                "code", "kbd", "samp", "tt" -> code++
                 "br" -> if (spans.isNotEmpty()) append("\n")
                 "ul", "ol" -> {
                     flush()
@@ -103,7 +121,10 @@ object HtmlText {
                 }
                 "b", "strong" -> bold++
                 "i", "em" -> italic++
-                "a" -> links.addLast(HREF.find(attributes)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }?.let(::decode))
+                "a" -> {
+                    links.addLast(HREF.find(attributes)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }?.let(::decode))
+                    mentions.addLast(MENTION.containsMatchIn(attributes))
+                }
                 "td", "th" -> if (spans.isNotEmpty()) append("  ")
             }
         }
@@ -114,8 +135,12 @@ object HtmlText {
                 in BLOCKS -> {
                     flush()
                     if (tag.length == 2 && tag[0] == 'h' && tag[1].isDigit()) heading = (heading - 1).coerceAtLeast(0)
-                    if (tag == "pre") pre = (pre - 1).coerceAtLeast(0)
+                    if (tag == "pre") {
+                        pre = (pre - 1).coerceAtLeast(0)
+                        code = (code - 1).coerceAtLeast(0)
+                    }
                 }
+                "code", "kbd", "samp", "tt" -> code = (code - 1).coerceAtLeast(0)
                 "ul", "ol" -> {
                     flush()
                     lists.removeLastOrNull()
@@ -127,7 +152,10 @@ object HtmlText {
                 }
                 "b", "strong" -> bold = (bold - 1).coerceAtLeast(0)
                 "i", "em" -> italic = (italic - 1).coerceAtLeast(0)
-                "a" -> links.removeLastOrNull()
+                "a" -> {
+                    links.removeLastOrNull()
+                    mentions.removeLastOrNull()
+                }
             }
         }
 
@@ -142,9 +170,13 @@ object HtmlText {
         }
 
         fun append(t: String) {
-            val span = RichSpan(t, bold = bold > 0 || heading > 0, italic = italic > 0, link = links.lastOrNull())
+            val mention = mentions.lastOrNull() == true
+            val span = RichSpan(
+                t, bold = bold > 0 || heading > 0, italic = italic > 0, link = links.lastOrNull().takeUnless { mention },
+                mention = mention, code = code > 0,
+            )
             val last = spans.lastOrNull()
-            if (last != null && last.bold == span.bold && last.italic == span.italic && last.link == span.link) {
+            if (last != null && last.sameStyle(span)) {
                 spans[spans.lastIndex] = last.copy(text = last.text + t)
             } else {
                 spans += span
@@ -171,37 +203,53 @@ object HtmlText {
     }
 }
 
-/** [blocks] as text: links open with [onLink]. */
+/** [blocks] as text: links open with [onLink]; [color] for the text (muted while it is sent). */
 @Composable
-fun RichText(blocks: List<RichBlock>, onLink: (String) -> Unit, modifier: Modifier = Modifier) {
+fun RichText(
+    blocks: List<RichBlock>,
+    onLink: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    color: Color = AdoTheme.colors.text,
+) {
     val c = AdoTheme.colors
     val style = MaterialTheme.typography.bodyMedium
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         blocks.forEach { block ->
-            val text = remember(block, c.primary) { block.annotated(c.primary, onLink) }
+            val text = remember(block, c) { block.annotated(c, onLink) }
             if (block.bullet != null || block.indent > 0) {
                 Row(Modifier.padding(start = (block.indent * 16).dp)) {
                     Text(block.bullet.orEmpty(), Modifier.width(20.dp), style = style, color = c.textMuted)
-                    Text(text, style = style, color = c.text)
+                    Text(text, style = style, color = color)
                 }
             } else {
-                Text(text, style = style, color = c.text)
+                Text(text, style = style, color = color)
             }
         }
     }
 }
 
-private fun RichBlock.annotated(linkColor: androidx.compose.ui.graphics.Color, onLink: (String) -> Unit): AnnotatedString =
+private fun RichBlock.annotated(c: AdoColors, onLink: (String) -> Unit): AnnotatedString =
     buildAnnotatedString {
         spans.forEach { span ->
             val style = SpanStyle(
-                fontWeight = if (span.bold) FontWeight.Bold else null,
+                fontWeight = when {
+                    span.bold -> FontWeight.Bold
+                    span.mention -> FontWeight.Medium
+                    else -> null
+                },
                 fontStyle = if (span.italic) FontStyle.Italic else null,
+                color = if (span.mention) c.primary else Color.Unspecified,
+                background = when {
+                    span.mention -> c.primaryContainer
+                    span.code -> c.surfaceAlt
+                    else -> Color.Unspecified
+                },
+                fontFamily = if (span.code) FontFamily.Monospace else null,
             )
             val link = span.link
             if (link != null && (link.startsWith("http://") || link.startsWith("https://") || link.startsWith("mailto:"))) {
                 val annotation = LinkAnnotation.Clickable(
-                    link, TextLinkStyles(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)),
+                    link, TextLinkStyles(SpanStyle(color = c.primary, textDecoration = TextDecoration.Underline)),
                 ) { onLink(link) }
                 withLink(annotation) { withStyle(style) { append(span.text) } }
             } else {

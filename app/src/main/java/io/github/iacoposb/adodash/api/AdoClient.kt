@@ -123,9 +123,30 @@ class AdoClient(
                 addQueryParameter("order", "desc")
             },
         )
-        return list.comments.filterNot { it.isDeleted }.map {
-            Comment(it.id, it.workItemId, it.createdBy.toIdentity(), it.text.orEmpty(), Instant.parse(it.createdDate))
-        }
+        return list.comments.filterNot { it.isDeleted }.map { it.toComment() }
+    }
+
+    /**
+     * The newest page first ("desc"), shown oldest first: the continuation then reads the
+     * comments before it, for "Load earlier comments".
+     */
+    override suspend fun workItemCommentPage(project: String, id: Int, continuation: String?): CommentPage {
+        val (list, header) = page<CommentList>(
+            url(project, "_apis", "wit", "workItems", "$id", "comments", apiVersion = COMMENTS_API) {
+                addQueryParameter("\$top", "${CommentPage.PAGE_SIZE}")
+                addQueryParameter("order", "desc")
+                continuation?.let { addQueryParameter("continuationToken", it) }
+            },
+        )
+        val next = (list.continuationToken ?: header)?.takeIf { it.isNotBlank() }
+        val comments = list.comments.filterNot { it.isDeleted }.map { it.toComment() }.reversed()
+        return CommentPage(comments, next, list.totalCount ?: comments.size)
+    }
+
+    override suspend fun addWorkItemComment(project: String, id: Int, html: String): Comment {
+        val body = buildJsonObject { put("text", html) }
+        val dto: CommentDto = post(url(project, "_apis", "wit", "workItems", "$id", "comments", apiVersion = COMMENTS_API), body)
+        return dto.toComment()
     }
 
     override suspend fun activePullRequests(project: String, filter: PrFilter): List<PullRequest> {
@@ -539,6 +560,8 @@ class AdoClient(
 
     companion object {
         const val API_VERSION = "7.1"
+        /** Work item comments exist only as a preview API. */
+        const val COMMENTS_API = "7.1-preview.4"
         private val JSON = "application/json".toMediaType()
         private val JSON_PATCH = "application/json-patch+json".toMediaType()
         private const val PR_ARTIFACT = "vstfs:///Git/PullRequestId/"
@@ -668,15 +691,28 @@ class AdoClient(
 @Serializable private data class IdentityDto(val id: String = "", val displayName: String = "")
 private fun IdentityDto.toIdentity() = Identity(id, displayName)
 
-@Serializable private data class CommentList(val comments: List<CommentDto> = emptyList())
+@Serializable private data class CommentList(
+    val comments: List<CommentDto> = emptyList(),
+    val totalCount: Int? = null,
+    val continuationToken: String? = null,
+)
 @Serializable private data class CommentDto(
     val id: Int,
     val workItemId: Int,
     val text: String? = null,
     val createdBy: IdentityDto = IdentityDto(),
     val createdDate: String,
+    val modifiedDate: String? = null,
+    val version: Int = 1,
     val isDeleted: Boolean = false,
 )
+private fun CommentDto.toComment(): Comment {
+    val created = Instant.parse(createdDate)
+    // modifiedDate is a few ms after createdDate even for a comment never edited
+    val modified = modifiedDate?.let { runCatching { Instant.parse(it) }.getOrNull() }
+    val edited = version > 1 || (modified != null && modified.isAfter(created.plusSeconds(1)))
+    return Comment(id, workItemId, createdBy.toIdentity(), text.orEmpty(), created, edited)
+}
 
 @Serializable private data class PullRequestDto(
     val pullRequestId: Int,

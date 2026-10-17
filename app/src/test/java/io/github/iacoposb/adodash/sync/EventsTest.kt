@@ -46,6 +46,21 @@ class EventsTest {
         assertEquals("Work item 7\n@Iacopo puoi guardare?", events.single().body)
     }
 
+    @Test fun `a comment posted from the app is stored as seen and never notified`() {
+        val wi = Fakes.workItem(7)
+        // Mentioning myself too: still mine
+        val text = """<a href="#" data-vss-mention="version:2.0,${me.id}">@Iacopo</a> note to self"""
+        val posted = Comment(9, 7, me, text, now)
+        val own = Events.ownComment(wi, posted, me, Fakes.Texts)
+        assertEquals("wi:7:c9", own.key)
+        assertTrue(own.read && own.hidden)
+        assertEquals(io.github.iacoposb.adodash.data.WorkItemCommentRef(7, 9), own.workItemComment)
+        // The next sync finds nothing of its own to notify, and the key is the one a mention would take
+        assertTrue(Events.from(fetched(mentioned = listOf(wi to listOf(posted))), baseline, Fakes.Texts).isEmpty())
+        val other = Events.from(fetched(mentioned = listOf(wi to listOf(posted.copy(author = anna)))), baseline, Fakes.Texts)
+        assertEquals(listOf(own.key), other.map { it.key })
+    }
+
     @Test fun `my PRs report every comment, reviewed ones only my threads and mentions`() {
         val mine = Fakes.pr(1, me)
         val theirs = Fakes.pr(2, anna)

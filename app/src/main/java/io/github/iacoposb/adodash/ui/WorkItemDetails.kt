@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
@@ -90,12 +91,20 @@ class WorkItemActions(
     val onReload: () -> Unit = {},
     val onBack: () -> Unit = {},
     val onClose: () -> Unit = {},
+    val onDraftChange: (Draft) -> Unit = {},
+    val onSend: () -> Unit = {},
+    val onSearchMentions: (String) -> Unit = {},
+    val onLoadEarlierComments: () -> Unit = {},
+    val onRetryComments: () -> Unit = {},
+    /** The comment opened from a mention was shown. */
+    val onTargetShown: () -> Unit = {},
 )
 
 /**
- * The details of a work item: a modal over the dashboard on tablets (description and links on
- * the left, the fields to change on the right), a page of its own on narrow screens. Changes
- * save at once; [initialMenu] opens a field's menu from the start, for the screenshots.
+ * The details of a work item: a modal over the dashboard on tablets (description, links and
+ * comments on the left with the composer at their bottom, the fields to change on the right), a
+ * page of its own on narrow screens. Changes save at once; [initialMenu] opens a field's menu
+ * from the start, for the screenshots.
  */
 @Composable
 fun WorkItemDetailsModal(
@@ -146,12 +155,18 @@ private fun ColumnScope.TabletModal(modal: WorkItemModal, now: Instant, actions:
         IconButton(onClick = actions.onClose) { Icon(Icons.Filled.Close, stringResource(R.string.action_close), tint = c.textMuted) }
     }
     HorizontalDivider(color = c.outline)
+    val composerFocus = remember { FocusRequester() }
     Row(Modifier.weight(1f).fillMaxWidth()) {
-        Column(
-            Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            Body(page, actions)
+        Column(Modifier.weight(1f).fillMaxHeight()) {
+            Column(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                Body(modal, now, actions, composerFocus)
+            }
+            if (page.detail != null) {
+                ComposerArea(modal, actions, composerFocus, composerPlaceholder(page, modal.me, short = false))
+            }
         }
         Column(
             Modifier.width(320.dp).fillMaxHeight().background(c.surfaceAlt).verticalScroll(rememberScrollState())
@@ -169,6 +184,7 @@ private fun ColumnScope.PhonePage(modal: WorkItemModal, now: Instant, actions: W
     val c = AdoTheme.colors
     val page = modal.page
     val item = page.item
+    val composerFocus = remember { FocusRequester() }
     Row(Modifier.fillMaxWidth().background(c.bg).padding(start = 4.dp, end = 4.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = actions.onBack) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), tint = c.text)
@@ -205,7 +221,10 @@ private fun ColumnScope.PhonePage(modal: WorkItemModal, now: Instant, actions: W
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Fields(modal, now, actions, initialMenu, initialQuery, twoPerRow = true)
         }
-        Body(page, actions)
+        Body(modal, now, actions, composerFocus)
+    }
+    if (page.detail != null) {
+        ComposerArea(modal, actions, composerFocus, composerPlaceholder(page, modal.me, short = true), Modifier.background(c.surface))
     }
 }
 
@@ -247,10 +266,11 @@ private fun SectionLabel(text: String) = Text(
     style = MaterialTheme.typography.labelSmall, color = AdoTheme.colors.textMuted,
 )
 
-/** Description, links and the comments' count. */
+/** Description, links and comments. */
 @Composable
-private fun Body(page: WorkItemPage, actions: WorkItemActions) {
+private fun Body(modal: WorkItemModal, now: Instant, actions: WorkItemActions, composerFocus: FocusRequester) {
     val c = AdoTheme.colors
+    val page = modal.page
     val detail = page.detail
     when {
         page.error != null -> Text(stringResource(R.string.wi_load_failed, page.error), style = MaterialTheme.typography.bodyMedium, color = c.danger)
@@ -280,19 +300,7 @@ private fun Body(page: WorkItemPage, actions: WorkItemActions) {
                     }
                 }
             }
-            Column {
-                SectionLabel(
-                    if (detail.commentCount > 0) "${stringResource(R.string.wi_comments)} · ${detail.commentCount}"
-                    else stringResource(R.string.wi_comments),
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (detail.commentCount == 0) {
-                        Text(stringResource(R.string.wi_no_comments), style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    TextAction(stringResource(R.string.wi_comments_open), { actions.onOpenUrl(detail.item.url) })
-                }
-            }
+            CommentsSection(page, modal.me, now, actions, composerFocus)
         }
     }
 }

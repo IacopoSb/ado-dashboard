@@ -33,6 +33,13 @@ fun ago(at: Instant, now: Instant = Instant.now()): String {
     }
 }
 
+/** Date and time in the device's locale: "16 Oct 2026, 11:56". */
+@Composable
+@ReadOnlyComposable
+fun dateTime(at: Instant): String =
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale())
+        .format(at.atZone(ZoneId.systemDefault()))
+
 /** Short time in the device's locale: "14:05", "2:05 PM". */
 @Composable
 @ReadOnlyComposable

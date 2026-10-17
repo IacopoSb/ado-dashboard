@@ -43,12 +43,27 @@ data class Event(
     val buildId: Int?
         get() = if (kind == EventKind.BUILD_FAILED) key.removePrefix(BUILD_PREFIX).substringBefore(':').toIntOrNull() else null
 
+    /** The work item and the comment of a mention in a work item's comments; null for the rest. */
+    val workItemComment: WorkItemCommentRef?
+        get() = if (kind == EventKind.MENTION) {
+            WI_COMMENT.matchEntire(key)?.let { WorkItemCommentRef(it.groupValues[1].toInt(), it.groupValues[2].toInt()) }
+        } else {
+            null
+        }
+
     companion object {
         const val BUILD_PREFIX = "build:"
+        private val WI_COMMENT = Regex("wi:(\\d+):c(\\d+)")
 
         fun buildFailedKey(buildId: Int) = "$BUILD_PREFIX$buildId:failed"
+
+        /** A comment of a work item: the same key whoever wrote it, so that one stored stays. */
+        fun workItemCommentKey(workItemId: Int, commentId: Int) = "wi:$workItemId:c$commentId"
     }
 }
+
+/** A comment of a work item, to open it there. */
+data class WorkItemCommentRef(val workItemId: Int, val commentId: Int)
 
 @Dao
 interface EventDao {
