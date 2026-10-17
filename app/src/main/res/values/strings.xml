@@ -220,6 +220,11 @@
     <string name="picker_open">Open %1$s</string>
     <string name="picker_loading_boards">Loading boards…</string>
     <string name="picker_no_boards">No team boards in the projects of the global filters</string>
+    <string name="boards_search">Search projects and teams…</string>
+    <string name="boards_recent">Recent</string>
+    <string name="boards_matching">%1$d of %2$d</string>
+    <string name="boards_no_results">No boards match “%1$s”</string>
+    <string name="boards_error">Couldn\'t read the boards: %1$s</string>
     <plurals name="picker_board_count">
         <item quantity="one">%d board</item>
         <item quantity="other">%d boards</item>

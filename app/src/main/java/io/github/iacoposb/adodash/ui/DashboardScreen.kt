@@ -105,6 +105,7 @@ fun DashboardScreen(
     onLoadBoards: () -> Unit = {},
     /** For the screenshots: the switcher or the editor open from the start. */
     initialSwitcher: Boolean = false,
+    initialSwitcherQuery: String = "",
     initialEditor: EditorTarget? = null,
 ) {
     val c = AdoTheme.colors
@@ -135,6 +136,7 @@ fun DashboardScreen(
                 onEdit = { switcher = false; editor = EditorTarget(view) },
                 onNew = { switcher = false; editor = EditorTarget(DashboardView.newSaved(""), isNew = true) },
                 onDismiss = { switcher = false },
+                initialQuery = initialSwitcherQuery,
             )
         }
         editor?.let { target ->

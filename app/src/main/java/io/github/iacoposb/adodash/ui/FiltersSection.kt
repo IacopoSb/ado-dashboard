@@ -21,17 +21,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,7 +41,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
@@ -54,13 +49,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
 import io.github.iacoposb.adodash.api.AreaNode
@@ -73,9 +63,11 @@ import io.github.iacoposb.adodash.ui.components.AdoCheckbox
 import io.github.iacoposb.adodash.ui.components.AdoFilterChip
 import io.github.iacoposb.adodash.ui.components.Banner
 import io.github.iacoposb.adodash.ui.components.BannerTone
+import io.github.iacoposb.adodash.ui.components.SearchField
 import io.github.iacoposb.adodash.ui.components.SectionCard
 import io.github.iacoposb.adodash.ui.components.SwitchRow
 import io.github.iacoposb.adodash.ui.components.TextAction
+import io.github.iacoposb.adodash.ui.components.highlight
 import io.github.iacoposb.adodash.ui.components.scrollbar
 
 /** The states to hide and the pull request options, side by side with the tree. */
@@ -177,13 +169,13 @@ private fun AreasCard(
         }
         if (fill) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SearchField(query, { query = it }, Modifier.weight(1f))
+                SearchField(query, { query = it }, stringResource(R.string.filters_search), Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
                 actions()
             }
         } else {
             // Narrow: the field gets the whole width, the actions go below it
-            SearchField(query, { query = it }, Modifier.fillMaxWidth())
+            SearchField(query, { query = it }, stringResource(R.string.filters_search), Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) { actions() }
         }
         val tree = Modifier.fillMaxWidth().then(if (fill) Modifier.weight(1f).verticalScroll(rememberScrollState()) else Modifier)
@@ -241,37 +233,6 @@ private fun Updating() {
     CircularProgressIndicator(Modifier.size(14.dp), color = c.textMuted, strokeWidth = 1.5.dp)
     Spacer(Modifier.width(8.dp))
     Text(stringResource(R.string.filters_updating), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
-}
-
-@Composable
-private fun SearchField(value: String, onValueChange: (String) -> Unit, modifier: Modifier) {
-    val c = AdoTheme.colors
-    val placeholder = stringResource(R.string.filters_search)
-    Row(
-        modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(c.surfaceAlt).padding(start = 14.dp, end = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Filled.Search, null, Modifier.size(20.dp), tint = c.textMuted)
-        Spacer(Modifier.width(10.dp))
-        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-            if (value.isEmpty()) {
-                Text(placeholder, style = MaterialTheme.typography.bodyMedium, color = c.textFaint, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            BasicTextField(
-                value, onValueChange, Modifier.fillMaxWidth().semantics { contentDescription = placeholder },
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = c.text),
-                cursorBrush = SolidColor(c.primary),
-            )
-        }
-        if (value.isNotEmpty()) {
-            IconButton(onClick = { onValueChange("") }, Modifier.size(36.dp)) {
-                Icon(Icons.Filled.Close, stringResource(R.string.action_clear_search), Modifier.size(20.dp), tint = c.textMuted)
-            }
-        } else {
-            Spacer(Modifier.width(10.dp))
-        }
-    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -349,17 +310,6 @@ private fun TreeNode(
         children.forEach {
             TreeNode(it, root, level + 1, selection, search, expanded, onExpand, onCheck, onOnly)
         }
-    }
-}
-
-/** [text] with the first occurrence of [query] in bold. */
-private fun highlight(text: String, query: String?): AnnotatedString {
-    val start = query?.let { text.indexOf(it, ignoreCase = true) } ?: -1
-    if (query == null || start < 0) return AnnotatedString(text)
-    return buildAnnotatedString {
-        append(text.substring(0, start))
-        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(text.substring(start, start + query.length)) }
-        append(text.substring(start + query.length))
     }
 }
 

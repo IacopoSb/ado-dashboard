@@ -10,6 +10,7 @@ import io.github.iacoposb.adodash.R
 import io.github.iacoposb.adodash.data.ActivityKind
 import io.github.iacoposb.adodash.data.Condition
 import io.github.iacoposb.adodash.data.DashboardView
+import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.Filters
 import io.github.iacoposb.adodash.data.PrScope
 import io.github.iacoposb.adodash.data.ViewSet
@@ -17,6 +18,7 @@ import io.github.iacoposb.adodash.data.WiField
 import io.github.iacoposb.adodash.data.WorkItemsPanel
 import io.github.iacoposb.adodash.data.PullRequestsPanel
 import io.github.iacoposb.adodash.data.ActivityPanel
+import io.github.iacoposb.adodash.sync.CatalogState
 import io.github.iacoposb.adodash.sync.FilterCatalog
 import io.github.iacoposb.adodash.sync.Snapshot
 import io.github.iacoposb.adodash.sync.TeamInfo
@@ -39,25 +41,28 @@ data class ViewChoices(
     /** Null while the boards are being read for the first time. */
     val boards: List<ProjectBoards>? = emptyList(),
     val options: EditorOptions = EditorOptions(),
+    /** The boards last opened, of the projects the global filters include. */
+    val recentBoards: List<BoardRef> = views.recentBoards,
+    /** Why there are no boards: reading them failed. */
+    val boardsError: String? = null,
 )
 
 /**
  * The choices within the global filters: only the projects they include, with their teams and
  * repositories; types and states from the catalog and the last sync; people seen in it.
  */
-fun viewChoices(
-    views: ViewSet,
-    catalog: FilterCatalog?,
-    filters: Filters,
-    snapshot: Snapshot?,
-    /** The catalog is being read: without one yet, the boards are still to come. */
-    loading: Boolean = false,
-): ViewChoices {
-    val boards = catalog?.let { c ->
-        c.projects.map { it.name }.filter(filters::includesProject)
-            .map { ProjectBoards(it, c.teams[it].orEmpty()) }
+fun viewChoices(views: ViewSet, catalogState: CatalogState, filters: Filters, snapshot: Snapshot?): ViewChoices {
+    val catalog = catalogState.catalog
+    // A catalog saved by a release before the views has no teams: it says nothing about them
+    val withTeams = catalog?.takeIf { it.version >= FilterCatalog.VERSION }
+    val boards = when {
+        withTeams != null -> withTeams.projects.map { it.name }.filter(filters::includesProject)
+            .map { ProjectBoards(it, withTeams.teams[it].orEmpty()) }
             .filter { it.teams.isNotEmpty() }
-    } ?: if (loading) null else emptyList()
+        // Still to read, or being read: only a failure says there are none
+        catalogState.error != null && !catalogState.loading -> emptyList()
+        else -> null
+    }
     val shown = snapshot?.shown
     val items = snapshot?.workItems.orEmpty() + shown?.workItems.orEmpty()
     val prs = snapshot?.reviewPrs.orEmpty() + snapshot?.myPrs.orEmpty() + shown?.otherPrs.orEmpty()
@@ -68,6 +73,8 @@ fun viewChoices(
     return ViewChoices(
         views = views,
         boards = boards,
+        recentBoards = views.recentBoards.filter { filters.includesProject(it.project) },
+        boardsError = catalogState.error.takeIf { boards?.isEmpty() == true },
         options = EditorOptions(
             types = (types + items.map { it.type }).clean(),
             states = (states + items.map { it.state }).clean(),

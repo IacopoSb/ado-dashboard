@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -27,7 +28,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -38,17 +38,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
@@ -57,6 +58,9 @@ import io.github.iacoposb.adodash.data.DashboardView
 import io.github.iacoposb.adodash.ui.components.AdoButton
 import io.github.iacoposb.adodash.ui.components.AdoSwitch
 import io.github.iacoposb.adodash.ui.components.FullScreenModalWidth
+import io.github.iacoposb.adodash.ui.components.SearchField
+import io.github.iacoposb.adodash.ui.components.highlight
+import io.github.iacoposb.adodash.ui.components.scrollbar
 
 /**
  * "What do you want to see?", at launch: a saved view on the left, a project's board on the
@@ -76,7 +80,7 @@ fun ViewPickerScreen(
     var selected by rememberSaveable(views.currentId) { mutableStateOf(views.currentId) }
     var always by rememberSaveable { mutableStateOf(views.alwaysOpen || !views.chosenAtLaunch) }
     LaunchedEffect(Unit) { onLoadBoards() }
-    val boardSelected = choices.boards.orEmpty().flatMap { p -> p.teams.map { BoardRef(p.project, it.name) } }
+    val boardSelected = (choices.boards.orEmpty().flatMap { p -> p.teams.map { BoardRef(p.project, it.name) } } + choices.recentBoards)
         .firstOrNull { it.viewId == selected } ?: views.find(selected)?.board
     val chosen: DashboardView = boardSelected?.let(views::board) ?: views.find(selected) ?: views.global
 
@@ -87,52 +91,54 @@ fun ViewPickerScreen(
                 .then(if (editorOpen) Modifier.clearAndSetSemantics {} else Modifier),
         ) {
             val wide = maxWidth >= FullScreenModalWidth
+            // A fixed height on wide screens: the boards arriving never move the card or its button
             val card = if (wide) {
-                Modifier.align(Alignment.Center).padding(24.dp).widthIn(max = 860.dp).heightIn(max = maxHeight - 48.dp)
+                Modifier.align(Alignment.Center).padding(24.dp).widthIn(max = 860.dp)
+                    .height((maxHeight - 48.dp).coerceAtMost(720.dp))
                     .clip(RoundedCornerShape(24.dp)).background(c.surface)
             } else {
                 Modifier.fillMaxSize().background(c.surface)
             }
+            val header: @Composable () -> Unit = {
+                Text(
+                    stringResource(R.string.picker_title), Modifier.semantics { heading() },
+                    style = MaterialTheme.typography.headlineSmall, color = c.text,
+                )
+                Spacer(Modifier.size(12.dp))
+                Text(stringResource(R.string.picker_subtitle), style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
+                Spacer(Modifier.size(20.dp))
+            }
+            val myViews: @Composable (Modifier) -> Unit = { m ->
+                Column(m.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PickerLabel(stringResource(R.string.picker_my_views))
+                    views.saved.forEach { v ->
+                        ViewCard(v, v.id == selected && boardSelected == null) { selected = v.id }
+                    }
+                    TextButton(onClick = onNewView) {
+                        Icon(Icons.Filled.Add, null, Modifier.size(18.dp), tint = c.primary)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.picker_new_view), style = MaterialTheme.typography.titleSmall, color = c.primary)
+                    }
+                }
+            }
             Column(card) {
-                Column(
-                    Modifier.weight(1f, fill = !wide).verticalScroll(rememberScrollState())
-                        .padding(start = 28.dp, end = 28.dp, top = 28.dp),
-                ) {
-                    Text(
-                        stringResource(R.string.picker_title), Modifier.semantics { heading() },
-                        style = MaterialTheme.typography.headlineSmall, color = c.text,
-                    )
-                    Spacer(Modifier.size(12.dp))
-                    Text(stringResource(R.string.picker_subtitle), style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
-                    Spacer(Modifier.size(20.dp))
-                    val myViews: @Composable (Modifier) -> Unit = { m ->
-                        Column(m.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            PickerLabel(stringResource(R.string.picker_my_views))
-                            views.saved.forEach { v ->
-                                ViewCard(v, v.id == selected && boardSelected == null) { selected = v.id }
-                            }
-                            TextButton(onClick = onNewView) {
-                                Icon(Icons.Filled.Add, null, Modifier.size(18.dp), tint = c.primary)
-                                Spacer(Modifier.width(6.dp))
-                                Text(stringResource(R.string.picker_new_view), style = MaterialTheme.typography.titleSmall, color = c.primary)
-                            }
-                        }
+                if (wide) {
+                    Column(Modifier.padding(start = 28.dp, end = 28.dp, top = 28.dp)) { header() }
+                    // Each column scrolls on its own
+                    Row(Modifier.weight(1f).padding(horizontal = 28.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                        val scroll = rememberScrollState()
+                        myViews(Modifier.weight(1f).scrollbar(scroll, c.outline).verticalScroll(scroll))
+                        PickerBoards(choices, boardSelected, { selected = it.viewId }, Modifier.weight(1f), fill = true)
                     }
-                    val boards: @Composable (Modifier) -> Unit = { m ->
-                        Column(m.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            PickerLabel(stringResource(R.string.picker_project_board))
-                            BoardList(choices.boards, boardSelected) { selected = it.viewId }
-                        }
-                    }
-                    if (wide) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                            myViews(Modifier.weight(1f))
-                            boards(Modifier.weight(1f))
-                        }
-                    } else {
+                } else {
+                    Column(
+                        Modifier.weight(1f).verticalScroll(rememberScrollState())
+                            .padding(start = 28.dp, end = 28.dp, top = 28.dp),
+                    ) {
+                        header()
                         myViews(Modifier.fillMaxWidth())
                         Spacer(Modifier.size(16.dp))
-                        boards(Modifier.fillMaxWidth())
+                        PickerBoards(choices, boardSelected, { selected = it.viewId }, Modifier.fillMaxWidth(), fill = false)
                     }
                 }
                 Row(
@@ -197,53 +203,99 @@ private fun ViewCard(view: DashboardView, selected: Boolean, onClick: () -> Unit
     }
 }
 
-/** Projects with their teams as radio rows and the current sprint on the right. */
+/**
+ * "Project and board": a search, the recent boards, then the projects with their teams as radio
+ * rows (the current sprint on the right), only the chosen board's project open at first.
+ * [fill]: the list takes the rest of the height and scrolls inside it.
+ */
 @Composable
-private fun BoardList(boards: List<ProjectBoards>?, selected: BoardRef?, onSelect: (BoardRef) -> Unit) {
+private fun PickerBoards(
+    choices: ViewChoices,
+    selected: BoardRef?,
+    onSelect: (BoardRef) -> Unit,
+    modifier: Modifier,
+    fill: Boolean,
+) {
     val c = AdoTheme.colors
-    when {
-        boards == null -> Row(Modifier.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            CircularProgressIndicator(Modifier.size(20.dp), color = c.primary, strokeWidth = 2.dp)
-            Spacer(Modifier.width(12.dp))
-            Text(stringResource(R.string.picker_loading_boards), style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
-        }
-        boards.isEmpty() -> Text(
-            stringResource(R.string.picker_no_boards), Modifier.padding(vertical = 12.dp),
-            style = MaterialTheme.typography.bodyMedium, color = c.textMuted,
-        )
-        else -> boards.forEach { project ->
-            Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(c.surfaceAlt).padding(vertical = 4.dp),
-            ) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        project.project, Modifier.weight(1f).semantics { heading() },
-                        style = MaterialTheme.typography.titleSmall, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        pluralStringResource(R.plurals.picker_board_count, project.teams.size, project.teams.size),
-                        style = MaterialTheme.typography.bodySmall, color = c.textMuted,
-                    )
-                }
-                project.teams.forEach { team ->
-                    val ref = BoardRef(project.project, team.name)
-                    val on = ref == selected
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = 36.dp).selectable(on, role = Role.RadioButton) { onSelect(ref) }
-                            .padding(start = 2.dp, end = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(on, null, Modifier.padding(horizontal = 10.dp), colors = RadioButtonDefaults.colors(
-                            selectedColor = c.primary, unselectedColor = c.textMuted,
-                        ))
-                        Text(
-                            team.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = c.text,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
-                        team.sprint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.textFaint, maxLines = 1) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var expanded by rememberSaveable(stateSaver = projectsSaver) { mutableStateOf(initialExpanded(selected)) }
+    val boards = choices.boards
+    val menu = boardMenu(boards.orEmpty(), choices.recentBoards, query, expanded)
+    val settled = rememberSettled(boards == null)
+    val pick = { ref: BoardRef -> if (settled()) onSelect(ref) }
+    val sprints = boards.orEmpty().associate { p -> p.project to p.teams.associate { it.name to it.sprint } }
+
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        PickerLabel(stringResource(R.string.picker_project_board))
+        SearchField(query, { query = it }, stringResource(R.string.boards_search), Modifier.fillMaxWidth())
+        val scroll = rememberScrollState()
+        Column(
+            (if (fill) Modifier.weight(1f).scrollbar(scroll, c.outline).verticalScroll(scroll) else Modifier)
+                .fillMaxWidth().selectableGroup(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (menu.recent.isNotEmpty()) {
+                BoardCard {
+                    SubLabel(stringResource(R.string.boards_recent))
+                    menu.recent.forEach { ref ->
+                        BoardRadio(
+                            AnnotatedString(stringResource(R.string.view_board_title, ref.project, ref.team)),
+                            sprints[ref.project]?.get(ref.team), ref == selected,
+                        ) { pick(ref) }
                     }
                 }
             }
+            when {
+                boards == null -> BoardsLoading(Modifier.fillMaxWidth())
+                menu.groups.isEmpty() -> BoardsMessage(choices, menu, Modifier.padding(vertical = 12.dp))
+                else -> menu.groups.forEach { group ->
+                    BoardCard {
+                        ProjectHeader(group, menu.query, onToggle = {
+                            expanded = if (group.project in expanded) expanded - group.project else expanded + group.project
+                        })
+                        if (group.expanded) {
+                            group.teams.forEach { team ->
+                                val ref = BoardRef(group.project, team.name)
+                                BoardRadio(highlight(team.name, menu.query.takeIf { !group.projectMatch }), team.sprint, ref == selected) {
+                                    pick(ref)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+internal val projectsSaver = listSaver<Set<String>, String>({ it.toList() }, { it.toSet() })
+
+@Composable
+private fun BoardCard(content: @Composable () -> Unit) = Column(
+    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AdoTheme.colors.surfaceAlt).padding(vertical = 4.dp),
+) { content() }
+
+@Composable
+private fun SubLabel(text: String) = Text(
+    text, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).semantics { heading() },
+    style = MaterialTheme.typography.titleSmall, color = AdoTheme.colors.textMuted,
+)
+
+@Composable
+private fun BoardRadio(name: AnnotatedString, sprint: String?, on: Boolean, onClick: () -> Unit) {
+    val c = AdoTheme.colors
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 40.dp).selectable(on, role = Role.RadioButton, onClick = onClick)
+            .padding(start = 2.dp, end = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(on, null, Modifier.padding(horizontal = 10.dp), colors = RadioButtonDefaults.colors(
+            selectedColor = c.primary, unselectedColor = c.textMuted,
+        ))
+        Text(name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        sprint?.let {
+            Spacer(Modifier.width(8.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = c.textFaint, maxLines = 1)
         }
     }
 }

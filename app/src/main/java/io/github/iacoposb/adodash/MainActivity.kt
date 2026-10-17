@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
                 val updateBanner by vm.updateBanner.collectAsStateWithLifecycle()
                 val catalog by vm.catalog.collectAsStateWithLifecycle()
                 val launchChoiceMade by vm.launchChoiceMade.collectAsStateWithLifecycle()
-                val choices = viewChoices(settings.views, catalog.catalog, settings.filters, sync.snapshot, catalog.loading)
+                val choices = viewChoices(settings.views, catalog, settings.filters, sync.snapshot)
                 var editing by rememberSaveable { mutableStateOf(false) }
                 val close = { editing = false; showUpdate = false }
 

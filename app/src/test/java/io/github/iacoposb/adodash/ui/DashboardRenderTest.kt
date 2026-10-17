@@ -316,7 +316,10 @@ class DashboardRenderTest {
                 ),
             ),
         )
-        return ViewSet(listOf(DashboardView.global, reviews, bugs), currentId = current)
+        return ViewSet(
+            listOf(DashboardView.global, reviews, bugs), currentId = current,
+            recentBoards = listOf(BoardRef("Contoso", "Backend"), BoardRef("Interno", "Infrastruttura")),
+        )
     }
 
     private val designBoards = listOf(
@@ -324,8 +327,25 @@ class DashboardRenderTest {
         ProjectBoards("Interno", listOf(TeamInfo("Infrastruttura", "Sprint 18"))),
     )
 
-    private fun choices(views: ViewSet = designViews()) = ViewChoices(
-        views, designBoards,
+    /** A real organization: many projects, some with dozens of teams. */
+    private val manyBoards = listOf(
+        ProjectBoards("Clienti", (1..6).map { TeamInfo("Cliente $it", "Sprint 7") }),
+        ProjectBoards("Contoso", listOf("Backend", "Frontend", "Mobile", "Data", "Platform", "QA", "Design", "Security").map { TeamInfo(it, "Sprint 42") }),
+        ProjectBoards("Fatturazione", listOf(TeamInfo("Core", "Sprint 12"), TeamInfo("Integrazioni", "Sprint 12"))),
+        ProjectBoards("Interno", listOf(TeamInfo("Infrastruttura", "Sprint 18"), TeamInfo("Helpdesk"))),
+        ProjectBoards("Logistica", (1..12).map { TeamInfo("Magazzino $it") }),
+        ProjectBoards("Marketing", listOf(TeamInfo("Web"), TeamInfo("Campagne"))),
+        ProjectBoards("Mobile App", listOf(TeamInfo("iOS", "Sprint 30"), TeamInfo("Android", "Sprint 30"), TeamInfo("Backend", "Sprint 30"))),
+        ProjectBoards("Payments", listOf(TeamInfo("Gateway", "Sprint 9"), TeamInfo("Frontend", "Sprint 9"))),
+        ProjectBoards("Portale", listOf(TeamInfo("Portale Team"))),
+        ProjectBoards("Ricerca", listOf(TeamInfo("ML"), TeamInfo("Search"))),
+        ProjectBoards("Supporto", listOf(TeamInfo("L1"), TeamInfo("L2"))),
+        ProjectBoards("Vendite", listOf(TeamInfo("CRM"))),
+        ProjectBoards("Zeta", listOf(TeamInfo("Zeta Team"))),
+    )
+
+    private fun choices(views: ViewSet = designViews(), boards: List<ProjectBoards>? = designBoards) = ViewChoices(
+        views, boards,
         EditorOptions(
             types = listOf("Epic", "Feature", "User Story", "Bug", "Task"),
             states = listOf("New", "Active", "Resolved"),
@@ -334,10 +354,10 @@ class DashboardRenderTest {
         ),
     )
 
-    private fun picker(name: String) {
+    private fun picker(name: String, boards: List<ProjectBoards>? = designBoards, views: ViewSet = designViews()) {
         compose.setContent {
             AdoTheme(dark = false, dynamic = false) {
-                ViewPickerScreen(choices(), onOpen = { _, _, _ -> }, onNewView = {})
+                ViewPickerScreen(choices(views, boards), onOpen = { _, _, _ -> }, onNewView = {})
             }
         }
         compose.onRoot().captureRoboImage("$name.png")
@@ -351,6 +371,16 @@ class DashboardRenderTest {
     @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
     @Test fun viewsPickerPhone() = picker("views-picker-phone")
 
+    /** The boards being read for the first time: the card keeps its size, the recent ones are there. */
+    @Test fun viewsPickerLoading() = picker("views-picker-loading", boards = null)
+
+    @Config(qualifiers = "+it")
+    @Test fun viewsPickerLoadingItalian() = picker("views-picker-loading-it", boards = null)
+
+    /** Many projects, the board open expanded. */
+    @Test fun viewsPickerManyBoards() =
+        picker("views-picker-many-boards", boards = manyBoards, views = designViews().openBoard(BoardRef("Contoso", "Backend")))
+
     private fun viewsDashboard(
         name: String,
         views: ViewSet = designViews(),
@@ -358,19 +388,39 @@ class DashboardRenderTest {
         editor: EditorTarget? = null,
         dark: Boolean = false,
         state: SyncState = SyncState(snapshot),
+        boards: List<ProjectBoards>? = designBoards,
+        query: String = "",
     ) {
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
                 DashboardScreen(
                     "contoso", state, events(), {}, {}, {}, {}, {}, now = now,
-                    choices = choices(views), initialSwitcher = switcher, initialEditor = editor,
+                    choices = choices(views, boards), initialSwitcher = switcher, initialSwitcherQuery = query, initialEditor = editor,
                 )
             }
         }
         compose.onRoot().captureRoboImage("$name.png")
     }
 
-    @Test fun viewsSwitcher() = viewsDashboard("views-switcher", switcher = true)
+    /** On a board, with many others: the recent ones, then the projects, only the open board's expanded. */
+    private fun switcher(name: String, query: String = "", boards: List<ProjectBoards>? = manyBoards) {
+        val board = BoardRef("Contoso", "Backend")
+        val views = designViews().openBoard(BoardRef("Payments", "Gateway")).openBoard(BoardRef("Interno", "Infrastruttura")).openBoard(board)
+        val state = SyncState(snapshot.copy(shown = Shown(views.current.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs)))
+        viewsDashboard(name, views = views, switcher = true, state = state, boards = boards, query = query)
+    }
+
+    @Test fun viewsSwitcher() = switcher("views-switcher")
+
+    @Config(qualifiers = "+it")
+    @Test fun viewsSwitcherItalian() = switcher("views-switcher-it")
+
+    @Test fun viewsSwitcherSearch() = switcher("views-switcher-search", query = "front")
+
+    @Config(qualifiers = "+it")
+    @Test fun viewsSwitcherSearchItalian() = switcher("views-switcher-search-it", query = "front")
+
+    @Test fun viewsSwitcherLoading() = switcher("views-switcher-loading", boards = null)
 
     @Test fun viewsEditor() = viewsDashboard("views-editor", editor = EditorTarget(DashboardView.global))
 

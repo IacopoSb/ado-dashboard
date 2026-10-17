@@ -213,6 +213,8 @@ data class ViewSet(
     val alwaysOpen: Boolean = false,
     /** The launch screen was answered once: before that it suggests "Always open this view". */
     val chosenAtLaunch: Boolean = false,
+    /** The boards last opened, most recent first, at most [RECENT_BOARDS]. */
+    val recentBoards: List<BoardRef> = emptyList(),
 ) {
     /** The global view first, whatever was stored. */
     private val all: List<DashboardView> =
@@ -233,10 +235,17 @@ data class ViewSet(
     /** Adds or replaces [view] and opens it. */
     fun put(view: DashboardView): ViewSet {
         val replaced = all.any { it.id == view.id }
-        return copy(views = if (replaced) all.map { if (it.id == view.id) view else it } else all + view, currentId = view.id)
+        return copy(
+            views = if (replaced) all.map { if (it.id == view.id) view else it } else all + view,
+            currentId = view.id,
+            recentBoards = withRecent(view.board),
+        )
     }
 
-    fun open(id: String) = copy(views = all, currentId = id)
+    fun open(id: String) = copy(views = all, currentId = id, recentBoards = withRecent(find(id)?.board))
+
+    private fun withRecent(board: BoardRef?): List<BoardRef> =
+        if (board == null) recentBoards else (listOf(board) + recentBoards.filterNot { it == board }).take(RECENT_BOARDS)
 
     /** A board is stored once opened, so that it can be the one opened at launch. */
     fun openBoard(ref: BoardRef) = put(board(ref))
@@ -250,6 +259,8 @@ data class ViewSet(
     fun encode(): String = DashboardView.json.encodeToString(serializer(), copy(views = all))
 
     companion object {
+        const val RECENT_BOARDS = 3
+
         /** Nothing stored (before 0.0.6, or another organization): the global view only. */
         fun decode(text: String?): ViewSet =
             text?.let { runCatching { DashboardView.json.decodeFromString(serializer(), it) }.getOrNull() } ?: ViewSet()

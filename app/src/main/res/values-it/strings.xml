@@ -215,6 +215,11 @@
     <string name="picker_open">Apri %1$s</string>
     <string name="picker_loading_boards">Caricamento delle board…</string>
     <string name="picker_no_boards">Nessuna board di team nei progetti dei filtri globali</string>
+    <string name="boards_search">Cerca progetti e team…</string>
+    <string name="boards_recent">Recenti</string>
+    <string name="boards_matching">%1$d di %2$d</string>
+    <string name="boards_no_results">Nessuna board corrisponde a “%1$s”</string>
+    <string name="boards_error">Impossibile leggere le board: %1$s</string>
     <plurals name="picker_board_count">
         <item quantity="one">%d board</item>
         <item quantity="many">%d board</item>
