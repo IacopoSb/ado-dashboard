@@ -65,6 +65,47 @@ object PipelineTree {
         return root.build()
     }
 
+    /**
+     * The folder of [team]'s pipelines, at any depth ("\\PTD", "\\Team\\PTD"): named as the team
+     * (case, spaces and punctuation aside), else a word of the team's name ("PTD" for "PTD
+     * Team"), else one whose name contains the team's ("PTD pipelines"). The shallowest first.
+     */
+    fun teamFolder(root: PipelineFolder, team: String?): PipelineFolder? {
+        val name = squash(team ?: return null)
+        if (name.isEmpty()) return null
+        val words = team.split(Regex("[^\\p{L}\\p{N}]+")).map(::squash).filter { it.length >= 2 }.toSet()
+        val all = mutableListOf<Pair<PipelineFolder, Int>>()
+        walkSub(root, 0, all)
+        fun tier(f: PipelineFolder): Int? {
+            val folder = squash(f.name)
+            return when {
+                folder == name -> 0
+                folder in words -> 1
+                name.length >= 2 && folder.contains(name) -> 2
+                else -> null
+            }
+        }
+        return all.mapNotNull { (f, depth) -> tier(f)?.let { Triple(f, it, depth) } }
+            .minWithOrNull(compareBy<Triple<PipelineFolder, Int, Int>>({ it.second }, { it.third }, { it.first.path.lowercase() }))
+            ?.first
+    }
+
+    /** Every folder below [f] with its depth, parents first. */
+    private fun walkSub(f: PipelineFolder, depth: Int, out: MutableList<Pair<PipelineFolder, Int>>) {
+        f.folders.forEach { sub ->
+            out += sub to depth
+            walkSub(sub, depth + 1, out)
+        }
+    }
+
+    /** The [normalize]d paths that show [folder] open: its own and those above it. */
+    fun opening(folder: PipelineFolder): Set<String> {
+        val parts = folder.path.split('\\').filter(String::isNotBlank)
+        return (1..parts.size).map { n -> normalize(parts.take(n).joinToString("\\")) }.toSet()
+    }
+
+    private fun squash(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
+
     /** The ids of the pipelines whose name contains [query]; null for an empty one. */
     fun matches(root: PipelineFolder, query: String): Set<Int>? {
         val q = query.trim()

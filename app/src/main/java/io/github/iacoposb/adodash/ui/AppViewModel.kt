@@ -120,7 +120,7 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     )
     val pipelines = pipelinesController.state
 
-    fun openPipelines(project: String) = pipelinesController.open(project)
+    fun openPipelines(project: String, team: String?) = pipelinesController.open(project, team)
 
     fun pipelinesActions(openUrl: (String) -> Unit) = PipelinesActions(
         onLoadRuns = pipelinesController::loadRuns,

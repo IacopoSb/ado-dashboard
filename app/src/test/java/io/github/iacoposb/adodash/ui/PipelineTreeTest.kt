@@ -66,4 +66,38 @@ class PipelineTreeTest {
     @Test fun `no pipelines, no lines`() {
         assertTrue(PipelineTree.rows(PipelineTree.of(emptyList()), emptySet(), null).isEmpty())
     }
+
+    private fun teamPath(team: String?, vararg folders: String): String? =
+        PipelineTree.teamFolder(PipelineTree.of(folders.mapIndexed { i, f -> p(i, "p$i", f) }), team)?.path
+
+    @Test fun `the team's folder, whatever the case, at any depth`() {
+        assertEquals("\\Backend", teamPath("backend", "\\Backend", "\\Frontend"))
+        assertEquals("\\Team\\PTD", teamPath("PTD", "\\Team\\PTD", "\\Other"))
+        // The shallowest wins
+        assertEquals("\\PTD", teamPath("PTD", "\\Team\\PTD", "\\PTD"))
+        // Spaces and punctuation aside
+        assertEquals("\\Mobile-Apps", teamPath("Mobile Apps", "\\Mobile-Apps", "\\Mobile"))
+    }
+
+    @Test fun `a word of the team's name, or a folder containing it`() {
+        assertEquals("\\PTD", teamPath("PTD Team", "\\PTD", "\\Other"))
+        assertEquals("\\CI\\PTD pipelines", teamPath("PTD", "\\CI\\PTD pipelines", "\\Other"))
+        // An exact name beats the rest, wherever it is
+        assertEquals("\\A\\PTD", teamPath("PTD", "\\PTD-old", "\\A\\PTD"))
+    }
+
+    @Test fun `no team or no matching folder opens nothing`() {
+        assertNull(teamPath(null, "\\Backend"))
+        assertNull(teamPath("", "\\Backend"))
+        assertNull(teamPath("Data", "\\Backend", "\\Frontend"))
+        // A one-letter name matches only exactly
+        assertNull(teamPath("A", "\\Alpha"))
+    }
+
+    @Test fun `opening a folder opens those above it`() {
+        val nested = PipelineTree.teamFolder(PipelineTree.of(listOf(p(1, "x", "\\Team\\PTD\\CI"))), "CI")!!
+        assertEquals(setOf("\\team", "\\team\\ptd", "\\team\\ptd\\ci"), PipelineTree.opening(nested))
+        val rows = PipelineTree.rows(PipelineTree.of(listOf(p(1, "x", "\\Team\\PTD\\CI"))), PipelineTree.opening(nested), null)
+        assertEquals(listOf("Team/1+", "PTD/1+", "CI/1+", "x"), rows.names())
+    }
 }

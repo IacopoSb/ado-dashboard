@@ -115,7 +115,7 @@ fun DashboardScreen(
     /** A board's pipelines open over the dashboard, if any: a [buildDetail] then shows inside. */
     pipelines: PipelinesState? = null,
     /** The tile tapped: the project's pipelines. */
-    onOpenPipelines: (String) -> Unit = {},
+    onOpenPipelines: (project: String, team: String?) -> Unit = { _, _ -> },
     pipelinesActions: PipelinesActions = PipelinesActions(),
     /** For the screenshots: folders and pipelines expanded in the pipelines, and the search. */
     pipelinesFolders: Set<String> = emptySet(),
@@ -343,7 +343,7 @@ private fun DashboardBar(
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
     onTitle: () -> Unit,
-    onOpenPipelines: (String) -> Unit,
+    onOpenPipelines: (project: String, team: String?) -> Unit,
 ) {
     val c = AdoTheme.colors
     BoxWithConstraints {
@@ -386,7 +386,7 @@ private fun DashboardBar(
             val project = shown?.pipelineProject
             if (project != null) {
                 Spacer(Modifier.width(12.dp))
-                PipelineTile(pipeline, { onOpenPipelines(project) }, dots = dots)
+                PipelineTile(pipeline, { onOpenPipelines(project, view.board?.team) }, dots = dots)
                 Spacer(Modifier.width(20.dp))
             }
             if (state.syncing) {

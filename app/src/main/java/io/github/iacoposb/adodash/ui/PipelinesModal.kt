@@ -93,6 +93,18 @@ fun PipelinesModal(
     var folders by remember { mutableStateOf(initialFolders.map(PipelineTree::normalize).toSet()) }
     var open by remember { mutableStateOf(initialOpen) }
     val listState = rememberLazyListState()
+    // The team's folder, once its pipelines are known: open, and scrolled to
+    var teamDone by remember { mutableStateOf(false) }
+    var scrollTo by remember { mutableStateOf<String?>(null) }
+    val known = state.pipelines
+    LaunchedEffect(known != null) {
+        if (teamDone || known == null) return@LaunchedEffect
+        teamDone = true
+        PipelineTree.teamFolder(PipelineTree.of(known), state.team)?.let { f ->
+            folders = folders + PipelineTree.opening(f)
+            scrollTo = FolderLine(f, 0, open = true, count = 0).key
+        }
+    }
     val title = if (build != null) buildTitle(build) else stringResource(R.string.pipelines_title)
     ModalOverlay(
         title, onDismiss = actions.onClose, onBack = if (build != null) actions.onBackToList else actions.onClose,
@@ -113,6 +125,8 @@ fun PipelinesModal(
                     if (id in open) actions.onLoadRuns(id)
                 },
                 listState = listState,
+                scrollTo = scrollTo,
+                onScrolled = { scrollTo = null },
             )
         }
     }
@@ -130,6 +144,9 @@ private fun ColumnScope.PipelineList(
     open: Set<Int>,
     onToggle: (Int) -> Unit,
     listState: LazyListState,
+    /** The key of a line to scroll to once shown. */
+    scrollTo: String? = null,
+    onScrolled: () -> Unit = {},
 ) {
     val c = AdoTheme.colors
     val pipelines = state.pipelines
@@ -193,6 +210,13 @@ private fun ColumnScope.PipelineList(
             val matches = remember(tree, query) { PipelineTree.matches(tree, query) }
             val lines = remember(tree, folders, matches) { PipelineTree.rows(tree, folders, matches) }
             LaunchedEffect(matches) { if (matches != null) listState.scrollToItem(0) }
+            LaunchedEffect(scrollTo, lines) {
+                val at = lines.indexOfFirst { it.key == scrollTo }
+                if (scrollTo != null && at >= 0) {
+                    listState.scrollToItem(at)
+                    onScrolled()
+                }
+            }
             if (lines.isEmpty()) {
                 Column(body) { message(stringResource(R.string.pipelines_no_results, query.trim())) }
             } else {

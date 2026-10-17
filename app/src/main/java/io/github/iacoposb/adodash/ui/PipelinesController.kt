@@ -35,6 +35,8 @@ data class PipelinesState(
     val denied: Boolean = false,
     /** By pipeline id, for those expanded. */
     val runs: Map<Int, RunsState> = emptyMap(),
+    /** The board's team: its folder opens first (see [PipelineTree.teamFolder]). */
+    val team: String? = null,
 )
 
 /** Opens a project's pipelines and reads the runs of those expanded, a few at a time. */
@@ -52,11 +54,11 @@ class PipelinesController(
     private val runsLimit = Semaphore(PARALLEL_RUNS)
 
     /** Shows the pipelines read before at once, if any, and reads them again in the background. */
-    fun open(project: String) {
+    fun open(project: String, team: String? = null) {
         cancelAll()
         val key = project.lowercase()
         val cached = cache[key]
-        _state.value = PipelinesState(project, cached, refreshing = true)
+        _state.value = PipelinesState(project, cached, refreshing = true, team = team)
         jobs += scope.launch {
             try {
                 val list = api().pipelines(project)
@@ -95,7 +97,7 @@ class PipelinesController(
 
     /** The list again after an error. */
     fun retry() {
-        _state.value?.let { open(it.project) }
+        _state.value?.let { open(it.project, it.team) }
     }
 
     fun close() {

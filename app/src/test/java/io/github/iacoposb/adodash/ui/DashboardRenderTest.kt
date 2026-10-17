@@ -915,10 +915,10 @@ class DashboardRenderTest {
         Fakes.build(972, ago = 200_000),
     ).map { it.copy(definitionId = 5, definitionName = "backend-ci") }
 
-    /** On the Contoso board, its pipelines open over it: Backend open, backend-ci with its runs. */
+    /** On the Contoso › Backend board, its pipelines open over it: the team's folder open, backend-ci with its runs. */
     private fun pipelines(
         name: String,
-        state: PipelinesState = PipelinesState("Contoso", designPipelines, runs = mapOf(5 to RunsState.Loaded(designRuns))),
+        state: PipelinesState = PipelinesState("Contoso", designPipelines, runs = mapOf(5 to RunsState.Loaded(designRuns)), team = "Backend"),
         query: String = "",
         build: BuildDetail? = null,
         dark: Boolean = false,
@@ -930,7 +930,7 @@ class DashboardRenderTest {
                 DashboardScreen(
                     "contoso", SyncState(snapshot.copy(shown = shown)), events(), {}, {}, {}, {}, {}, now = now,
                     choices = choices(views), buildDetail = build, pipelines = state,
-                    pipelinesFolders = setOf("\\Backend"), pipelinesOpen = setOf(5), pipelinesQuery = query,
+                    pipelinesOpen = setOf(5), pipelinesQuery = query,
                 )
             }
         }
