@@ -5,8 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,10 +28,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
 import io.github.iacoposb.adodash.api.Identity
@@ -84,10 +85,10 @@ fun WorkItemRow(wi: WorkItem, now: Instant, onClick: () -> Unit, modifier: Modif
 /**
  * A pull request: draft chip and title, then "author · age · !id · repo · branches" (author
  * only when [reviewing]), then the signals: build, active threads, conflicts or "ready to
- * complete" on the left ([signals], none while unknown), my vote when [reviewing] or the
- * reviewers' votes otherwise on the right. Signals that do not fit wrap to a second line.
+ * complete" ([signals], none while unknown). My vote when [reviewing], or the reviewers' votes
+ * otherwise, sit on the right of the signals' first line, or of the details line when there
+ * are no signals. Signals that do not fit wrap below.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PrRow(
     pr: PullRequest,
@@ -110,31 +111,77 @@ fun PrRow(
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
         }
-        Text(
-            listOfNotNull(
-                pr.author.name.takeIf { reviewing }, ago(pr.createdAt, now),
-                "!${pr.id}", pr.repoName, "${pr.sourceBranch} → ${pr.targetBranch}",
-            ).joinToString(" · "),
-            Modifier.fillMaxWidth().padding(top = 2.dp), style = MaterialTheme.typography.bodySmall, color = c.textMuted,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
         val items = signals?.let { signalItems(it) }.orEmpty()
-        val votes = reviewing || pr.reviewers.isNotEmpty()
-        if (items.isEmpty() && !votes) return@Column
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            FlowRow(
-                Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                items.forEach { SignalLabel(it) }
+        val votes: (@Composable () -> Unit)? = when {
+            reviewing -> { { VoteBadge(pr.reviewers.firstOrNull { it.id == me.id }?.vote ?: Vote.NONE) } }
+            pr.reviewers.isNotEmpty() -> { { ReviewerAvatars(pr) } }
+            else -> null
+        }
+        val meta: @Composable () -> Unit = {
+            Text(
+                listOfNotNull(
+                    pr.author.name.takeIf { reviewing }, ago(pr.createdAt, now),
+                    "!${pr.id}", pr.repoName, "${pr.sourceBranch} → ${pr.targetBranch}",
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall, color = c.textMuted,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (items.isEmpty()) {
+            FlowWithTrailing(votes, Modifier.padding(top = 2.dp), content = meta)
+        } else {
+            Box(Modifier.padding(top = 2.dp)) { meta() }
+            FlowWithTrailing(votes, Modifier.padding(top = 8.dp)) { items.forEach { SignalLabel(it) } }
+        }
+    }
+}
+
+/**
+ * [content] flowed left to right, wrapping when it does not fit, with [trailing] right-aligned
+ * on the first line; the items of each line are centered vertically on it.
+ */
+@Composable
+private fun FlowWithTrailing(
+    trailing: (@Composable () -> Unit)?,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Layout(contents = listOf(content, trailing ?: {}), modifier = modifier.fillMaxWidth()) { (items, end), constraints ->
+        val gap = 12.dp.roundToPx()
+        val lineGap = 2.dp.roundToPx()
+        val endGap = 8.dp.roundToPx()
+        val width = constraints.maxWidth
+        val endPlaceable = end.firstOrNull()?.measure(Constraints(maxWidth = width))
+        val firstWidth = (width - (endPlaceable?.let { it.width + endGap } ?: 0)).coerceAtLeast(0)
+        // Lines of placeables: the first leaves room for the trailing content
+        val lines = mutableListOf(mutableListOf<Placeable>())
+        var used = 0
+        items.forEach { m ->
+            var available = if (lines.size == 1) firstWidth else width
+            val natural = minOf(m.maxIntrinsicWidth(Constraints.Infinity), available)
+            if (lines.last().isNotEmpty() && used + gap + natural > available) {
+                lines += mutableListOf<Placeable>()
+                used = 0
+                available = width
             }
-            if (reviewing) {
-                Spacer(Modifier.width(8.dp))
-                VoteBadge(pr.reviewers.firstOrNull { it.id == me.id }?.vote ?: Vote.NONE)
-            } else if (pr.reviewers.isNotEmpty()) {
-                Spacer(Modifier.width(8.dp))
-                ReviewerAvatars(pr)
+            val p = m.measure(Constraints(maxWidth = available))
+            used += (if (lines.last().isEmpty()) 0 else gap) + p.width
+            lines.last() += p
+        }
+        val heights = lines.mapIndexed { i, line ->
+            maxOf(line.maxOfOrNull { it.height } ?: 0, if (i == 0) endPlaceable?.height ?: 0 else 0)
+        }
+        val height = heights.sum() + lineGap * (lines.size - 1)
+        layout(width, height) {
+            var y = 0
+            lines.forEachIndexed { i, line ->
+                var x = 0
+                line.forEach { p ->
+                    p.placeRelative(x, y + (heights[i] - p.height) / 2)
+                    x += p.width + gap
+                }
+                if (i == 0) endPlaceable?.placeRelative(width - endPlaceable.width, (heights[0] - endPlaceable.height) / 2)
+                y += heights[i] + lineGap
             }
         }
     }

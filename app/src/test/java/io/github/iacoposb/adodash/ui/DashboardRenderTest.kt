@@ -1,7 +1,12 @@
 package io.github.iacoposb.adodash.ui
 
 import android.content.Context
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
@@ -43,6 +48,7 @@ import io.github.iacoposb.adodash.sync.CatalogState
 import io.github.iacoposb.adodash.sync.ResourceSyncTexts
 import io.github.iacoposb.adodash.sync.Snapshot
 import io.github.iacoposb.adodash.sync.SyncState
+import io.github.iacoposb.adodash.ui.components.PrRow
 import io.github.iacoposb.adodash.update.Release
 import io.github.iacoposb.adodash.update.UpdateException
 import io.github.iacoposb.adodash.update.UpdateState
@@ -180,6 +186,58 @@ class DashboardRenderTest {
 
     @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
     @Test fun buildModalPhone() = dashboard("build-modal-phone", dark = false, build = buildDetail())
+
+    /**
+     * The pull request rows at the width of a dashboard column: without signals the vote sits
+     * on the details line, with signals on their first line, also when they wrap.
+     */
+    private fun prRows(name: String, width: Int = 420, dark: Boolean = false) {
+        val reviewer = listOf(Reviewer(me.id, me.name, Vote.NONE, true))
+        val reviewers = listOf(
+            Reviewer(anna.id, anna.name, Vote.APPROVED, true),
+            Reviewer(marco.id, marco.name, Vote.WAITING, false),
+            Reviewer("dddddddd-1111-2222-3333-444444444444", "Luca Rossi", Vote.APPROVED_WITH_SUGGESTIONS, false),
+        )
+        val rows = listOf(
+            // To review, no signals
+            Triple(Fakes.pr(311, anna, "Retry handling for payment gateway calls", reviewer), true, null),
+            // Mine, no signals
+            Triple(Fakes.pr(318, me, "Dashboard: filter by area path", reviewers, ago = 3000), false, null),
+            // To review, signals and vote
+            Triple(Fakes.pr(305, marco, "Refactor the authentication module", reviewer, draft = true), true,
+                PrSignals(BuildSignal.SUCCEEDED, activeThreads = 2)),
+            // Mine, signals and avatars
+            Triple(Fakes.pr(320, me, "Update the payments SDK to 4.2", reviewers), false,
+                PrSignals(BuildSignal.SUCCEEDED, activeThreads = 0, readyToComplete = true)),
+            // Many signals: they wrap, the vote stays on the first line
+            Triple(Fakes.pr(330, anna, "Move the session store to the shared cache", reviewer), true,
+                PrSignals(BuildSignal.FAILED, activeThreads = 12, conflicts = true)),
+            Triple(Fakes.pr(331, me, "Split the notification worker", reviewers), false,
+                PrSignals(BuildSignal.RUNNING, activeThreads = 3, conflicts = true)),
+        )
+        compose.setContent {
+            AdoTheme(dark = dark, dynamic = false) {
+                Column(
+                    Modifier.width(width.dp).background(AdoTheme.colors.surface),
+                ) {
+                    rows.forEach { (pr, reviewing, s) ->
+                        PrRow(pr, me, reviewing, now, {}, signals = s)
+                    }
+                }
+            }
+        }
+        compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    @Test fun prRows() = prRows("pr-rows")
+
+    @Config(qualifiers = "+it")
+    @Test fun prRowsItalian() = prRows("pr-rows-it")
+
+    @Test fun prRowsDark() = prRows("pr-rows-dark", dark = true)
+
+    /** Narrow: more signals wrap. */
+    @Test fun prRowsNarrow() = prRows("pr-rows-narrow", width = 320)
 
     /** Without Build (read): no tile, the PR rows without a build. */
     @Test fun tabletNoBuilds() = dashboard(
