@@ -9,6 +9,8 @@ import io.github.iacoposb.adodash.api.AdoClient
 import io.github.iacoposb.adodash.api.AdoException
 import io.github.iacoposb.adodash.api.Build
 import io.github.iacoposb.adodash.api.BuildState
+import io.github.iacoposb.adodash.api.Person
+import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.sync.BuildSteps
 import io.github.iacoposb.adodash.data.AuthMethod
 import io.github.iacoposb.adodash.data.BoardRef
@@ -115,6 +117,35 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     fun markRead(key: String) {
         viewModelScope.launch { app.sync.markRead(key) }
     }
+
+    /** The work item details open over the dashboard, and their changes. */
+    private val workItems = WorkItemController(
+        viewModelScope,
+        api = { app.api(app.settings.current()) },
+        catalog = { app.catalog.state.value.catalog },
+        me = { settings.value?.takeIf { it.meId.isNotEmpty() }?.let { Person(it.meId, it.meName, "") } },
+        onSaved = { item, mine -> app.sync.applyOwnChange(item, mine) },
+        errorText = app::errorText,
+    )
+    val workItem = workItems.state
+    /** A change was refused for lack of permission: for the hint in the settings. */
+    val workItemsReadOnly = workItems.readOnly
+
+    fun openWorkItem(item: WorkItem) {
+        // The areas come from the saved catalog
+        loadBoards()
+        workItems.open(item.id, item)
+    }
+
+    fun workItemActions(openUrl: (String) -> Unit) = WorkItemActions(
+        onOpenUrl = openUrl,
+        onOpenWorkItem = workItems::openLinked,
+        onChange = workItems::change,
+        onSearchPeople = workItems::searchPeople,
+        onReload = workItems::reload,
+        onBack = workItems::back,
+        onClose = workItems::close,
+    )
 
     fun closeBuild() {
         buildJob?.cancel()

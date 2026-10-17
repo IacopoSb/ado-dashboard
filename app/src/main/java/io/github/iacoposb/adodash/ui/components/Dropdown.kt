@@ -48,10 +48,12 @@ fun DropdownField(
     label: String,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /** Open from the start, for the screenshots. */
+    initiallyOpen: Boolean = false,
     menu: @Composable ColumnScope.(close: () -> Unit) -> Unit,
 ) {
     val c = AdoTheme.colors
-    var open by remember { mutableStateOf(false) }
+    var open by remember { mutableStateOf(initiallyOpen) }
     val shape = RoundedCornerShape(8.dp)
     Box(modifier) {
         Row(

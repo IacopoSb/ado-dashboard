@@ -54,6 +54,12 @@ data class Snapshot(
     /** What the dashboard shows for [view]: null while the last sync read another view. */
     fun shownFor(view: DashboardView): Shown? = shown?.takeIf { it.viewKey == view.queryKey }
         ?: if (shown == null) Shown(view.queryKey, workItems, reviewPrs, myPrs) else null
+
+    /** [item] in place of the work item with its id, wherever it is listed. */
+    fun replacing(item: WorkItem): Snapshot {
+        fun List<WorkItem>.swap() = map { if (it.id == item.id) item else it }
+        return copy(workItems = workItems.swap(), shown = shown?.copy(workItems = shown.workItems.swap()))
+    }
 }
 
 /**

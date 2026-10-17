@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
 import io.github.iacoposb.adodash.api.Build
 import io.github.iacoposb.adodash.api.Identity
+import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.DashboardView
 import io.github.iacoposb.adodash.data.Event
@@ -113,6 +114,13 @@ fun DashboardScreen(
     onOpenBuild: (Build) -> Unit = {},
     onRerunBuild: () -> Unit = {},
     onCloseBuild: () -> Unit = {},
+    /** A work item row tapped: its details (null: the browser). */
+    onOpenWorkItem: ((WorkItem) -> Unit)? = null,
+    /** The work item details open over the dashboard, if any. */
+    workItem: WorkItemModal? = null,
+    workItemActions: WorkItemActions = WorkItemActions(),
+    /** For the screenshots: a field's menu open in the work item details. */
+    workItemMenu: String? = null,
 ) {
     val c = AdoTheme.colors
     val view = choices.views.current
@@ -125,12 +133,13 @@ fun DashboardScreen(
             Modifier.fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 // Under the switcher or the editor nothing is reachable
-                .then(if (switcher || editor != null || buildDetail != null) Modifier.clearAndSetSemantics {} else Modifier),
+                .then(if (switcher || editor != null || buildDetail != null || workItem != null) Modifier.clearAndSetSemantics {} else Modifier),
         ) {
             DashboardBar(organization, view, state, onRefresh, onSettings, onTitle = { switcher = true }, onOpenBuild = onOpenBuild)
             Panels(
                 state, events, view, now, updateVersion, onUpdate, onDismissUpdate, onRefresh, onOpen, onEventOpen,
                 onMarkAllRead, onEdit = { editor = EditorTarget(view, focus = it) },
+                onOpenWorkItem = onOpenWorkItem ?: { onOpen(it.url) },
             )
         }
 
@@ -154,6 +163,7 @@ fun DashboardScreen(
             )
         }
         buildDetail?.let { BuildDetailsModal(it, now, onOpen, onRerunBuild, onCloseBuild) }
+        workItem?.let { WorkItemDetailsModal(it, now, workItemActions, initialMenu = workItemMenu) }
     }
 }
 
@@ -171,6 +181,7 @@ private fun Panels(
     onEventOpen: (Event) -> Unit,
     onMarkAllRead: () -> Unit,
     onEdit: (ViewPanel) -> Unit,
+    onOpenWorkItem: (WorkItem) -> Unit,
 ) {
     val c = AdoTheme.colors
     val snapshot = state.snapshot
@@ -220,7 +231,7 @@ private fun Panels(
         ) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = bottom) {
                 if (loading) skeleton(syncing) else if (workItems.isEmpty()) empty(noWorkItems)
-                if (!loading) items(workItems, key = { it.id }) { WorkItemRow(it, now, onClick = { onOpen(it.url) }) }
+                if (!loading) items(workItems, key = { it.id }) { WorkItemRow(it, now, onClick = { onOpenWorkItem(it) }) }
             }
         }
     }

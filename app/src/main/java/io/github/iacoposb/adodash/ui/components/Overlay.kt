@@ -44,9 +44,13 @@ fun ModalOverlay(
     onDismiss: () -> Unit,
     maxWidth: Dp = 900.dp,
     scrim: Boolean = true,
+    /** Back: closes it, unless the modal has a way back of its own. */
+    onBack: () -> Unit = onDismiss,
+    /** The card's height at most; the screen's own height less the margins in any case. */
+    maxHeight: Dp = Dp.Infinity,
     content: @Composable ColumnScope.(fullScreen: Boolean) -> Unit,
 ) {
-    BackHandler(onBack = onDismiss)
+    BackHandler(onBack = onBack)
     val c = AdoTheme.colors
     BoxWithConstraints(
         Modifier.fillMaxSize()
@@ -58,7 +62,7 @@ fun ModalOverlay(
             Modifier.fillMaxSize().background(c.surface).windowInsetsPadding(WindowInsets.safeDrawing)
         } else {
             Modifier.align(Alignment.Center).padding(24.dp).width(maxWidth.coerceAtMost(this.maxWidth - 48.dp))
-                .heightIn(max = this.maxHeight - 48.dp)
+                .heightIn(max = maxHeight.coerceAtMost(this.maxHeight - 48.dp))
                 .clip(RoundedCornerShape(24.dp)).background(c.surface)
         }
         Column(

@@ -68,6 +68,8 @@ class MainActivity : ComponentActivity() {
                 val catalog by vm.catalog.collectAsStateWithLifecycle()
                 val launchChoiceMade by vm.launchChoiceMade.collectAsStateWithLifecycle()
                 val buildDetail by vm.build.collectAsStateWithLifecycle()
+                val workItem by vm.workItem.collectAsStateWithLifecycle()
+                val workItemsReadOnly by vm.workItemsReadOnly.collectAsStateWithLifecycle()
                 val choices = viewChoices(settings.views, catalog, settings.filters, sync.snapshot)
                 var editing by rememberSaveable { mutableStateOf(false) }
                 val close = { editing = false; showUpdate = false }
@@ -100,6 +102,7 @@ class MainActivity : ComponentActivity() {
                         onLoadCatalog = vm::loadCatalog,
                         onFiltersChange = vm::updateFilters,
                         buildsDenied = sync.snapshot?.buildsDenied == true,
+                        workItemsReadOnly = workItemsReadOnly,
                         askViewAtLaunch = !settings.views.alwaysOpen,
                         onAskViewAtLaunchChange = vm::setAskAtLaunch,
                     )
@@ -151,6 +154,9 @@ class MainActivity : ComponentActivity() {
                         onOpenBuild = { vm.openBuild(it.project, it.id, it) },
                         onRerunBuild = vm::rerunBuild,
                         onCloseBuild = vm::closeBuild,
+                        onOpenWorkItem = vm::openWorkItem,
+                        workItem = workItem,
+                        workItemActions = remember(vm) { vm.workItemActions(::openUrl) },
                     )
                 }
             }

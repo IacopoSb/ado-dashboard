@@ -104,7 +104,7 @@
     <string name="settings_use_pat_hint">Al posto dell\'accesso con Microsoft</string>
     <string name="action_sign_in_microsoft">Accedi con Microsoft</string>
     <string name="settings_more_options">Altre opzioni</string>
-    <string name="settings_pat_hint">Permessi in lettura: Work Items, Code, Project and Team</string>
+    <string name="settings_pat_hint">Permessi: Work Items (Read &amp; write), Code, Project and Team (Read)</string>
     <string name="action_sign_in_pat">Accedi con il PAT</string>
     <string name="settings_dashboard">Dashboard</string>
     <string name="settings_poll">Aggiornamento con l\'app aperta (secondi)</string>
@@ -349,4 +349,42 @@
         <item quantity="other">%d test non superati</item>
     </plurals>
     <string name="settings_pat_no_builds">Aggiungi Build (read) per vedere le pipeline</string>
+    <!-- Dettagli del work item -->
+    <string name="wi_loading">Caricamento del work item…</string>
+    <string name="wi_load_failed">Impossibile leggere il work item: %1$s</string>
+    <!-- "modificato 30 min fa da Anna Verdi"; %1$s è "30 min fa" -->
+    <string name="wi_changed_by">modificato %1$s da %2$s</string>
+    <string name="wi_changed">modificato %1$s</string>
+    <string name="wi_description">Descrizione</string>
+    <string name="wi_no_description">Nessuna descrizione</string>
+    <string name="wi_links">Collegamenti</string>
+    <string name="wi_link_parent">Padre</string>
+    <string name="wi_link_child">Figlio</string>
+    <string name="wi_link_related">Correlato</string>
+    <string name="wi_link_pr">Pull request</string>
+    <string name="wi_pr_active">Attiva</string>
+    <string name="wi_pr_completed">Completata</string>
+    <string name="wi_pr_abandoned">Abbandonata</string>
+    <string name="wi_comments">Commenti</string>
+    <string name="wi_no_comments">Ancora nessun commento ·</string>
+    <string name="wi_comments_open">Apri in Azure DevOps</string>
+    <string name="wi_state">Stato</string>
+    <string name="wi_assigned_to">Assegnato a</string>
+    <string name="wi_priority">Priorità</string>
+    <string name="wi_iteration">Iterazione</string>
+    <string name="wi_iteration_current">corrente</string>
+    <string name="wi_area">Area</string>
+    <string name="wi_remaining_work">Lavoro rimanente</string>
+    <string name="wi_hours_unit">h</string>
+    <string name="wi_unassigned">Non assegnato</string>
+    <string name="wi_search_people">Cerca persone</string>
+    <string name="wi_no_people">Nessuno trovato</string>
+    <string name="wi_saving">Salvataggio</string>
+    <string name="wi_saved_at_once">Le modifiche si salvano subito.</string>
+    <string name="wi_conflict">Qualcun altro ha modificato questo work item:</string>
+    <string name="wi_conflict_reload">ricarica</string>
+    <string name="wi_denied">Non hai i permessi per modificare questo work item</string>
+    <string name="wi_not_saved">Non salvato: %1$s</string>
+    <string name="wi_read_only">Sola lettura: con queste credenziali non si possono modificare i work item (al PAT serve Work Items, Read &amp; write)</string>
+    <string name="settings_pat_no_write">Aggiungi Work Items (Read &amp; write) per modificare i work item dall\'app</string>
 </resources>

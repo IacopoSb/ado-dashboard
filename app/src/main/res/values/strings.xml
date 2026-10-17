@@ -107,7 +107,7 @@
     <string name="action_sign_in_microsoft">Sign in with Microsoft</string>
     <string name="settings_more_options">More options</string>
     <string name="settings_pat" translatable="false">Personal Access Token</string>
-    <string name="settings_pat_hint">Read permissions: Work Items, Code, Project and Team</string>
+    <string name="settings_pat_hint">Permissions: Work Items (Read &amp; write), Code, Project and Team (Read)</string>
     <string name="action_sign_in_pat">Sign in with PAT</string>
     <string name="settings_dashboard">Dashboard</string>
     <string name="settings_poll">Refresh interval while open (seconds)</string>
@@ -351,4 +351,42 @@
         <item quantity="other">%d tests failed</item>
     </plurals>
     <string name="settings_pat_no_builds">Add Build (read) to see pipelines</string>
+    <!-- Work item details -->
+    <string name="wi_loading">Loading the work item…</string>
+    <string name="wi_load_failed">The work item can\'t be read: %1$s</string>
+    <!-- "changed 30 min ago by Anna Verdi"; %1$s is "30 min ago" -->
+    <string name="wi_changed_by">changed %1$s by %2$s</string>
+    <string name="wi_changed">changed %1$s</string>
+    <string name="wi_description">Description</string>
+    <string name="wi_no_description">No description</string>
+    <string name="wi_links">Links</string>
+    <string name="wi_link_parent">Parent</string>
+    <string name="wi_link_child">Child</string>
+    <string name="wi_link_related">Related</string>
+    <string name="wi_link_pr">Pull request</string>
+    <string name="wi_pr_active">Active</string>
+    <string name="wi_pr_completed">Completed</string>
+    <string name="wi_pr_abandoned">Abandoned</string>
+    <string name="wi_comments">Comments</string>
+    <string name="wi_no_comments">No comments yet ·</string>
+    <string name="wi_comments_open">Open in Azure DevOps</string>
+    <string name="wi_state">State</string>
+    <string name="wi_assigned_to">Assigned to</string>
+    <string name="wi_priority">Priority</string>
+    <string name="wi_iteration">Iteration</string>
+    <string name="wi_iteration_current">current</string>
+    <string name="wi_area">Area</string>
+    <string name="wi_remaining_work">Remaining work</string>
+    <string name="wi_hours_unit">h</string>
+    <string name="wi_unassigned">Unassigned</string>
+    <string name="wi_search_people">Search people</string>
+    <string name="wi_no_people">Nobody found</string>
+    <string name="wi_saving">Saving</string>
+    <string name="wi_saved_at_once">Changes are saved immediately.</string>
+    <string name="wi_conflict">Someone else changed this work item:</string>
+    <string name="wi_conflict_reload">reload</string>
+    <string name="wi_denied">You don\'t have permission to edit this work item</string>
+    <string name="wi_not_saved">Not saved: %1$s</string>
+    <string name="wi_read_only">Read only: these credentials can\'t edit work items (a PAT needs Work Items, Read &amp; write)</string>
+    <string name="settings_pat_no_write">Add Work Items (Read &amp; write) to edit work items from the app</string>
 </resources>

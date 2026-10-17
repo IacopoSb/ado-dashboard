@@ -118,6 +118,8 @@ fun SettingsScreen(
     filtersQuery: String = "",
     /** The last sync could not read builds: with a PAT, a hint to add Build (read). */
     buildsDenied: Boolean = false,
+    /** A change of a work item was refused: with a PAT, a hint to add Work Items (Read & write). */
+    workItemsReadOnly: Boolean = false,
     /** "What do you want to see?" at launch; applied at once. */
     askViewAtLaunch: Boolean = true,
     onAskViewAtLaunchChange: (Boolean) -> Unit = {},
@@ -164,7 +166,7 @@ fun SettingsScreen(
             }
             SettingsSection.ACCOUNT -> if (initial.configured) {
                 Columns(wide, left = {
-                    SignedInCard(initial, busy, onSignOut, buildsDenied)
+                    SignedInCard(initial, busy, onSignOut, buildsDenied, workItemsReadOnly)
                 })
             } else {
                 Columns(
@@ -409,7 +411,7 @@ private fun Navigation(
 }
 
 @Composable
-private fun SignedInCard(settings: Settings, busy: Boolean, onSignOut: () -> Unit, buildsDenied: Boolean) {
+private fun SignedInCard(settings: Settings, busy: Boolean, onSignOut: () -> Unit, buildsDenied: Boolean, workItemsReadOnly: Boolean) {
     val c = AdoTheme.colors
     SectionCard(stringResource(R.string.settings_account)) {
         val (name, detail) = accountLine(settings)
@@ -426,11 +428,17 @@ private fun SignedInCard(settings: Settings, busy: Boolean, onSignOut: () -> Uni
             }
             if (!busy) TextAction(stringResource(R.string.action_sign_out), onSignOut)
         }
-        if (buildsDenied && settings.authMethod == AuthMethod.PAT) {
+        val hints = buildList {
+            if (settings.authMethod == AuthMethod.PAT) {
+                if (buildsDenied) add(R.string.settings_pat_no_builds)
+                if (workItemsReadOnly) add(R.string.settings_pat_no_write)
+            }
+        }
+        hints.forEach { hint ->
             Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(AdoIcons.Error, null, Modifier.size(16.dp), tint = c.warning)
                 Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.settings_pat_no_builds), style = MaterialTheme.typography.bodySmall, color = c.textMuted)
+                Text(stringResource(hint), style = MaterialTheme.typography.bodySmall, color = c.textMuted)
             }
         }
     }

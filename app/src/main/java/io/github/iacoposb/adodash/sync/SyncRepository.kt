@@ -3,6 +3,7 @@ package io.github.iacoposb.adodash.sync
 import io.github.iacoposb.adodash.api.AdoApi
 import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.api.TeamArea
+import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.EventDao
@@ -99,6 +100,33 @@ class SyncRepository(
         if (list.isEmpty()) emptyList() else list.zip(events.insertNew(list)).filter { it.second != -1L }.map { it.first }
 
     private fun prId(key: String) = key.removePrefix("pr:").substringBefore(':')
+
+    /**
+     * A change made from the app: the dashboard row shows [item] at once, without waiting for the
+     * next sync. Assigning it to myself is not news: its "assigned" event is stored as already
+     * seen, so the next sync does not notify my own change.
+     */
+    suspend fun applyOwnChange(item: WorkItem, assignedToMe: Boolean) {
+        if (assignedToMe) {
+            events.insertNew(
+                listOf(
+                    Event(
+                        key = "wi:${item.id}:assigned",
+                        kind = EventKind.ASSIGNED,
+                        title = texts.assigned(item.id, item.title),
+                        body = "${item.type} · ${item.project} · ${item.state}",
+                        url = item.url,
+                        at = item.changedAt.toEpochMilli(),
+                        read = true,
+                        hidden = true,
+                        project = item.project,
+                        area = item.areaPath,
+                    ),
+                ),
+            )
+        }
+        _state.update { s -> s.snapshot?.let { s.copy(snapshot = it.replacing(item)) } ?: s }
+    }
 
     suspend fun markRead(key: String) = events.markRead(key)
     suspend fun markAllRead() = events.markAllRead()

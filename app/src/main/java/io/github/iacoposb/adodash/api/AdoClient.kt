@@ -18,11 +18,13 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.Credentials
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -260,6 +262,74 @@ class AdoClient(
         return list.value.filterNot { it.isDisabled }.map { it.name }.sortedBy { it.lowercase() }
     }
 
+    override suspend fun workItemDetail(id: Int): WorkItemDetail =
+        get<WorkItemDetailDto>(url("_apis", "wit", "workitems", "$id") { addQueryParameter("\$expand", "relations") })
+            .toDetail()
+
+    override suspend fun updateWorkItem(id: Int, rev: Int, change: FieldChange): WorkItemDetail {
+        val body = WorkItemPatch.build(rev, change).toString().toRequestBody(JSON_PATCH)
+        return call<WorkItemDetailDto>(
+            Request.Builder().url(url("_apis", "wit", "workitems", "$id") { addQueryParameter("\$expand", "relations") }).patch(body),
+        ).toDetail()
+    }
+
+    override suspend fun typeFields(project: String, type: String): Set<String> {
+        val list: ValueList<FieldRefDto> = get(url(project, "_apis", "wit", "workitemtypes", type, "fields"))
+        return list.value.map { it.referenceName }.toSet()
+    }
+
+    override suspend fun iterations(project: String): List<Iteration> {
+        val root: ClassificationNodeDto = get(
+            url(project, "_apis", "wit", "classificationnodes", "iterations") { addQueryParameter("\$depth", "$AREA_DEPTH") },
+        )
+        // As for the areas: work items read "Project\\Sprint 1", without the API's "\\Iteration"
+        val out = mutableListOf<Iteration>()
+        fun ClassificationNodeDto.walk(path: String) {
+            out += Iteration(
+                name, path,
+                attributes?.startDate?.let(::instantOrNull), attributes?.finishDate?.let(::instantOrNull),
+            )
+            children.forEach { it.walk("$path\\${it.name}") }
+        }
+        root.copy(name = project).walk(project)
+        return out
+    }
+
+    override suspend fun searchPeople(query: String): List<Person> {
+        val body = buildJsonObject {
+            put("query", query)
+            putJsonArray("identityTypes") { add(JsonPrimitive("user")) }
+            putJsonArray("operationScopes") { add(JsonPrimitive("ims")); add(JsonPrimitive("source")) }
+            putJsonObject("options") {
+                put("MinResults", 5)
+                put("MaxResults", 20)
+            }
+            putJsonArray("properties") {
+                listOf("DisplayName", "Mail", "SignInAddress", "SamAccountName").forEach { add(JsonPrimitive(it)) }
+            }
+        }
+        val result: IdentityPickerResult = post(url("_apis", "IdentityPicker", "Identities", apiVersion = "7.1-preview.1"), body)
+        return result.results.flatMap { it.identities }.mapNotNull { i ->
+            val name = i.displayName ?: return@mapNotNull null
+            Person(
+                id = i.localId ?: i.entityId.orEmpty(),
+                name = name,
+                uniqueName = i.signInAddress ?: i.mail ?: i.samAccountName ?: name,
+            )
+        }.distinctBy { it.uniqueName.lowercase() }
+    }
+
+    override suspend fun teamMembers(project: String, team: String): List<Person> {
+        val list: ValueList<TeamMemberDto> = get(url("_apis", "projects", project, "teams", team, "members"))
+        return list.value.map { it.identity }.filterNot { it.isContainer }
+            .map { Person(it.id, it.displayName, it.uniqueName.ifBlank { it.displayName }) }
+    }
+
+    override suspend fun pullRequestById(id: Int): LinkedPullRequest {
+        val pr: PullRequestDto = get(url("_apis", "git", "pullrequests", "$id"))
+        return pr.toPullRequest().let { LinkedPullRequest(it.id, it.title, pr.status, it.draft, it.url) }
+    }
+
     private fun url(
         vararg segments: String,
         apiVersion: String = API_VERSION,
@@ -320,6 +390,53 @@ class AdoClient(
         )
     }
 
+    private fun WorkItemDetailDto.toDetail(): WorkItemDetail {
+        val item = WorkItemDto(id, fields).toWorkItem()
+        fun text(name: String) = (fields[name] as? JsonPrimitive)?.contentOrNull
+        fun person(name: String) = (fields[name] as? JsonObject)?.let { o ->
+            val display = o["displayName"]?.jsonPrimitive?.contentOrNull ?: return@let null
+            Person(
+                o["id"]?.jsonPrimitive?.contentOrNull.orEmpty(), display,
+                o["uniqueName"]?.jsonPrimitive?.contentOrNull ?: display,
+            )
+        }
+        val description = text(WiFields.DESCRIPTION)?.takeIf { it.isNotBlank() } ?: text(WiFields.REPRO_STEPS).orEmpty()
+        return WorkItemDetail(
+            item = item,
+            rev = rev,
+            descriptionHtml = description,
+            assignee = person(WiFields.ASSIGNED_TO),
+            iterationPath = text(WiFields.ITERATION) ?: item.project,
+            remainingWork = (fields[WiFields.REMAINING_WORK] as? JsonPrimitive)?.doubleOrNull,
+            changedBy = person(WiFields.CHANGED_BY)?.name,
+            commentCount = (fields[WiFields.COMMENT_COUNT] as? JsonPrimitive)?.intOrNull ?: 0,
+            links = relations.mapNotNull { it.toLink() },
+        )
+    }
+
+    private fun RelationDto.toLink(): WorkItemLink? {
+        fun workItemId() = url.substringAfterLast('/').toIntOrNull()
+        return when (rel) {
+            "System.LinkTypes.Hierarchy-Reverse" -> workItemId()?.let { WorkItemLink(LinkKind.PARENT, it, url) }
+            "System.LinkTypes.Hierarchy-Forward" -> workItemId()?.let { WorkItemLink(LinkKind.CHILD, it, url) }
+            "System.LinkTypes.Related" -> workItemId()?.let { WorkItemLink(LinkKind.RELATED, it, url) }
+            "ArtifactLink" -> {
+                // vstfs:///Git/PullRequestId/<project id>%2F<repo id>%2F<pr id>
+                if (!url.startsWith(PR_ARTIFACT, ignoreCase = true)) return null
+                val parts = url.substring(PR_ARTIFACT.length).replace("%2F", "/", ignoreCase = true).split('/')
+                val prId = parts.lastOrNull()?.toIntOrNull() ?: return null
+                val page = if (parts.size == 3) {
+                    baseUrl.newBuilder().addPathSegment(parts[0]).addPathSegment("_git").addPathSegment(parts[1])
+                        .addPathSegment("pullrequest").addPathSegment("$prId").build().toString()
+                } else {
+                    ""
+                }
+                WorkItemLink(LinkKind.PULL_REQUEST, prId, page)
+            }
+            else -> null
+        }
+    }
+
     private fun BuildDto.toBuild(project: String): Build {
         val pr = triggerInfo["pr.number"]?.toIntOrNull()
             ?: sourceBranch.takeIf { it.startsWith("refs/pull/") }?.removePrefix("refs/pull/")?.substringBefore('/')?.toIntOrNull()
@@ -371,6 +488,8 @@ class AdoClient(
     companion object {
         const val API_VERSION = "7.1"
         private val JSON = "application/json".toMediaType()
+        private val JSON_PATCH = "application/json-patch+json".toMediaType()
+        private const val PR_ARTIFACT = "vstfs:///Git/PullRequestId/"
         private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
         private val WORK_ITEM_FIELDS = listOf(
             "System.Id", "System.TeamProject", "System.WorkItemType", "System.Title", "System.State",
@@ -449,7 +568,34 @@ class AdoClient(
 @Serializable private data class ClassificationNodeDto(
     val name: String,
     val children: List<ClassificationNodeDto> = emptyList(),
+    val attributes: NodeAttributesDto? = null,
 )
+@Serializable private data class NodeAttributesDto(val startDate: String? = null, val finishDate: String? = null)
+@Serializable private data class FieldRefDto(val referenceName: String)
+@Serializable private data class RelationDto(val rel: String = "", val url: String = "")
+@Serializable private data class WorkItemDetailDto(
+    val id: Int,
+    val rev: Int = 0,
+    val fields: JsonObject = JsonObject(emptyMap()),
+    val relations: List<RelationDto> = emptyList(),
+)
+@Serializable private data class IdentityPickerResult(val results: List<IdentityPickerQuery> = emptyList())
+@Serializable private data class IdentityPickerQuery(val identities: List<PickerIdentityDto> = emptyList())
+@Serializable private data class PickerIdentityDto(
+    val entityId: String? = null,
+    val localId: String? = null,
+    val displayName: String? = null,
+    val mail: String? = null,
+    val signInAddress: String? = null,
+    val samAccountName: String? = null,
+)
+@Serializable private data class TeamMemberIdentityDto(
+    val id: String = "",
+    val displayName: String = "",
+    val uniqueName: String = "",
+    val isContainer: Boolean = false,
+)
+@Serializable private data class TeamMemberDto(val identity: TeamMemberIdentityDto = TeamMemberIdentityDto())
 @Serializable private data class WorkItemTypeDto(
     val name: String,
     val color: String? = null,
@@ -487,6 +633,7 @@ private fun IdentityDto.toIdentity() = Identity(id, displayName)
     val repository: RepositoryDto,
     val mergeStatus: String? = null,
     val lastMergeSourceCommit: CommitRefDto? = null,
+    val status: String = "active",
 )
 @Serializable private data class ReviewerDto(
     val id: String,

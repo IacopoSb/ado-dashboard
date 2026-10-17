@@ -13,6 +13,15 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
+import io.github.iacoposb.adodash.api.FieldChange
+import io.github.iacoposb.adodash.api.Iteration
+import io.github.iacoposb.adodash.api.LinkKind
+import io.github.iacoposb.adodash.api.Person
+import io.github.iacoposb.adodash.api.StateInfo
+import io.github.iacoposb.adodash.api.WiFields
+import io.github.iacoposb.adodash.api.WorkItemDetail
+import io.github.iacoposb.adodash.api.WorkItemLink
 import io.github.iacoposb.adodash.Fakes
 import io.github.iacoposb.adodash.Fakes.anna
 import io.github.iacoposb.adodash.Fakes.marco
@@ -138,14 +147,93 @@ class DashboardRenderTest {
         update: String? = null,
         events: List<Event> = events(),
         build: BuildDetail? = null,
+        workItem: WorkItemModal? = null,
+        workItemMenu: String? = null,
     ) {
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
-                DashboardScreen("contoso", state, events, {}, {}, {}, {}, {}, now = now, updateVersion = update, buildDetail = build)
+                DashboardScreen(
+                    "contoso", state, events, {}, {}, {}, {}, {}, now = now, updateVersion = update, buildDetail = build,
+                    workItem = workItem, workItemMenu = workItemMenu,
+                )
             }
         }
-        compose.onRoot().captureRoboImage("$name.png")
+        // A field's menu is a popup: the whole screen, its windows included
+        if (workItemMenu != null) captureScreenRoboImage("$name.png") else compose.onRoot().captureRoboImage("$name.png")
     }
+
+    /** The design's bug: description, a pull request and its parent, three comments, every field. */
+    private fun designWorkItem(readOnly: Boolean = false, fieldError: FieldError? = null): WorkItemModal {
+        val title = if (italian) "Il login con SSO fallisce dopo il rinnovo del token" else "SSO sign-in fails after the token is renewed"
+        val item = Fakes.workItem(4812, "Bug", title, "Active", 1, 1800, area = "Contoso\\Backend")
+        val description = if (italian) {
+            "<div>Dopo circa un'ora il refresh token viene rifiutato con <b>AADSTS700084</b> e l'utente torna alla pagina di login. " +
+                "Succede solo con gli account guest.</div><ul><li>Accedi con <i>guest01</i></li><li>Aspetta un'ora</li></ul>" +
+                "<div>Log: <a href=\"https://contoso.example/logs/4812\">contoso.example/logs/4812</a></div>"
+        } else {
+            "<div>After about an hour the refresh token is refused with <b>AADSTS700084</b> and the user is sent back to the sign-in page. " +
+                "It only happens with guest accounts.</div><ul><li>Sign in as <i>guest01</i></li><li>Wait an hour</li></ul>" +
+                "<div>Logs: <a href=\"https://contoso.example/logs/4812\">contoso.example/logs/4812</a></div>"
+        }
+        val detail = WorkItemDetail(
+            item, rev = 7, descriptionHtml = description, assignee = Person(me.id, me.name, "iacopo@contoso.com"),
+            iterationPath = "Contoso\\Sprint 42", remainingWork = 3.0, changedBy = anna.name, commentCount = 3,
+            links = listOf(WorkItemLink(LinkKind.PULL_REQUEST, 311, ""), WorkItemLink(LinkKind.PARENT, 4790, "")),
+        )
+        val links = listOf(
+            LinkRow(LinkKind.PULL_REQUEST, 311, title = if (italian) "Gestione retry sulle chiamate al gateway" else "Retry handling for payment gateway calls", prStatus = "active"),
+            LinkRow(LinkKind.PARENT, 4790, "User Story", if (italian) "Esportazione CSV dei report mensili" else "CSV export of the monthly reports", "New"),
+        )
+        val page = WorkItemPage(
+            item.id, item, saved = detail, links = links, fieldError = fieldError,
+            states = listOf("New", "Active", "Resolved", "Closed", "Removed").map { StateInfo(it, "") },
+            iterations = listOf(
+                Iteration("Sprint 42", "Contoso\\Sprint 42", now.minusSeconds(4 * 86_400), now.plusSeconds(7 * 86_400)),
+                Iteration("Sprint 43", "Contoso\\Sprint 43", now.plusSeconds(10 * 86_400), now.plusSeconds(21 * 86_400)),
+                Iteration("Sprint 41", "Contoso\\Sprint 41", now.minusSeconds(18 * 86_400), now.minusSeconds(7 * 86_400)),
+                Iteration("Contoso", "Contoso"),
+            ),
+            areas = Fakes.projects.first(),
+            hasRemainingWork = true,
+        )
+        return WorkItemModal(listOf(page), readOnly = readOnly, me = Person(me.id, me.name, ""))
+    }
+
+    @Test fun workItemModal() = dashboard("work-item-modal", dark = false, workItem = designWorkItem())
+
+    @Config(qualifiers = "+it")
+    @Test fun workItemModalItalian() = dashboard("work-item-modal-it", dark = false, workItem = designWorkItem())
+
+    @Test fun workItemModalDark() = dashboard("work-item-modal-dark", dark = true, workItem = designWorkItem())
+
+    @Test fun workItemModalStateMenu() =
+        dashboard("work-item-modal-state-menu", dark = false, workItem = designWorkItem(), workItemMenu = WiFields.STATE)
+
+    /** A change refused because someone else saved first: the saved value again, with the reason. */
+    @Test fun workItemModalError() = dashboard(
+        "work-item-modal-error", dark = false,
+        workItem = designWorkItem(fieldError = FieldError(WiFields.STATE, SaveProblem.CONFLICT)).let { m ->
+            m.copy(pages = listOf(m.page.copy(pending = mapOf(WiFields.PRIORITY to FieldChange.Priority(2)))))
+        },
+    )
+
+    /** Changes refused for lack of permission: read-only, with the hint. */
+    @Test fun workItemModalReadOnly() = dashboard(
+        "work-item-modal-read-only", dark = false,
+        workItem = designWorkItem(readOnly = true, fieldError = FieldError(WiFields.STATE, SaveProblem.DENIED)),
+    )
+
+    /** Opened from the row: the row's data while the rest is read. */
+    @Test fun workItemModalLoading() = dashboard(
+        "work-item-modal-loading", dark = false,
+        workItem = WorkItemModal(listOf(WorkItemPage(4812, snapshot.workItems.first()))),
+    )
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun workItemPhone() = dashboard("work-item-phone", dark = false, workItem = designWorkItem())
+
+    @Config(qualifiers = "it-w411dp-h891dp-xxhdpi")
+    @Test fun workItemPhoneItalian() = dashboard("work-item-phone-it", dark = false, workItem = designWorkItem())
 
     /** The build of the design's modal: stages, two failed tests, rerun offered. */
     private fun buildDetail(): BuildDetail {
@@ -331,6 +419,11 @@ class DashboardRenderTest {
     @Test fun settingsPatNoBuildsItalian() =
         signedIn("settings-account-pat-no-builds-it", section = SettingsSection.ACCOUNT, pat = true, buildsDenied = true)
 
+    /** A PAT refused a work item change: the hint to add Work Items (Read & write). */
+    @Test fun settingsPatReadOnly() = signedIn(
+        "settings-account-pat-read-only", section = SettingsSection.ACCOUNT, pat = true, buildsDenied = true, workItemsReadOnly = true,
+    )
+
     @Test fun settingsScreen() = signedIn("settings-screen", section = SettingsSection.SCREEN)
 
     @Config(qualifiers = "+it")
@@ -407,7 +500,13 @@ class DashboardRenderTest {
     @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
     @Test fun settingsFiltersPhone() = filters("settings-filters-phone")
 
-    private fun signedIn(name: String, section: SettingsSection?, pat: Boolean = false, buildsDenied: Boolean = false) {
+    private fun signedIn(
+        name: String,
+        section: SettingsSection?,
+        pat: Boolean = false,
+        buildsDenied: Boolean = false,
+        workItemsReadOnly: Boolean = false,
+    ) {
         compose.setContent {
             AdoTheme(dark = false, dynamic = false) {
                 SettingsScreen(
@@ -416,7 +515,7 @@ class DashboardRenderTest {
                         authMethod = if (pat) AuthMethod.PAT else AuthMethod.ENTRA, pat = if (pat) "x" else "",
                     ),
                     busy = false, message = null, {}, { _, _ -> }, {}, {}, onBack = {},
-                    version = "0.0.2", initialSection = section, buildsDenied = buildsDenied,
+                    version = "0.0.2", initialSection = section, buildsDenied = buildsDenied, workItemsReadOnly = workItemsReadOnly,
                 )
             }
         }

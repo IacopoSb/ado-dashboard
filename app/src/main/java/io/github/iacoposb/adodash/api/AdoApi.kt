@@ -73,6 +73,31 @@ interface AdoApi {
 
     /** The project's Git repository names, sorted. */
     suspend fun repositories(project: String): List<String> = emptyList()
+
+    /** A work item with all its fields and its links, for its details. */
+    suspend fun workItemDetail(id: Int): WorkItemDetail = throw AdoException(404, "No work item $id")
+
+    /**
+     * Changes one field of a work item if it is still at [rev] (see [WorkItemPatch]); returns it
+     * as saved. Someone else's change in between fails with [AdoException] 409 or 412.
+     */
+    suspend fun updateWorkItem(id: Int, rev: Int, change: FieldChange): WorkItemDetail =
+        throw AdoException(403, "Not supported")
+
+    /** The reference names of the fields a work item type has. */
+    suspend fun typeFields(project: String, type: String): Set<String> = emptySet()
+
+    /** The project's iterations, in tree order, the project's root included. */
+    suspend fun iterations(project: String): List<Iteration> = emptyList()
+
+    /** People whose name or e-mail matches [query], from the organization's directory. */
+    suspend fun searchPeople(query: String): List<Person> = emptyList()
+
+    /** The members of a team. */
+    suspend fun teamMembers(project: String, team: String): List<Person> = emptyList()
+
+    /** A pull request by id alone, as a work item links it. */
+    suspend fun pullRequestById(id: Int): LinkedPullRequest = throw AdoException(404, "No pull request $id")
 }
 
 /** An area path of a team, with or without the areas below it. */
