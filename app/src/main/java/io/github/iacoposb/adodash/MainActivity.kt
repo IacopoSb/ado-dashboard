@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             showUpdate = intent.getBooleanExtra(EXTRA_SHOW_UPDATE, false)
             openBuildFrom(intent)
+            openCommentFrom(intent)
         }
         if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
 
@@ -139,7 +140,12 @@ class MainActivity : ComponentActivity() {
                         onEventOpen = { event ->
                             vm.markRead(event)
                             val build = event.buildId
-                            if (build != null && event.project != null) vm.openBuild(event.project, build) else openUrl(event.url)
+                            val comment = event.workItemComment
+                            when {
+                                build != null && event.project != null -> vm.openBuild(event.project, build)
+                                comment != null -> vm.openWorkItemComment(comment.workItemId, comment.commentId)
+                                else -> openUrl(event.url)
+                            }
                         },
                         onMarkAllRead = vm::markAllRead,
                         updateVersion = updateBanner,
@@ -170,6 +176,17 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         if (intent.getBooleanExtra(EXTRA_SHOW_UPDATE, false)) showUpdate = true
         openBuildFrom(intent)
+        openCommentFrom(intent)
+    }
+
+    /** From a mention in a work item's comments: the work item at that comment, ready to reply. */
+    private fun openCommentFrom(intent: Intent) {
+        val workItem = intent.getIntExtra(EXTRA_WORK_ITEM_ID, -1)
+        val comment = intent.getIntExtra(EXTRA_COMMENT_ID, -1)
+        if (workItem < 0 || comment < 0) return
+        intent.getStringExtra(EXTRA_EVENT_KEY)?.let { vm.markRead(it) }
+        vm.openWorkItemComment(workItem, comment)
+        intent.removeExtra(EXTRA_WORK_ITEM_ID)
     }
 
     /** From a "build failed" notification: its details over the dashboard. */
@@ -196,5 +213,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_BUILD_ID = "build_id"
         const val EXTRA_BUILD_PROJECT = "build_project"
         const val EXTRA_EVENT_KEY = "event_key"
+        const val EXTRA_WORK_ITEM_ID = "work_item_id"
+        const val EXTRA_COMMENT_ID = "comment_id"
     }
 }

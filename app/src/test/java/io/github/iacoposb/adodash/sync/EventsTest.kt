@@ -61,6 +61,13 @@ class EventsTest {
         assertEquals(listOf(own.key), other.map { it.key })
     }
 
+    @Test fun `only a work item mention opens its comment, PR mentions keep their page`() {
+        val wi = io.github.iacoposb.adodash.data.Event("wi:4812:c55", EventKind.MENTION, "", "", "", 0)
+        assertEquals(io.github.iacoposb.adodash.data.WorkItemCommentRef(4812, 55), wi.workItemComment)
+        assertEquals(null, wi.copy(key = "pr:311:t2:c3").workItemComment)
+        assertEquals(null, wi.copy(kind = EventKind.ASSIGNED, key = "wi:4812:assigned").workItemComment)
+    }
+
     @Test fun `my PRs report every comment, reviewed ones only my threads and mentions`() {
         val mine = Fakes.pr(1, me)
         val theirs = Fakes.pr(2, anna)

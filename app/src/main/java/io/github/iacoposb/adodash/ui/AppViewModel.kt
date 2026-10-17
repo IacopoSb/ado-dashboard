@@ -159,6 +159,16 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         workItems.open(item.id, item)
     }
 
+    /**
+     * From a mention (its event or its notification): the work item scrolled to the comment,
+     * with the reply to its author ready in the composer.
+     */
+    fun openWorkItemComment(workItemId: Int, commentId: Int) {
+        loadBoards()
+        val known = app.sync.state.value.snapshot?.workItems?.firstOrNull { it.id == workItemId }
+        workItems.open(workItemId, known, commentId)
+    }
+
     fun workItemActions(openUrl: (String) -> Unit) = WorkItemActions(
         onOpenUrl = openUrl,
         onOpenWorkItem = workItems::openLinked,

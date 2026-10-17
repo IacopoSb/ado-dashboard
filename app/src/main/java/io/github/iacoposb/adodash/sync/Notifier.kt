@@ -44,7 +44,13 @@ class Notifier(private val context: Context) {
                 .setShowWhen(true)
                 .setAutoCancel(true)
                 .setGroup(GROUP)
-                .setContentIntent(if (event.buildId != null) openBuild(event) else openUrl(event))
+                .setContentIntent(
+                    when {
+                        event.buildId != null -> openBuild(event)
+                        event.workItemComment != null -> openComment(event)
+                        else -> openUrl(event)
+                    },
+                )
                 .build()
             send(event.key.hashCode(), notification)
         }
@@ -106,6 +112,21 @@ class Notifier(private val context: Context) {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
+
+    /** A mention in a work item's comments opens the work item at that comment, ready to reply. */
+    private fun openComment(event: Event): PendingIntent {
+        val ref = requireNotNull(event.workItemComment)
+        return PendingIntent.getActivity(
+            context,
+            event.key.hashCode(),
+            Intent(context, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_WORK_ITEM_ID, ref.workItemId)
+                .putExtra(MainActivity.EXTRA_COMMENT_ID, ref.commentId)
+                .putExtra(MainActivity.EXTRA_EVENT_KEY, event.key)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+    }
 
     private fun channelOf(kind: EventKind) = when (kind) {
         EventKind.MENTION -> CH_MENTIONS
