@@ -44,7 +44,7 @@ class Notifier(private val context: Context) {
                 .setShowWhen(true)
                 .setAutoCancel(true)
                 .setGroup(GROUP)
-                .setContentIntent(openUrl(event))
+                .setContentIntent(if (event.buildId != null) openBuild(event) else openUrl(event))
                 .build()
             send(event.key.hashCode(), notification)
         }
@@ -95,10 +95,22 @@ class Notifier(private val context: Context) {
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
+    /** A failed build opens its details over the dashboard. */
+    private fun openBuild(event: Event): PendingIntent = PendingIntent.getActivity(
+        context,
+        event.key.hashCode(),
+        Intent(context, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_BUILD_ID, event.buildId)
+            .putExtra(MainActivity.EXTRA_BUILD_PROJECT, event.project)
+            .putExtra(MainActivity.EXTRA_EVENT_KEY, event.key)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
     private fun channelOf(kind: EventKind) = when (kind) {
         EventKind.MENTION -> CH_MENTIONS
         EventKind.ASSIGNED -> CH_WORK_ITEMS
-        EventKind.PR_REVIEW, EventKind.PR_COMMENT, EventKind.PR_VOTE -> CH_PULL_REQUESTS
+        EventKind.PR_REVIEW, EventKind.PR_COMMENT, EventKind.PR_VOTE, EventKind.BUILD_FAILED -> CH_PULL_REQUESTS
     }
 
     companion object {

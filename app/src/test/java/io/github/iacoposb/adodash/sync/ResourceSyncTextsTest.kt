@@ -26,6 +26,10 @@ class ResourceSyncTextsTest {
         assertEquals("Invalid or expired credentials", error(AdoException(401, "x")))
         assertEquals("HTTP 500: boom", error(AdoException(500, "HTTP 500: boom")))
         assertEquals("can't reach GitHub, check your connection", error(UpdateException(UpdateException.Reason.UNREACHABLE)))
+        assertEquals("Build failed on your PR !305", buildFailed(305))
+        assertEquals("backend-ci #20261016.3 · 2 tests failed", buildFailedBody("backend-ci", "20261016.3", 2))
+        assertEquals("backend-ci #20261016.3 · 1 test failed", buildFailedBody("backend-ci", "20261016.3", 1))
+        assertEquals("backend-ci #20261016.3", buildFailedBody("backend-ci", "20261016.3", null))
     }
 
     @Config(qualifiers = "it")
@@ -34,6 +38,8 @@ class ResourceSyncTextsTest {
         assertEquals("Anna ti ha menzionato nella PR !3", prMention("Anna", 3))
         assertEquals("Anna: PR in attesa dell'autore", prVote("Anna", Vote.WAITING))
         assertEquals("Stati di Bug: 403", statesWarning("Bug", "403"))
+        assertEquals("Build fallita sulla tua PR !305", buildFailed(305))
+        assertEquals("backend-ci #20261016.3 · 2 test non superati", buildFailedBody("backend-ci", "20261016.3", 2))
         assertEquals("Sessione Microsoft scaduta: accedi di nuovo dalle impostazioni", error(SignInRequiredException()))
         assertEquals(
             "download non riuscito (HTTP 404)",

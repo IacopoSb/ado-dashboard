@@ -18,6 +18,9 @@ interface SyncTexts {
     fun prComment(author: String, id: Int): String
     /** [vote] as in [Vote]. */
     fun prVote(reviewer: String, vote: Int): String
+    fun buildFailed(prId: Int): String
+    /** "backend-ci #20261016.3 · 2 tests failed"; [failedTests] null or 0 leaves the tests out. */
+    fun buildFailedBody(pipeline: String, number: String, failedTests: Int?): String
 
     fun mentionsWarning(error: String): String
     fun projectWarning(project: String, error: String): String
@@ -47,6 +50,13 @@ class ResourceSyncTexts(private val context: Context) : SyncTexts {
         },
         reviewer,
     )
+
+    override fun buildFailed(prId: Int) = s(R.string.event_build_failed, prId)
+    override fun buildFailedBody(pipeline: String, number: String, failedTests: Int?): String {
+        val run = "$pipeline #$number"
+        if (failedTests == null || failedTests <= 0) return run
+        return "$run · " + context.resources.getQuantityString(R.plurals.tests_failed, failedTests, failedTests)
+    }
 
     override fun mentionsWarning(error: String) = s(R.string.warning_mentions, error)
     override fun projectWarning(project: String, error: String) = s(R.string.warning_project, project, error)

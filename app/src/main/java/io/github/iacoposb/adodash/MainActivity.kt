@@ -51,7 +51,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (savedInstanceState == null) showUpdate = intent.getBooleanExtra(EXTRA_SHOW_UPDATE, false)
+        if (savedInstanceState == null) {
+            showUpdate = intent.getBooleanExtra(EXTRA_SHOW_UPDATE, false)
+            openBuildFrom(intent)
+        }
         if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
 
         setContent {
@@ -64,6 +67,7 @@ class MainActivity : ComponentActivity() {
                 val updateBanner by vm.updateBanner.collectAsStateWithLifecycle()
                 val catalog by vm.catalog.collectAsStateWithLifecycle()
                 val launchChoiceMade by vm.launchChoiceMade.collectAsStateWithLifecycle()
+                val buildDetail by vm.build.collectAsStateWithLifecycle()
                 val choices = viewChoices(settings.views, catalog, settings.filters, sync.snapshot)
                 var editing by rememberSaveable { mutableStateOf(false) }
                 val close = { editing = false; showUpdate = false }
@@ -95,6 +99,7 @@ class MainActivity : ComponentActivity() {
                         catalog = catalog,
                         onLoadCatalog = vm::loadCatalog,
                         onFiltersChange = vm::updateFilters,
+                        buildsDenied = sync.snapshot?.buildsDenied == true,
                         askViewAtLaunch = !settings.views.alwaysOpen,
                         onAskViewAtLaunchChange = vm::setAskAtLaunch,
                     )
@@ -127,7 +132,11 @@ class MainActivity : ComponentActivity() {
                         onRefresh = vm::refresh,
                         onSettings = { editing = true },
                         onOpen = ::openUrl,
-                        onEventOpen = { vm.markRead(it); openUrl(it.url) },
+                        onEventOpen = { event ->
+                            vm.markRead(event)
+                            val build = event.buildId
+                            if (build != null && event.project != null) vm.openBuild(event.project, build) else openUrl(event.url)
+                        },
                         onMarkAllRead = vm::markAllRead,
                         updateVersion = updateBanner,
                         onUpdate = { showUpdate = true },
@@ -138,6 +147,10 @@ class MainActivity : ComponentActivity() {
                         onSaveView = vm::saveView,
                         onDeleteView = { vm.deleteView(it.id) },
                         onLoadBoards = vm::loadBoards,
+                        buildDetail = buildDetail,
+                        onOpenBuild = { vm.openBuild(it.project, it.id, it) },
+                        onRerunBuild = vm::rerunBuild,
+                        onCloseBuild = vm::closeBuild,
                     )
                 }
             }
@@ -147,6 +160,18 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.getBooleanExtra(EXTRA_SHOW_UPDATE, false)) showUpdate = true
+        openBuildFrom(intent)
+    }
+
+    /** From a "build failed" notification: its details over the dashboard. */
+    private fun openBuildFrom(intent: Intent) {
+        val id = intent.getIntExtra(EXTRA_BUILD_ID, -1)
+        val project = intent.getStringExtra(EXTRA_BUILD_PROJECT)
+        if (id < 0 || project == null) return
+        intent.getStringExtra(EXTRA_EVENT_KEY)?.let { vm.markRead(it) }
+        // Settings or the launch screen may be showing: the details wait for the dashboard
+        vm.openBuild(project, id)
+        intent.removeExtra(EXTRA_BUILD_ID)
     }
 
     private fun openUrl(url: String) {
@@ -159,5 +184,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_SHOW_UPDATE = "show_update"
+        const val EXTRA_BUILD_ID = "build_id"
+        const val EXTRA_BUILD_PROJECT = "build_project"
+        const val EXTRA_EVENT_KEY = "event_key"
     }
 }

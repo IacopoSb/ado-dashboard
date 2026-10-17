@@ -82,6 +82,19 @@ object Events {
                 )
             }
         }
+
+        // One event per build: a rerun that fails again is a new build
+        fetched.failedPrBuilds.distinctBy { it.build.id }.forEach { (pr, build, failedTests) ->
+            events += Event(
+                key = Event.buildFailedKey(build.id),
+                kind = EventKind.BUILD_FAILED,
+                title = texts.buildFailed(pr.id),
+                body = texts.buildFailedBody(build.definitionName, build.number, failedTests),
+                url = build.url,
+                at = build.at.toEpochMilli(),
+                project = build.project,
+            )
+        }
         return events
     }
 

@@ -33,10 +33,14 @@ class SyncRepository(
     private val apiFor: (Settings) -> AdoApi,
     /** After each successful sync, with what it read. */
     private val onSynced: suspend (Settings, Snapshot) -> Unit = { _, _ -> },
+    private val log: (String) -> Unit = { android.util.Log.i("AdoSync", it) },
 ) {
     private val mutex = Mutex()
     private val stateCategories = mutableMapOf<String, Map<String, String>>()
     private val teamAreas = mutableMapOf<BoardRef, List<TeamArea>>()
+    private val signalCache = SignalCache()
+    /** Builds refused at the last sync: logged once per change. */
+    private var buildsDenied = false
     private val _state = MutableStateFlow(SyncState())
     val state: StateFlow<SyncState> = _state.asStateFlow()
 
@@ -46,7 +50,7 @@ class SyncRepository(
         _state.update { it.copy(syncing = true) }
         try {
             val now = Instant.now()
-            val fetched = SyncEngine(apiFor(s), stateCategories, teamAreas, texts = texts).fetch(
+            val fetched = SyncEngine(apiFor(s), stateCategories, teamAreas, texts = texts, cache = signalCache).fetch(
                 me = Identity(s.meId, s.meName),
                 since = s.lastSyncAt.takeIf { it > 0 }?.let(Instant::ofEpochMilli),
                 filters = s.filters,
@@ -59,6 +63,10 @@ class SyncRepository(
             if (history.isNotEmpty()) events.insertNew(history.map { it.copy(read = true, hidden = true) })
             if (!firstSync) notify(store(news))
             events.prune(before = now.minus(RETENTION).toEpochMilli())
+            if (fetched.snapshot.buildsDenied != buildsDenied) {
+                buildsDenied = fetched.snapshot.buildsDenied
+                if (buildsDenied) log("Builds cannot be read with these credentials (Build (read) missing): no pipelines")
+            }
             settings.markSynced(now.toEpochMilli())
             _state.update { SyncState(snapshot = fetched.snapshot) }
             onSynced(s, fetched.snapshot)
@@ -101,6 +109,8 @@ class SyncRepository(
         events.clear()
         stateCategories.clear()
         teamAreas.clear()
+        signalCache.clear()
+        buildsDenied = false
         _state.value = SyncState()
     }
 

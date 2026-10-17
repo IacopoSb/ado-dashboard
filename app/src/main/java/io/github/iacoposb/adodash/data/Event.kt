@@ -12,7 +12,11 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
-enum class EventKind { ASSIGNED, MENTION, PR_REVIEW, PR_COMMENT, PR_VOTE }
+enum class EventKind {
+    ASSIGNED, MENTION, PR_REVIEW, PR_COMMENT, PR_VOTE,
+    /** A build of one of my pull requests failed; the key carries the build id (see [Event.buildId]). */
+    BUILD_FAILED,
+}
 
 /**
  * Something that happened in Azure DevOps. [key] identifies it across
@@ -34,7 +38,17 @@ data class Event(
     val project: String? = null,
     /** Area path of a work item; null for pull requests, which have none. */
     val area: String? = null,
-)
+) {
+    /** The build of a [EventKind.BUILD_FAILED] event, in [project]. */
+    val buildId: Int?
+        get() = if (kind == EventKind.BUILD_FAILED) key.removePrefix(BUILD_PREFIX).substringBefore(':').toIntOrNull() else null
+
+    companion object {
+        const val BUILD_PREFIX = "build:"
+
+        fun buildFailedKey(buildId: Int) = "$BUILD_PREFIX$buildId:failed"
+    }
+}
 
 @Dao
 interface EventDao {

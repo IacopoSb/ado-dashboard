@@ -107,13 +107,13 @@ data class PullRequestsPanel(
 @Serializable
 enum class ActivityKind {
     MENTIONS, ASSIGNMENTS, VOTES, COMMENTS, REVIEW_REQUESTS,
-    /** Reserved for the build events still to come: kept on, not offered yet. */
+    /** Builds failed on my pull requests; on in the views saved before it was offered. */
     BUILDS_FAILED,
     ;
 
     companion object {
         /** What the editor offers. */
-        val offered = entries - BUILDS_FAILED
+        val offered = entries.toList()
 
         fun of(kind: EventKind) = when (kind) {
             EventKind.MENTION -> MENTIONS
@@ -121,6 +121,7 @@ enum class ActivityKind {
             EventKind.PR_VOTE -> VOTES
             EventKind.PR_COMMENT -> COMMENTS
             EventKind.PR_REVIEW -> REVIEW_REQUESTS
+            EventKind.BUILD_FAILED -> BUILDS_FAILED
         }
     }
 }
