@@ -16,6 +16,7 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import io.github.iacoposb.adodash.api.FieldChange
 import io.github.iacoposb.adodash.api.Iteration
+import io.github.iacoposb.adodash.api.Pipeline
 import io.github.iacoposb.adodash.api.LinkKind
 import io.github.iacoposb.adodash.api.Person
 import io.github.iacoposb.adodash.api.StateInfo
@@ -795,6 +796,82 @@ class DashboardRenderTest {
         val state = SyncState(snapshot.copy(shown = Shown(views.current.queryKey, emptyList(), snapshot.reviewPrs, emptyList())))
         viewsDashboard("dashboard-reviews-only", views = views, state = state)
     }
+
+    /** Contoso's pipelines as in Azure DevOps' "All" view: three folders, one nested, and three at the root. */
+    private val designPipelines: List<Pipeline> = run {
+        fun pipeline(id: Int, name: String, folder: String, latest: io.github.iacoposb.adodash.api.Build?) =
+            Pipeline(id, name, folder, "Contoso", latest?.copy(definitionId = id, definitionName = name), "https://dev.azure.com/contoso/Contoso/_build?definitionId=$id")
+        listOf(
+            pipeline(5, "backend-ci", "\\Backend", failedBuild),
+            pipeline(6, "backend-nightly", "\\Backend", Fakes.build(960, ago = 30_000, requestedBy = anna.name)),
+            pipeline(7, "backend-deploy", "\\Backend\\Release", Fakes.build(959, BuildState.RUNNING, ago = 200, requestedBy = me.name)),
+            pipeline(8, "web-ci", "\\Frontend", Fakes.build(958, prId = 318, ago = 3000, requestedBy = me.name)),
+            pipeline(9, "web-e2e", "\\Frontend", Fakes.build(957, BuildState.PARTIAL, ago = 9000)),
+            pipeline(10, "android-ci", "\\Mobile", Fakes.build(956, BuildState.CANCELED, ago = 90_000)),
+            pipeline(11, "ios-ci", "\\Mobile", Fakes.build(955, BuildState.QUEUED, ago = 60)),
+            pipeline(12, "docs", "\\", Fakes.build(954, ago = 7200, requestedBy = anna.name)),
+            pipeline(13, "infra-terraform", "\\", Fakes.build(953, ago = 400_000, branch = "infra/main")),
+            pipeline(14, "legacy-import", "\\", null),
+        )
+    }
+
+    /** backend-ci's latest ten runs. */
+    private val designRuns = listOf(
+        failedBuild,
+        Fakes.build(980, BuildState.RUNNING, prId = 318, ago = 1200, requestedBy = me.name),
+        Fakes.build(979, ago = 3600),
+        Fakes.build(978, prId = 311, ago = 7000, requestedBy = anna.name),
+        Fakes.build(977, BuildState.FAILED, prId = 305, ago = 9000),
+        Fakes.build(976, ago = 20_000),
+        Fakes.build(975, BuildState.CANCELED, prId = 311, ago = 40_000, requestedBy = anna.name),
+        Fakes.build(974, ago = 90_000),
+        Fakes.build(973, BuildState.PARTIAL, ago = 100_000, requestedBy = me.name),
+        Fakes.build(972, ago = 200_000),
+    ).map { it.copy(definitionId = 5, definitionName = "backend-ci") }
+
+    /** On the Contoso board, its pipelines open over it: Backend open, backend-ci with its runs. */
+    private fun pipelines(
+        name: String,
+        state: PipelinesState = PipelinesState("Contoso", designPipelines, runs = mapOf(5 to RunsState.Loaded(designRuns))),
+        query: String = "",
+        build: BuildDetail? = null,
+        dark: Boolean = false,
+    ) {
+        val views = designViews().openBoard(BoardRef("Contoso", "Backend"))
+        val shown = Shown(views.current.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs, pipeline = pipeline, pipelineProject = "Contoso")
+        compose.setContent {
+            AdoTheme(dark = dark, dynamic = false) {
+                DashboardScreen(
+                    "contoso", SyncState(snapshot.copy(shown = shown)), events(), {}, {}, {}, {}, {}, now = now,
+                    choices = choices(views), buildDetail = build, pipelines = state,
+                    pipelinesFolders = setOf("\\Backend"), pipelinesOpen = setOf(5), pipelinesQuery = query,
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    @Test fun pipelinesModal() = pipelines("pipelines-modal")
+
+    @Config(qualifiers = "+it")
+    @Test fun pipelinesModalItalian() = pipelines("pipelines-modal-it")
+
+    @Test fun pipelinesModalDark() = pipelines("pipelines-modal-dark", dark = true)
+
+    /** Searching: the matches in their folders, all open. */
+    @Test fun pipelinesModalSearch() = pipelines("pipelines-modal-search", query = "ci")
+
+    /** A run tapped: its details in place of the list, with the way back. */
+    @Test fun pipelinesModalRun() = pipelines("pipelines-modal-run", build = buildDetail())
+
+    /** Opened for the first time: the pipelines being read. */
+    @Test fun pipelinesModalLoading() = pipelines("pipelines-modal-loading", state = PipelinesState("Contoso", refreshing = true))
+
+    /** A PAT without Build (read). */
+    @Test fun pipelinesModalDenied() = pipelines("pipelines-modal-denied", state = PipelinesState("Contoso", denied = true))
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun pipelinesPhone() = pipelines("pipelines-phone")
 
     /** Just switched view: the panels wait for the sync of the new one. */
     @Test fun dashboardViewLoading() =

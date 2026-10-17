@@ -130,10 +130,4 @@ object Pipelines {
         running = builds.count { Signals.signalOf(it.state) == BuildSignal.RUNNING },
         ok = builds.count { it.state == BuildState.SUCCEEDED },
     )
-
-    /** What tapping the tile opens: the latest failure, else a build running, else the latest. */
-    fun focus(builds: List<Build>): Build? =
-        builds.firstOrNull { Signals.signalOf(it.state) == BuildSignal.FAILED }
-            ?: builds.firstOrNull { Signals.signalOf(it.state) == BuildSignal.RUNNING }
-            ?: builds.firstOrNull()
 }

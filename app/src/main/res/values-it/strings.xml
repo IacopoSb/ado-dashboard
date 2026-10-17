@@ -308,7 +308,28 @@
         <item quantity="many">%d ok</item>
         <item quantity="other">%d ok</item>
     </plurals>
-    <string name="pipeline_open">Apri i dettagli della build</string>
+    <string name="pipeline_open">Apri le pipeline</string>
+    <!-- Pipelines of a project: the tile's modal -->
+    <string name="pipelines_title">Pipeline</string>
+    <plurals name="pipelines_count">
+        <item quantity="one">%1$d pipeline</item>
+        <item quantity="other">%1$d pipeline</item>
+    </plurals>
+    <string name="pipelines_search">Cerca pipeline</string>
+    <string name="pipelines_loading">Caricamento delle pipeline…</string>
+    <string name="pipelines_updating">Aggiornamento…</string>
+    <string name="pipelines_empty">Nessuna pipeline in questo progetto</string>
+    <string name="pipelines_no_results">Nessuna pipeline per “%1$s”</string>
+    <string name="pipelines_load_failed">Impossibile leggere le pipeline: %1$s</string>
+    <string name="pipelines_denied">Non puoi leggere le pipeline di questo progetto. Con un PAT, aggiungi Build (read).</string>
+    <string name="pipelines_never_run">Mai eseguita</string>
+    <string name="pipelines_runs_loading">Caricamento delle esecuzioni…</string>
+    <string name="pipelines_runs_failed">Impossibile leggere le esecuzioni: %1$s</string>
+    <string name="pipelines_no_runs">Ancora nessuna esecuzione</string>
+    <string name="pipelines_open_latest">Apri l\'ultima esecuzione</string>
+    <string name="pipelines_open_run">Apri l\'esecuzione</string>
+    <string name="pipelines_running_for">in corso · %1$s</string>
+    <string name="pipelines_queued">in coda</string>
     <!-- Build details -->
     <string name="build_state_succeeded">Riuscita</string>
     <string name="build_state_partial">Parzialmente riuscita</string>

@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -88,7 +90,7 @@ data class BuildDetail(
 
 /** The colors and icon of a build or step state. */
 @Composable
-private fun stateLook(state: BuildState, skipped: Boolean = false): Pair<ImageVector?, Color> = AdoTheme.colors.run {
+internal fun stateLook(state: BuildState, skipped: Boolean = false): Pair<ImageVector?, Color> = AdoTheme.colors.run {
     when {
         skipped -> null to textFaint
         state == BuildState.SUCCEEDED -> AdoIcons.CheckCircle to success
@@ -100,7 +102,7 @@ private fun stateLook(state: BuildState, skipped: Boolean = false): Pair<ImageVe
     }
 }
 
-private fun stateLabel(state: BuildState) = when (state) {
+internal fun stateLabel(state: BuildState) = when (state) {
     BuildState.SUCCEEDED -> R.string.build_state_succeeded
     BuildState.PARTIAL -> R.string.build_state_partial
     BuildState.FAILED -> R.string.build_state_failed
@@ -118,11 +120,11 @@ private fun stateTone(state: BuildState) = when (state) {
 }
 
 /**
- * The app bar's pipeline tile: "Pipeline", "1 failed · 1 running · 6 ok" and a dot for each of
- * the latest results. Tapping it opens the details of [Pipelines.focus].
+ * The app bar's pipeline tile of a board: "Pipeline", "1 failed · 1 running · 6 ok" and a dot
+ * for each of the latest results. Tapping it opens the project's pipelines.
  */
 @Composable
-fun PipelineTile(builds: List<Build>, onOpen: (Build) -> Unit, modifier: Modifier = Modifier, dots: Boolean = true) {
+fun PipelineTile(builds: List<Build>, onOpen: () -> Unit, modifier: Modifier = Modifier, dots: Boolean = true) {
     val c = AdoTheme.colors
     val counts = Pipelines.counts(builds)
     val parts = buildList {
@@ -130,12 +132,9 @@ fun PipelineTile(builds: List<Build>, onOpen: (Build) -> Unit, modifier: Modifie
         if (counts.running > 0) add(pluralStringResource(R.plurals.pipeline_running, counts.running, counts.running))
         if (counts.ok > 0 || isEmpty()) add(pluralStringResource(R.plurals.pipeline_ok, counts.ok, counts.ok))
     }
-    val focus = Pipelines.focus(builds)
     Row(
         modifier.height(52.dp).clip(RoundedCornerShape(12.dp)).background(c.surface)
-            .clickable(enabled = focus != null, onClickLabel = stringResource(R.string.pipeline_open), role = Role.Button) {
-                focus?.let(onOpen)
-            }
+            .clickable(onClickLabel = stringResource(R.string.pipeline_open), role = Role.Button, onClick = onOpen)
             .padding(start = 12.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -179,99 +178,128 @@ fun BuildDetailsModal(
     onRerun: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    ModalOverlay(buildTitle(detail), onDismiss, maxWidth = 760.dp) { fullScreen ->
+        BuildDetailsContent(detail, now, onOpen, onRerun, onDismiss, fullScreen)
+    }
+}
+
+/** "backend-ci  #20261016.3", or that it is being read. */
+@Composable
+internal fun buildTitle(detail: BuildDetail): String =
+    detail.build?.let { "${it.definitionName}  #${it.number}" } ?: stringResource(R.string.build_loading)
+
+/**
+ * What [BuildDetailsModal] shows, also inside another modal: there [onBack] goes back to where
+ * the build was opened from, and [fillHeight] keeps that modal's height.
+ */
+@Composable
+fun ColumnScope.BuildDetailsContent(
+    detail: BuildDetail,
+    now: Instant,
+    onOpen: (url: String) -> Unit,
+    onRerun: () -> Unit,
+    onDismiss: () -> Unit,
+    fullScreen: Boolean,
+    onBack: (() -> Unit)? = null,
+    fillHeight: Boolean = fullScreen,
+) {
     val c = AdoTheme.colors
     val build = detail.build
-    val title = build?.let { "${it.definitionName}  #${it.number}" } ?: stringResource(R.string.build_loading)
-    ModalOverlay(title, onDismiss, maxWidth = 760.dp) { fullScreen ->
-        Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, top = 20.dp, bottom = 16.dp), verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (build != null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StatusChip(stringResource(stateLabel(build.state)), tone = stateTone(build.state))
-                        build.duration(now)?.let { StatusChip(duration(it)) }
-                    }
-                }
-                Text(
-                    title, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall, color = c.text,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
-                )
-                if (build != null) {
-                    Text(
-                        listOfNotNull(
-                            build.branch,
-                            build.prId?.let { stringResource(R.string.build_pr, it) },
-                            build.requestedBy.takeIf { it.isNotBlank() }?.let { stringResource(R.string.build_requested_by, it) },
-                            ago(build.queuedAt ?: build.at, now),
-                        ).joinToString(" · "),
-                        style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                    )
-                }
+    val title = buildTitle(detail)
+    val start = if (onBack != null) 12.dp else 24.dp
+    Row(Modifier.fillMaxWidth().padding(start = start, end = 12.dp, top = 20.dp, bottom = 16.dp), verticalAlignment = Alignment.Top) {
+        if (onBack != null) {
+            IconButton(onClick = onBack, Modifier.padding(end = 4.dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), tint = c.textMuted)
             }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (build != null) {
-                IconButton(onClick = { onOpen(build.url) }) {
-                    Icon(AdoIcons.OpenInNew, stringResource(R.string.action_open_build), tint = c.textMuted)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatusChip(stringResource(stateLabel(build.state)), tone = stateTone(build.state))
+                    build.duration(now)?.let { StatusChip(duration(it)) }
                 }
             }
-            IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, stringResource(R.string.action_close), tint = c.textMuted) }
-        }
-        HorizontalDivider(color = c.outline)
-
-        val body = Modifier.weight(1f, fill = fullScreen).heightIn(min = 340.dp).verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 20.dp)
-        when {
-            detail.error != null -> Column(body) {
-                Text(stringResource(R.string.build_load_failed, detail.error), style = MaterialTheme.typography.bodyMedium, color = c.danger)
-            }
-            build == null -> Column(body, horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(Modifier.padding(top = 48.dp).size(32.dp), color = c.primary, strokeWidth = 3.dp)
-            }
-            // Two columns only for failed tests: otherwise the stages take the whole width
-            fullScreen || !hasFailedTests(build, detail.tests) -> Column(body, verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                Column { Steps(detail.steps, now) }
-                if (build.state != BuildState.SUCCEEDED) Column { Tests(detail.tests) }
-            }
-            else -> Row(body, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                Column(Modifier.weight(1f)) { Steps(detail.steps, now) }
-                Column(Modifier.weight(1f)) { Tests(detail.tests) }
-            }
-        }
-
-        val note = when (detail.rerun) {
-            RerunState.STARTED -> stringResource(R.string.build_rerun_started) to c.success
-            RerunState.DENIED -> stringResource(R.string.build_rerun_denied) to c.danger
-            RerunState.FAILED -> stringResource(R.string.build_rerun_failed, detail.rerunError.orEmpty()) to c.danger
-            else -> null
-        }
-        note?.let { (text, color) ->
             Text(
-                text, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.bodySmall, color = color, textAlign = TextAlign.End,
+                title, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall, color = c.text,
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
             )
-        }
-        val allBuilds: @Composable () -> Unit = {
-            if (build != null) TextAction(stringResource(R.string.action_all_builds), { onOpen(build.definitionUrl) })
-        }
-        // Narrow screens: "All builds" above, so the two buttons keep their labels
-        if (fullScreen) Row(Modifier.padding(start = 12.dp, top = 4.dp)) { allBuilds() }
-        Row(
-            Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-        ) {
-            if (!fullScreen) {
-                allBuilds()
-                Spacer(Modifier.weight(1f))
-            }
             if (build != null) {
-                AdoButton(stringResource(R.string.action_open_log), { onOpen(build.logUrl) }, style = ButtonStyle.Outlined, icon = AdoIcons.OpenInNew)
-                val failed = build.state == BuildState.FAILED || build.state == BuildState.PARTIAL
-                if (failed && detail.canRerun && detail.rerun != RerunState.STARTED) {
-                    AdoButton(
-                        stringResource(R.string.action_rerun_failed), onRerun, icon = Icons.Filled.Refresh,
-                        enabled = detail.rerun != RerunState.BUSY,
-                    )
-                }
+                Text(
+                    listOfNotNull(
+                        build.branch,
+                        build.prId?.let { stringResource(R.string.build_pr, it) },
+                        build.requestedBy.takeIf { it.isNotBlank() }?.let { stringResource(R.string.build_requested_by, it) },
+                        ago(build.queuedAt ?: build.at, now),
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (build != null) {
+            IconButton(onClick = { onOpen(build.url) }) {
+                Icon(AdoIcons.OpenInNew, stringResource(R.string.action_open_build), tint = c.textMuted)
+            }
+        }
+        IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, stringResource(R.string.action_close), tint = c.textMuted) }
+    }
+    HorizontalDivider(color = c.outline)
+
+    val body = Modifier.weight(1f, fill = fillHeight).heightIn(min = 340.dp).verticalScroll(rememberScrollState())
+        .padding(horizontal = 24.dp, vertical = 20.dp)
+    when {
+        detail.error != null -> Column(body) {
+            Text(stringResource(R.string.build_load_failed, detail.error), style = MaterialTheme.typography.bodyMedium, color = c.danger)
+        }
+        build == null -> Column(body, horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(Modifier.padding(top = 48.dp).size(32.dp), color = c.primary, strokeWidth = 3.dp)
+        }
+        // Two columns only for failed tests: otherwise the stages take the whole width
+        fullScreen || !hasFailedTests(build, detail.tests) -> Column(body, verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            Column { Steps(detail.steps, now) }
+            if (build.state != BuildState.SUCCEEDED) Column { Tests(detail.tests) }
+        }
+        else -> Row(body, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Column(Modifier.weight(1f)) { Steps(detail.steps, now) }
+            Column(Modifier.weight(1f)) { Tests(detail.tests) }
+        }
+    }
+
+    val note = when (detail.rerun) {
+        RerunState.STARTED -> stringResource(R.string.build_rerun_started) to c.success
+        RerunState.DENIED -> stringResource(R.string.build_rerun_denied) to c.danger
+        RerunState.FAILED -> stringResource(R.string.build_rerun_failed, detail.rerunError.orEmpty()) to c.danger
+        else -> null
+    }
+    note?.let { (text, color) ->
+        Text(
+            text, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.bodySmall, color = color, textAlign = TextAlign.End,
+            maxLines = 2, overflow = TextOverflow.Ellipsis,
+        )
+    }
+    val allBuilds: @Composable () -> Unit = {
+        if (build != null) TextAction(stringResource(R.string.action_all_builds), { onOpen(build.definitionUrl) })
+    }
+    // Narrow screens: "All builds" above, so the two buttons keep their labels
+    if (fullScreen) Row(Modifier.padding(start = 12.dp, top = 4.dp)) { allBuilds() }
+    Row(
+        Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+    ) {
+        if (!fullScreen) {
+            allBuilds()
+            Spacer(Modifier.weight(1f))
+        }
+        if (build != null) {
+            AdoButton(stringResource(R.string.action_open_log), { onOpen(build.logUrl) }, style = ButtonStyle.Outlined, icon = AdoIcons.OpenInNew)
+            val failed = build.state == BuildState.FAILED || build.state == BuildState.PARTIAL
+            if (failed && detail.canRerun && detail.rerun != RerunState.STARTED) {
+                AdoButton(
+                    stringResource(R.string.action_rerun_failed), onRerun, icon = Icons.Filled.Refresh,
+                    enabled = detail.rerun != RerunState.BUSY,
+                )
             }
         }
     }

@@ -120,6 +120,63 @@ class AdoClientBuildsTest {
         assertEquals(401, e.code)
     }
 
+    @Test fun `pipelines of a project with their latest run, in folders`() = runTest {
+        server.enqueue(json("""
+            {"count":3,"value":[
+              {"id":5,"name":"backend-ci","path":"\\Backend","project":{"id":"p-guid","name":"My Project"},
+               "latestBuild":$buildJson},
+              {"id":7,"name":"docs","path":"\\",
+               "latestCompletedBuild":{"id":40,"buildNumber":"12","status":"completed","result":"succeeded",
+                 "sourceBranch":"refs/heads/main","queueTime":"2026-10-15T09:00:00Z"}},
+              {"id":9,"name":"never-run"}]}
+        """.trimIndent()))
+        val pipelines = client.pipelines("My Project")
+        assertEquals(listOf("backend-ci", "docs", "never-run"), pipelines.map { it.name })
+        assertEquals(listOf("\\Backend", "\\", "\\"), pipelines.map { it.folder })
+        val ci = pipelines[0]
+        assertEquals(981, ci.latest?.id)
+        assertEquals(305, ci.latest?.prId)
+        assertEquals(BuildState.FAILED, ci.latest?.state)
+        assertTrue(ci.url.endsWith("/org/My%20Project/_build?definitionId=5"))
+        // Without its definition, a latest run takes the pipeline's
+        val docs = pipelines[1].latest!!
+        assertEquals(7, docs.definitionId)
+        assertEquals("docs", docs.definitionName)
+        assertEquals("main", docs.branch)
+        assertNull(pipelines[2].latest)
+        assertEquals(
+            "/org/My%20Project/_apis/build/definitions?includeLatestBuilds=true&queryOrder=definitionNameAscending" +
+                "&%24top=1000&api-version=7.1",
+            server.takeRequest().path,
+        )
+    }
+
+    @Test fun `pipelines follow the continuation token`() = runTest {
+        server.enqueue(json("""{"value":[{"id":1,"name":"a","path":"\\"}]}""").setHeader("x-ms-continuationtoken", "next-1"))
+        server.enqueue(json("""{"value":[{"id":2,"name":"b","path":"\\"}]}"""))
+        assertEquals(listOf(1, 2), client.pipelines("P").map { it.id })
+        server.takeRequest()
+        assertTrue(server.takeRequest().path!!.contains("continuationToken=next-1"))
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test fun `pipelines without Build (read) are refused`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(403).setHeader("Content-Type", "application/json").setBody("""{"message":"no"}"""))
+        val e = assertThrows(AdoException::class.java) { kotlinx.coroutines.runBlocking { client.pipelines("P") } }
+        assertEquals(403, e.code)
+    }
+
+    @Test fun `the latest runs of a pipeline`() = runTest {
+        server.enqueue(json("""{"count":1,"value":[$buildJson]}"""))
+        val runs = client.pipelineRuns("My Project", 5)
+        assertEquals(listOf(981), runs.map { it.id })
+        assertEquals("backend-ci", runs.single().definitionName)
+        assertEquals(
+            "/org/My%20Project/_apis/build/builds?definitions=5&%24top=10&queryOrder=queueTimeDescending&api-version=7.1",
+            server.takeRequest().path,
+        )
+    }
+
     @Test fun `a single build`() = runTest {
         server.enqueue(json(buildJson))
         assertEquals("20261016.3", client.build("My Project", 981).number)

@@ -56,6 +56,20 @@ data class Build(
     val logUrl: String get() = if (url.isEmpty()) "" else "$url&view=logs"
 }
 
+/**
+ * A pipeline (build definition) of a project. [folder] is its path as Azure DevOps keeps it:
+ * "\\" for the root, "\\Backend\\CI" for a folder; [latest] its latest run, if any.
+ */
+data class Pipeline(
+    val id: Int,
+    val name: String,
+    val folder: String,
+    val project: String,
+    val latest: Build? = null,
+    /** Its runs in Azure DevOps. */
+    val url: String = "",
+)
+
 /** A record of a build's timeline: a stage, a phase, a job or a task. */
 data class TimelineRecord(
     val id: String,

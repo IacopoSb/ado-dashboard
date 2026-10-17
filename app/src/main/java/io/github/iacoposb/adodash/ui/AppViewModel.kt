@@ -76,7 +76,7 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     private var rerunDenied = false
 
     /**
-     * Opens the details of a build: [known] (from the pipeline tile) shows at once, otherwise
+     * Opens the details of a build: [known] (from the pipelines) shows at once, otherwise
      * (from an event) it is read first; then its timeline and failed tests.
      */
     fun openBuild(project: String, id: Int, known: Build? = null) {
@@ -113,6 +113,27 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
             }
         }
     }
+
+    /** A board's pipelines open over the dashboard; their runs open in the build details. */
+    private val pipelinesController = PipelinesController(
+        viewModelScope, api = { app.api(app.settings.current()) }, errorText = app::errorText,
+    )
+    val pipelines = pipelinesController.state
+
+    fun openPipelines(project: String) = pipelinesController.open(project)
+
+    fun pipelinesActions(openUrl: (String) -> Unit) = PipelinesActions(
+        onLoadRuns = pipelinesController::loadRuns,
+        onOpenRun = { openBuild(it.project, it.id, it) },
+        onBackToList = ::closeBuild,
+        onRetry = pipelinesController::retry,
+        onOpenUrl = openUrl,
+        onRerun = ::rerunBuild,
+        onClose = {
+            closeBuild()
+            pipelinesController.close()
+        },
+    )
 
     fun markRead(key: String) {
         viewModelScope.launch { app.sync.markRead(key) }
@@ -286,6 +307,7 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         viewModelScope.launch {
             runCatching { app.entra.signOut() }
             app.catalog.forget()
+            pipelinesController.forget()
             app.sync.reset()
             app.settings.signOut()
         }
@@ -312,7 +334,10 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
                 return@launch
             }
             if (form.organization != current.organization || me.id != current.meId) app.sync.reset()
-            if (!form.organization.equals(current.organization, ignoreCase = true)) app.catalog.forget()
+            if (!form.organization.equals(current.organization, ignoreCase = true)) {
+                app.catalog.forget()
+                pipelinesController.forget()
+            }
             app.settings.saveAccount(form.organization, method, pat, me.id, me.name)
             app.settings.savePreferences(form.pollSeconds, form.keepScreenOn)
             _save.value = SaveState()

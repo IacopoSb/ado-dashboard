@@ -58,7 +58,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
-import io.github.iacoposb.adodash.api.Build
 import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.data.BoardRef
@@ -111,9 +110,17 @@ fun DashboardScreen(
     initialEditor: EditorTarget? = null,
     /** The build details open over the dashboard, if any. */
     buildDetail: BuildDetail? = null,
-    onOpenBuild: (Build) -> Unit = {},
     onRerunBuild: () -> Unit = {},
     onCloseBuild: () -> Unit = {},
+    /** A board's pipelines open over the dashboard, if any: a [buildDetail] then shows inside. */
+    pipelines: PipelinesState? = null,
+    /** The tile tapped: the project's pipelines. */
+    onOpenPipelines: (String) -> Unit = {},
+    pipelinesActions: PipelinesActions = PipelinesActions(),
+    /** For the screenshots: folders and pipelines expanded in the pipelines, and the search. */
+    pipelinesFolders: Set<String> = emptySet(),
+    pipelinesOpen: Set<Int> = emptySet(),
+    pipelinesQuery: String = "",
     /** A work item row tapped: its details (null: the browser). */
     onOpenWorkItem: ((WorkItem) -> Unit)? = null,
     /** The work item details open over the dashboard, if any. */
@@ -135,9 +142,9 @@ fun DashboardScreen(
             Modifier.fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 // Under the switcher or the editor nothing is reachable
-                .then(if (switcher || editor != null || buildDetail != null || workItem != null) Modifier.clearAndSetSemantics {} else Modifier),
+                .then(if (switcher || editor != null || buildDetail != null || workItem != null || pipelines != null) Modifier.clearAndSetSemantics {} else Modifier),
         ) {
-            DashboardBar(organization, view, state, onRefresh, onSettings, onTitle = { switcher = true }, onOpenBuild = onOpenBuild)
+            DashboardBar(organization, view, state, onRefresh, onSettings, onTitle = { switcher = true }, onOpenPipelines = onOpenPipelines)
             Panels(
                 state, events, view, now, updateVersion, onUpdate, onDismissUpdate, onRefresh, onOpen, onEventOpen,
                 onMarkAllRead, onEdit = { editor = EditorTarget(view, focus = it) },
@@ -164,7 +171,11 @@ fun DashboardScreen(
                 onDismiss = { editor = null },
             )
         }
-        buildDetail?.let { BuildDetailsModal(it, now, onOpen, onRerunBuild, onCloseBuild) }
+        if (pipelines != null) {
+            PipelinesModal(pipelines, buildDetail, now, pipelinesActions, pipelinesFolders, pipelinesOpen, pipelinesQuery)
+        } else {
+            buildDetail?.let { BuildDetailsModal(it, now, onOpen, onRerunBuild, onCloseBuild) }
+        }
         workItem?.let { WorkItemDetailsModal(it, now, workItemActions, initialMenu = workItemMenu, initialQuery = workItemMenuQuery) }
     }
 }
@@ -332,7 +343,7 @@ private fun DashboardBar(
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
     onTitle: () -> Unit,
-    onOpenBuild: (Build) -> Unit,
+    onOpenPipelines: (String) -> Unit,
 ) {
     val c = AdoTheme.colors
     BoxWithConstraints {
@@ -372,9 +383,10 @@ private fun DashboardBar(
             // A board's builds: the global view has no tile, nor a board without readable builds
             val shown = state.snapshot?.takeIf { !it.buildsDenied }?.shownFor(view)
             val pipeline = shown?.pipeline.orEmpty()
-            if (shown?.pipelineProject != null) {
+            val project = shown?.pipelineProject
+            if (project != null) {
                 Spacer(Modifier.width(12.dp))
-                PipelineTile(pipeline, onOpenBuild, dots = dots)
+                PipelineTile(pipeline, { onOpenPipelines(project) }, dots = dots)
                 Spacer(Modifier.width(20.dp))
             }
             if (state.syncing) {

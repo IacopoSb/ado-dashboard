@@ -189,6 +189,36 @@ class AdoClient(
         return list.value.map { it.toBuild(project) }
     }
 
+    override suspend fun pipelines(project: String): List<Pipeline> {
+        val out = mutableListOf<Pipeline>()
+        var continuation: String? = null
+        // Pages of up to 1000: a project's pipelines all come, in a few calls at most
+        repeat(MAX_DEFINITION_PAGES) {
+            val (list, next) = page<ValueList<DefinitionDto>>(
+                url(project, "_apis", "build", "definitions") {
+                    addQueryParameter("includeLatestBuilds", "true")
+                    addQueryParameter("queryOrder", "definitionNameAscending")
+                    addQueryParameter("\$top", "$DEFINITIONS_PAGE")
+                    continuation?.let { addQueryParameter("continuationToken", it) }
+                },
+            )
+            out += list.value.map { it.toPipeline(project) }
+            continuation = next?.takeIf { it.isNotBlank() } ?: return out
+        }
+        return out
+    }
+
+    override suspend fun pipelineRuns(project: String, definitionId: Int, top: Int): List<Build> {
+        val list: ValueList<BuildDto> = get(
+            url(project, "_apis", "build", "builds") {
+                addQueryParameter("definitions", "$definitionId")
+                addQueryParameter("\$top", "$top")
+                addQueryParameter("queryOrder", "queueTimeDescending")
+            },
+        )
+        return list.value.map { it.toBuild(project) }
+    }
+
     override suspend fun build(project: String, id: Int): Build =
         get<BuildDto>(url(project, "_apis", "build", "builds", "$id")).toBuild(project)
 
@@ -346,9 +376,16 @@ class AdoClient(
     private suspend inline fun <reified T> post(url: HttpUrl, body: JsonObject): T =
         call(Request.Builder().url(url).post(body.toString().toRequestBody(JSON)))
 
-    private suspend inline fun <reified T> call(request: Request.Builder): T {
+    private suspend inline fun <reified T> call(request: Request.Builder): T = json.decodeFromString(fetch(request).first)
+
+    /** A page of a list and the continuation token of the next one, if any. */
+    private suspend inline fun <reified T> page(url: HttpUrl): Pair<T, String?> =
+        fetch(Request.Builder().url(url).get()).let { (text, next) -> json.decodeFromString<T>(text) to next }
+
+    /** The body of a successful response and its continuation token. */
+    private suspend fun fetch(request: Request.Builder): Pair<String, String?> {
         val auth = authorization()
-        val text = withContext(Dispatchers.IO) {
+        return withContext(Dispatchers.IO) {
             http.newCall(request.header("Authorization", auth).header("Accept", "application/json").build())
                 .execute().use { response ->
                     val body = response.body?.string().orEmpty()
@@ -359,10 +396,9 @@ class AdoClient(
                             throw AdoException(401, "Invalid or expired credentials")
                         !response.isSuccessful -> throw AdoException(response.code, errorMessage(response.code, body))
                     }
-                    body
+                    body to response.header("x-ms-continuationtoken")
                 }
         }
-        return json.decodeFromString(text)
     }
 
     private fun errorMessage(code: Int, body: String): String {
@@ -437,6 +473,22 @@ class AdoClient(
         }
     }
 
+    private fun DefinitionDto.toPipeline(project: String): Pipeline {
+        val projectName = this.project?.name ?: project
+        val run = (latestBuild ?: latestCompletedBuild)?.toBuild(projectName)
+            // The runs inside a definition may leave their definition out
+            ?.let { if (it.definitionId == 0) it.copy(definitionId = id, definitionName = name) else it }
+        return Pipeline(
+            id = id,
+            name = name,
+            folder = path.ifBlank { "\\" },
+            project = projectName,
+            latest = run,
+            url = baseUrl.newBuilder().addPathSegment(projectName).addPathSegment("_build")
+                .addQueryParameter("definitionId", "$id").build().toString(),
+        )
+    }
+
     private fun BuildDto.toBuild(project: String): Build {
         val pr = triggerInfo["pr.number"]?.toIntOrNull()
             ?: sourceBranch.takeIf { it.startsWith("refs/pull/") }?.removePrefix("refs/pull/")?.substringBefore('/')?.toIntOrNull()
@@ -499,6 +551,11 @@ class AdoClient(
         private const val AREA_DEPTH = 10
         /** Older servers: the states of a project's types read a few at a time. */
         private const val PARALLEL_TYPE_STATES = 4
+
+        /** Pipelines read per call, and calls at most. */
+        private const val DEFINITIONS_PAGE = 1000
+        private const val MAX_DEFINITION_PAGES = 5
+
         private val defaultHttp = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -693,6 +750,14 @@ private fun IdentityDto.toIdentity() = Identity(id, displayName)
     val requestedBy: IdentityDto? = null,
     val triggerInfo: Map<String, String> = emptyMap(),
     @SerialName("_links") val links: BuildLinksDto? = null,
+)
+@Serializable private data class DefinitionDto(
+    val id: Int,
+    val name: String = "",
+    val path: String = "",
+    val project: ProjectDto? = null,
+    val latestBuild: BuildDto? = null,
+    val latestCompletedBuild: BuildDto? = null,
 )
 @Serializable private data class TimelineRecordDto(
     val id: String = "",

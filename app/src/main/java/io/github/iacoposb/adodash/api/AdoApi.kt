@@ -47,6 +47,15 @@ interface AdoApi {
 
     suspend fun build(project: String, id: Int): Build = throw AdoException(404, "No build $id")
 
+    /**
+     * All the pipelines of [project] with their latest run, by name. Throws [AdoException] 401
+     * or 403 like [builds].
+     */
+    suspend fun pipelines(project: String): List<Pipeline> = emptyList()
+
+    /** The latest [top] runs of a pipeline, most recently queued first. */
+    suspend fun pipelineRuns(project: String, definitionId: Int, top: Int = 10): List<Build> = emptyList()
+
     suspend fun buildTimeline(project: String, id: Int): List<TimelineRecord> = emptyList()
 
     /** Reruns the failed jobs of a finished build. */

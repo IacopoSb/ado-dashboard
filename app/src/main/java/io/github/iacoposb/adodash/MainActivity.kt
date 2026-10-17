@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
                 val catalog by vm.catalog.collectAsStateWithLifecycle()
                 val launchChoiceMade by vm.launchChoiceMade.collectAsStateWithLifecycle()
                 val buildDetail by vm.build.collectAsStateWithLifecycle()
+                val pipelines by vm.pipelines.collectAsStateWithLifecycle()
                 val workItem by vm.workItem.collectAsStateWithLifecycle()
                 val workItemsReadOnly by vm.workItemsReadOnly.collectAsStateWithLifecycle()
                 val choices = viewChoices(settings.views, catalog, settings.filters, sync.snapshot)
@@ -151,7 +152,9 @@ class MainActivity : ComponentActivity() {
                         onDeleteView = { vm.deleteView(it.id) },
                         onLoadBoards = vm::loadBoards,
                         buildDetail = buildDetail,
-                        onOpenBuild = { vm.openBuild(it.project, it.id, it) },
+                        pipelines = pipelines,
+                        onOpenPipelines = vm::openPipelines,
+                        pipelinesActions = remember(vm) { vm.pipelinesActions(::openUrl) },
                         onRerunBuild = vm::rerunBuild,
                         onCloseBuild = vm::closeBuild,
                         onOpenWorkItem = vm::openWorkItem,

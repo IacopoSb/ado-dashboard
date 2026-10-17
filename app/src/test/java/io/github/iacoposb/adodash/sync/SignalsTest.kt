@@ -105,10 +105,8 @@ class SignalsTest {
         val tile = Pipelines.tile(builds, listOf(mine), mapOf("repo-1" to "main", "repo-2" to "master"), acceptsRepo = { true })
         assertEquals(listOf(10, 7, 4), tile.map { it.id })
         assertEquals(Pipelines.Counts(failed = 1, running = 1, ok = 1), Pipelines.counts(tile))
-        assertEquals(10, Pipelines.focus(tile)?.id)
         val onlyRepo2 = Pipelines.tile(builds, emptyList(), mapOf("repo-1" to "main", "repo-2" to "master")) { it.repoId == "repo-2" }
         assertEquals(listOf(4), onlyRepo2.map { it.id })
-        assertEquals(4, Pipelines.focus(onlyRepo2)?.id)
     }
 
     private fun record(id: String, type: String, name: String, order: Int, parent: String? = null, state: BuildState = BuildState.SUCCEEDED) =

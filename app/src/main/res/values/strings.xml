@@ -312,7 +312,28 @@
         <item quantity="one">%d ok</item>
         <item quantity="other">%d ok</item>
     </plurals>
-    <string name="pipeline_open">Open the build details</string>
+    <string name="pipeline_open">Open the pipelines</string>
+    <!-- Pipelines of a project: the tile's modal -->
+    <string name="pipelines_title">Pipelines</string>
+    <plurals name="pipelines_count">
+        <item quantity="one">%1$d pipeline</item>
+        <item quantity="other">%1$d pipelines</item>
+    </plurals>
+    <string name="pipelines_search">Search pipelines</string>
+    <string name="pipelines_loading">Loading the pipelines…</string>
+    <string name="pipelines_updating">Updating…</string>
+    <string name="pipelines_empty">No pipelines in this project</string>
+    <string name="pipelines_no_results">No pipeline matches “%1$s”</string>
+    <string name="pipelines_load_failed">The pipelines can\'t be read: %1$s</string>
+    <string name="pipelines_denied">You can\'t read this project\'s pipelines. With a PAT, add Build (read).</string>
+    <string name="pipelines_never_run">Never run</string>
+    <string name="pipelines_runs_loading">Loading the runs…</string>
+    <string name="pipelines_runs_failed">The runs can\'t be read: %1$s</string>
+    <string name="pipelines_no_runs">No runs yet</string>
+    <string name="pipelines_open_latest">Open the latest run</string>
+    <string name="pipelines_open_run">Open the run</string>
+    <string name="pipelines_running_for">running · %1$s</string>
+    <string name="pipelines_queued">queued</string>
     <!-- Build details -->
     <string name="build_state_succeeded">Succeeded</string>
     <string name="build_state_partial">Partially succeeded</string>
