@@ -149,10 +149,13 @@ class DashboardRenderTest {
     /** As in the design: Contoso partly selected, Resolved hidden for the Epics. */
     private val designFilters = Filters(areas = Fakes.designAreas, hiddenStates = mapOf("Epic" to setOf("Resolved")))
 
+    /** My work items are Bugs and User Stories. */
+    private val usedTypes = setOf("Bug", "User Story")
+
     private fun filters(
         name: String,
         query: String = "",
-        catalog: CatalogState = CatalogState(Fakes.catalog),
+        catalog: CatalogState = CatalogState(Fakes.catalog, usedTypes = usedTypes),
         dark: Boolean = false,
     ) {
         compose.setContent {
@@ -178,6 +181,20 @@ class DashboardRenderTest {
     @Test fun settingsFiltersDark() = filters("settings-filters-dark", dark = true)
 
     @Test fun settingsFiltersLoading() = filters("settings-filters-loading", catalog = CatalogState(loading = true))
+
+    /** Opened again: the saved catalog at once, a fresh one being read. */
+    @Test fun settingsFiltersRefreshing() =
+        filters("settings-filters-refreshing", catalog = CatalogState(Fakes.catalog, loading = true, usedTypes = usedTypes))
+
+    @Config(qualifiers = "+it")
+    @Test fun settingsFiltersRefreshingItalian() =
+        filters("settings-filters-refreshing-it", catalog = CatalogState(Fakes.catalog, loading = true, usedTypes = usedTypes))
+
+    /** A failed refresh with a saved catalog: no banner, the saved one stays. */
+    @Test fun settingsFiltersRefreshFailed() = filters(
+        "settings-filters-refresh-failed",
+        catalog = CatalogState(Fakes.catalog, error = context.getString(R.string.error_credentials), usedTypes = usedTypes),
+    )
 
     @Test fun settingsFiltersError() =
         filters("settings-filters-error", catalog = CatalogState(error = context.getString(R.string.error_credentials)))

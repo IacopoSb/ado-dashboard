@@ -1,8 +1,10 @@
 package io.github.iacoposb.adodash.api
 
 import kotlinx.coroutines.test.runTest
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -73,35 +75,66 @@ class AdoClientTest {
             server.takeRequest().path,
         )
     }
+    /** Answers by path, whatever the order of the calls: some are made together. */
+    private fun route(vararg routes: Pair<String, MockResponse>) {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse =
+                routes.firstOrNull { request.path.orEmpty().substringBefore('?') == it.first }?.second
+                    ?: MockResponse().setResponseCode(500)
+        }
+    }
+
+    private fun paths() = List(server.requestCount) { server.takeRequest().path }.toSet()
 
     @Test fun `work item types come with their states, hidden ones marked`() = runTest {
-        server.enqueue(json("""
-            {"count":3,"value":[
-              {"name":"Epic","referenceName":"Microsoft.VSTS.WorkItemTypes.Epic","color":"FF7B00","isDisabled":false,
-               "states":[{"name":"New","color":"b2b2b2","category":"Proposed"},{"name":"Resolved","color":"ff9d00","category":"InProgress"}]},
-              {"name":"Code Review Request","color":"FF9D00","isDisabled":false,"states":[{"name":"Requested","category":"Proposed"}]},
-              {"name":"Old","color":"000000","isDisabled":true,"states":[]}]}
-        """.trimIndent()))
-        server.enqueue(json("""{"name":"Hidden Types Category","workItemTypes":[{"name":"Code Review Request","url":"x"}]}"""))
+        route(
+            "/org/Contoso/_apis/wit/workitemtypes" to json("""
+                {"count":3,"value":[
+                  {"name":"Epic","referenceName":"Microsoft.VSTS.WorkItemTypes.Epic","color":"FF7B00","isDisabled":false,
+                   "states":[{"name":"New","color":"b2b2b2","category":"Proposed"},{"name":"Resolved","color":"ff9d00","category":"InProgress"}]},
+                  {"name":"Code Review Request","color":"FF9D00","isDisabled":false,"states":[{"name":"Requested","category":"Proposed"}]},
+                  {"name":"Old","color":"000000","isDisabled":true,"states":[]}]}
+            """.trimIndent()),
+            "/org/Contoso/_apis/wit/workitemtypecategories/Microsoft.HiddenCategory" to
+                json("""{"name":"Hidden Types Category","workItemTypes":[{"name":"Code Review Request","url":"x"}]}"""),
+        )
         val types = client.workItemTypes("Contoso")
         assertEquals(listOf("Epic", "Code Review Request"), types.map { it.name })
         assertEquals(listOf(StateInfo("New", "Proposed"), StateInfo("Resolved", "InProgress")), types[0].states)
         assertEquals("FF7B00", types[0].color)
         assertEquals(listOf(false, true), types.map { it.hidden })
-        assertEquals("/org/Contoso/_apis/wit/workitemtypes?api-version=7.1", server.takeRequest().path)
-        assertEquals("/org/Contoso/_apis/wit/workitemtypecategories/Microsoft.HiddenCategory?api-version=7.1", server.takeRequest().path)
+        assertEquals(
+            setOf(
+                "/org/Contoso/_apis/wit/workitemtypes?api-version=7.1",
+                "/org/Contoso/_apis/wit/workitemtypecategories/Microsoft.HiddenCategory?api-version=7.1",
+            ),
+            paths(),
+        )
     }
 
     @Test fun `types without states read them separately`() = runTest {
-        server.enqueue(json("""{"value":[{"name":"User Story","color":"009CCC"}]}"""))
-        server.enqueue(MockResponse().setResponseCode(404).setHeader("Content-Type", "application/json").setBody("{}"))
-        server.enqueue(json("""{"value":[{"name":"Active","category":"InProgress"}]}"""))
+        route(
+            "/org/Contoso/_apis/wit/workitemtypes" to json("""{"value":[{"name":"User Story","color":"009CCC"}]}"""),
+            "/org/Contoso/_apis/wit/workitemtypecategories/Microsoft.HiddenCategory" to
+                MockResponse().setResponseCode(404).setHeader("Content-Type", "application/json").setBody("{}"),
+            "/org/Contoso/_apis/wit/workitemtypes/User%20Story/states" to
+                json("""{"value":[{"name":"Active","category":"InProgress"}]}"""),
+        )
         val type = client.workItemTypes("Contoso").single()
         assertEquals(listOf(StateInfo("Active", "InProgress")), type.states)
         assertEquals(false, type.hidden)
-        server.takeRequest()
-        server.takeRequest()
-        assertEquals("/org/Contoso/_apis/wit/workitemtypes/User%20Story/states?api-version=7.1", server.takeRequest().path)
+        assertTrue(paths().contains("/org/Contoso/_apis/wit/workitemtypes/User%20Story/states?api-version=7.1"))
+    }
+
+    @Test fun `a reused authorization is asked once until it expires`() = runTest {
+        var asked = 0
+        var now = 0L
+        val auth = AdoClient.reused({ "token ${++asked}" }, ttlMillis = 1_000, now = { now })
+        assertEquals("token 1", auth())
+        now = 999
+        assertEquals("token 1", auth())
+        now = 1_000
+        assertEquals("token 2", auth())
     }
 
     @Test fun `work items carry their area path`() = runTest {

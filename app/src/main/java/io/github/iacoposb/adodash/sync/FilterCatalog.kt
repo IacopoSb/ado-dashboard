@@ -8,11 +8,25 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.serialization.Serializable
 
-/** The catalog as the settings show it: kept while it reloads, with the error if that fails. */
-data class CatalogState(val catalog: FilterCatalog? = null, val loading: Boolean = false, val error: String? = null)
+/**
+ * The catalog as the settings show it: the saved one while a fresh one is read, with the error
+ * if that fails.
+ */
+data class CatalogState(
+    val catalog: FilterCatalog? = null,
+    val loading: Boolean = false,
+    val error: String? = null,
+    /** Types among my work items at the last sync; null while unknown. */
+    val usedTypes: Set<String>? = null,
+) {
+    /** Reading a fresh catalog over the one shown. */
+    val refreshing get() = loading && catalog != null
+}
 
 /** A work item type across projects, with the states a filter can hide. */
+@Serializable
 data class TypeStates(
     val name: String,
     /** Hex RGB from Azure Boards, for types the app has no colour of its own for. */
@@ -22,6 +36,7 @@ data class TypeStates(
 )
 
 /** What the global filters choose from. */
+@Serializable
 data class FilterCatalog(val projects: List<AreaNode>, val types: List<TypeStates>) {
     companion object {
         /**
@@ -50,6 +65,8 @@ data class FilterCatalog(val projects: List<AreaNode>, val types: List<TypeState
             return merged.values.sortedWith(compareBy<TypeStates>({ rank(it.name) }, { it.name.lowercase() }))
         }
 
+        const val PARALLEL_PROJECTS = 4
+
         private fun rank(type: String) = when (type.lowercase()) {
             "epic" -> 0
             "feature" -> 1
@@ -65,14 +82,17 @@ data class FilterCatalog(val projects: List<AreaNode>, val types: List<TypeState
          * can still be chosen whole; one whose types cannot be read just adds none.
          */
         suspend fun load(api: AdoApi): FilterCatalog = coroutineScope {
-            val limit = Semaphore(4)
+            // Four projects at a time, each with its areas and types read together
+            val limit = Semaphore(PARALLEL_PROJECTS)
             val projects = api.projects()
             val read = projects.map { project ->
                 async {
                     limit.withPermit {
-                        val areas = runCatching { api.areas(project) }.getOrElse { AreaNode(project, project) }
-                        val types = runCatching { api.workItemTypes(project) }.getOrDefault(emptyList())
-                        Triple(project, areas, types)
+                        coroutineScope {
+                            val areas = async { runCatching { api.areas(project) }.getOrElse { AreaNode(project, project) } }
+                            val types = async { runCatching { api.workItemTypes(project) }.getOrDefault(emptyList()) }
+                            Triple(project, areas.await(), types.await())
+                        }
                     }
                 }
             }.awaitAll()

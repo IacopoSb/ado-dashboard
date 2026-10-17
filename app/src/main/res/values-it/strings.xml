@@ -118,6 +118,7 @@
     <string name="settings_applied_now">Le modifiche si applicano subito</string>
     <string name="filters_sign_in_first">Accedi per scegliere cosa mostra la dashboard.</string>
     <string name="filters_loading">Caricamento di progetti e aree…</string>
+    <string name="filters_updating">Aggiornamento…</string>
     <string name="filters_load_failed">Impossibile caricare progetti e aree: %1$s</string>
     <string name="filters_areas_title">Progetti e aree</string>
     <string name="filters_areas_hint">Mostra solo i work item delle aree selezionate e delle loro sotto-aree. Un progetto selezionato include le aree aggiunte in futuro.</string>

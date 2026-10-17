@@ -122,6 +122,7 @@
     <string name="settings_applied_now">Changes apply immediately</string>
     <string name="filters_sign_in_first">Sign in to choose what the dashboard shows.</string>
     <string name="filters_loading">Loading projects and areas…</string>
+    <string name="filters_updating">Updating…</string>
     <string name="filters_load_failed">Couldn\'t load projects and areas: %1$s</string>
     <string name="filters_areas_title">Projects and areas</string>
     <string name="filters_areas_hint">Shows only the work items of the selected areas and their sub-areas. A selected project includes the areas added in the future.</string>

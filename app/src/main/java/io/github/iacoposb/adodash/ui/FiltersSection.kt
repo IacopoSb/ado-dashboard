@@ -97,7 +97,8 @@ fun FiltersSection(
 ) {
     val spacing = Arrangement.spacedBy(12.dp)
     val error: @Composable () -> Unit = {
-        catalog.error?.let {
+        // With a saved catalog a failed refresh changes nothing: it is tried again next time
+        catalog.error?.takeIf { catalog.catalog == null }?.let {
             Banner(stringResource(R.string.filters_load_failed, it), BannerTone.Error) {
                 TextAction(stringResource(R.string.action_retry), onRetry)
             }
@@ -149,7 +150,10 @@ private fun AreasCard(
     val search = selection.search(query)
     fun change(areas: Set<String>?) = onChange(filters.copy(areas = areas))
 
-    SectionCard(stringResource(R.string.filters_areas_title), modifier) {
+    SectionCard(
+        stringResource(R.string.filters_areas_title), modifier,
+        trailing = if (catalog.refreshing) ({ Updating() }) else null,
+    ) {
         Text(stringResource(R.string.filters_areas_hint), style = MaterialTheme.typography.bodySmall, color = c.textMuted)
         val actions: @Composable () -> Unit = {
             if (search == null) {
@@ -216,6 +220,16 @@ private fun AreasCard(
             }
         }
     }
+}
+
+/** A fresh catalog being read over the saved one: small, the filters stay usable. */
+@Composable
+private fun Updating() {
+    val c = AdoTheme.colors
+    Spacer(Modifier.width(12.dp))
+    CircularProgressIndicator(Modifier.size(14.dp), color = c.textMuted, strokeWidth = 1.5.dp)
+    Spacer(Modifier.width(8.dp))
+    Text(stringResource(R.string.filters_updating), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
 }
 
 @Composable

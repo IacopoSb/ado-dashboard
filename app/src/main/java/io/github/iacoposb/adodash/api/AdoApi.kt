@@ -1,5 +1,6 @@
 package io.github.iacoposb.adodash.api
 
+import kotlinx.serialization.Serializable
 import java.time.Instant
 
 /** The part of the Azure DevOps REST API the dashboard uses. */
@@ -52,6 +53,7 @@ data class WorkItem(
 )
 
 /** An area; [path] is as in [WorkItem.areaPath] and in WIQL ("Project\\Area"). */
+@Serializable
 data class AreaNode(val name: String, val path: String, val children: List<AreaNode> = emptyList())
 
 data class WorkItemTypeInfo(

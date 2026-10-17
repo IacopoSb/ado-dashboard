@@ -11,8 +11,6 @@ import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.Filters
 import io.github.iacoposb.adodash.data.Settings
 import io.github.iacoposb.adodash.errorText
-import io.github.iacoposb.adodash.sync.CatalogState
-import io.github.iacoposb.adodash.sync.FilterCatalog
 import io.github.iacoposb.adodash.update.Release
 import io.github.iacoposb.adodash.update.UpdateState
 import kotlinx.coroutines.CancellationException
@@ -24,7 +22,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -37,10 +34,8 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         list.filter(s.filters::acceptsEvent)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val _catalog = MutableStateFlow(CatalogState())
-    /** Projects, areas and types for the global filters, read when their section opens. */
-    val catalog = _catalog.asStateFlow()
-    private var catalogJob: Job? = null
+    /** Projects, areas and types for the global filters: saved, and read again when they open. */
+    val catalog = app.catalog.state
     private var filterSync: Job? = null
 
     val update = app.updater.state
@@ -73,17 +68,7 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
 
     fun loadCatalog() {
         val s = settings.value ?: return
-        if (!s.configured || catalogJob?.isActive == true) return
-        _catalog.update { it.copy(loading = true, error = null) }
-        catalogJob = viewModelScope.launch {
-            try {
-                _catalog.value = CatalogState(FilterCatalog.load(AdoClient(s.organization, app.authorization(s))))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _catalog.update { it.copy(loading = false, error = app.errorText(e)) }
-            }
-        }
+        if (s.configured) app.catalog.open(s.organization) { app.catalogApi(s) }
     }
 
     /** Applied at once: saved now, synced once the taps stop. */
@@ -125,8 +110,7 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     fun signOut() {
         viewModelScope.launch {
             runCatching { app.entra.signOut() }
-            catalogJob?.cancel()
-            _catalog.value = CatalogState()
+            app.catalog.forget()
             app.sync.reset()
             app.settings.signOut()
         }
@@ -153,6 +137,7 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
                 return@launch
             }
             if (form.organization != current.organization || me.id != current.meId) app.sync.reset()
+            if (!form.organization.equals(current.organization, ignoreCase = true)) app.catalog.forget()
             app.settings.saveAccount(form.organization, method, pat, me.id, me.name)
             app.settings.savePreferences(form.pollSeconds, form.keepScreenOn)
             _save.value = SaveState()

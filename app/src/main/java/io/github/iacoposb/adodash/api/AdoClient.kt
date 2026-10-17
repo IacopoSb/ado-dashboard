@@ -1,6 +1,13 @@
 package io.github.iacoposb.adodash.api
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -77,24 +84,32 @@ class AdoClient(
         return root.toNode(project).copy(name = project)
     }
 
-    override suspend fun workItemTypes(project: String): List<WorkItemTypeInfo> {
-        val list: ValueList<WorkItemTypeDto> = get(url(project, "_apis", "wit", "workitemtypes"))
-        val hidden = runCatching {
-            get<TypeCategoryDto>(url(project, "_apis", "wit", "workitemtypecategories", "Microsoft.HiddenCategory"))
-                .workItemTypes.map { it.name }.toSet()
-        }.getOrDefault(emptySet())
-        return list.value.filterNot { it.isDisabled }.map { type ->
-            // Recent servers list the states with the type; older ones only through /states
-            val states = type.states.ifEmpty {
-                get<ValueList<StateDto>>(url(project, "_apis", "wit", "workitemtypes", type.name, "states")).value
-            }
-            WorkItemTypeInfo(
-                name = type.name,
-                color = type.color?.takeLast(6),
-                states = states.map { StateInfo(it.name, it.category) },
-                hidden = type.name in hidden,
-            )
+    override suspend fun workItemTypes(project: String): List<WorkItemTypeInfo> = coroutineScope {
+        val hiddenCall = async {
+            runCatching {
+                get<TypeCategoryDto>(url(project, "_apis", "wit", "workitemtypecategories", "Microsoft.HiddenCategory"))
+                    .workItemTypes.map { it.name }.toSet()
+            }.getOrDefault(emptySet())
         }
+        val list: ValueList<WorkItemTypeDto> = get(url(project, "_apis", "wit", "workitemtypes"))
+        val hidden = hiddenCall.await()
+        val limit = Semaphore(PARALLEL_TYPE_STATES)
+        list.value.filterNot { it.isDisabled }.map { type ->
+            async {
+                // Recent servers list the states with the type; older ones only through /states
+                val states = type.states.ifEmpty {
+                    limit.withPermit {
+                        get<ValueList<StateDto>>(url(project, "_apis", "wit", "workitemtypes", type.name, "states")).value
+                    }
+                }
+                WorkItemTypeInfo(
+                    name = type.name,
+                    color = type.color?.takeLast(6),
+                    states = states.map { StateInfo(it.name, it.category) },
+                    hidden = type.name in hidden,
+                )
+            }
+        }.awaitAll()
     }
 
     override suspend fun workItemComments(project: String, id: Int): List<Comment> {
@@ -221,6 +236,8 @@ class AdoClient(
         )
         /** Deep enough for any real area tree. */
         private const val AREA_DEPTH = 10
+        /** Older servers: the states of a project's types read a few at a time. */
+        private const val PARALLEL_TYPE_STATES = 4
         private val defaultHttp = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -228,6 +245,25 @@ class AdoClient(
 
         fun pat(token: String): suspend () -> String = Credentials.basic("", token).let { { it } }
         fun bearer(token: suspend () -> String): suspend () -> String = { "Bearer ${token()}" }
+
+        /**
+         * [authorization] asked once and reused for [ttlMillis]: for a burst of calls, such as
+         * reading the filters' catalog, instead of a token lookup per call.
+         */
+        fun reused(
+            authorization: suspend () -> String,
+            ttlMillis: Long = 5 * 60_000L,
+            now: () -> Long = System::currentTimeMillis,
+        ): suspend () -> String {
+            val lock = Mutex()
+            var value: String? = null
+            var at = 0L
+            return {
+                lock.withLock {
+                    value?.takeIf { now() - at < ttlMillis } ?: authorization().also { value = it; at = now() }
+                }
+            }
+        }
 
         fun orgBaseUrl(organization: String): HttpUrl {
             val trimmed = organization.trim().trimEnd('/')

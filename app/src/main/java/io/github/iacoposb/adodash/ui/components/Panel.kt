@@ -54,11 +54,12 @@ fun Panel(
     }
 }
 
-/** A card in the settings: title and the content spaced by 12 dp. */
+/** A card in the settings: title, [trailing] after it, and the content spaced by 12 dp. */
 @Composable
 fun SectionCard(
     title: String?,
     modifier: Modifier = Modifier,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -66,10 +67,13 @@ fun SectionCard(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (title != null) {
-            Text(
-                title, Modifier.semantics { heading() },
-                style = MaterialTheme.typography.titleMedium, color = AdoTheme.colors.text,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title, Modifier.semantics { heading() },
+                    style = MaterialTheme.typography.titleMedium, color = AdoTheme.colors.text,
+                )
+                trailing?.invoke(this)
+            }
         }
         content()
     }

@@ -29,6 +29,8 @@ class SyncRepository(
     private val notify: (List<Event>) -> Unit,
     private val texts: SyncTexts,
     private val apiFor: (Settings) -> AdoApi,
+    /** After each successful sync, with what it read. */
+    private val onSynced: suspend (Settings, Snapshot) -> Unit = { _, _ -> },
 ) {
     private val mutex = Mutex()
     private val stateCategories = mutableMapOf<String, Map<String, String>>()
@@ -54,6 +56,7 @@ class SyncRepository(
             events.prune(before = now.minus(RETENTION).toEpochMilli())
             settings.markSynced(now.toEpochMilli())
             _state.update { SyncState(snapshot = fetched.snapshot) }
+            onSynced(s, fetched.snapshot)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) {
                 // Leaving the dashboard mid-sync: not syncing any more, and not an error

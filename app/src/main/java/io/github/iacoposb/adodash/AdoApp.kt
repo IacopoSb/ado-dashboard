@@ -2,21 +2,26 @@ package io.github.iacoposb.adodash
 
 import android.app.Application
 import androidx.room.Room
+import io.github.iacoposb.adodash.api.AdoApi
 import io.github.iacoposb.adodash.api.AdoClient
 import io.github.iacoposb.adodash.auth.EntraAuth
 import io.github.iacoposb.adodash.data.AppDatabase
 import io.github.iacoposb.adodash.data.AuthMethod
+import io.github.iacoposb.adodash.data.CatalogCache
 import io.github.iacoposb.adodash.data.Settings
 import io.github.iacoposb.adodash.data.SettingsStore
+import io.github.iacoposb.adodash.sync.CatalogRepository
 import io.github.iacoposb.adodash.sync.Notifier
 import io.github.iacoposb.adodash.sync.ResourceSyncTexts
 import io.github.iacoposb.adodash.sync.SyncRepository
 import io.github.iacoposb.adodash.sync.SyncWorker
 import io.github.iacoposb.adodash.update.Updater
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.io.File
 
 class AdoApp : Application() {
     /** Work that outlives the screens, such as an update download. */
@@ -27,9 +32,27 @@ class AdoApp : Application() {
     val settings by lazy { SettingsStore(this) }
     private val notifier by lazy { Notifier(this) }
     val entra by lazy { EntraAuth(this, settings) }
-    val sync by lazy {
-        SyncRepository(settings, database.events(), notifier::notify, ResourceSyncTexts(this)) { AdoClient(it.organization, authorization(it)) }
+    val catalog by lazy {
+        CatalogRepository(CatalogCache(File(filesDir, "filter-catalog.json")), scope, ::errorText)
     }
+    val sync by lazy {
+        SyncRepository(
+            settings, database.events(), notifier::notify, ResourceSyncTexts(this),
+            apiFor = { AdoClient(it.organization, authorization(it)) },
+            onSynced = { s, snapshot ->
+                // Only a convenience for the filters: never a reason for the sync to fail
+                try {
+                    catalog.synced(s.organization, snapshot.workItems.map { it.type }.toSet()) { catalogApi(s) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
+            },
+        )
+    }
+
+    /** For the filters' catalog: many calls in a burst, so one token for all of them. */
+    fun catalogApi(s: Settings): AdoApi = AdoClient(s.organization, AdoClient.reused(authorization(s)))
 
     val updater by lazy { Updater(this, scope, notifier::notifyUpdate) }
 
