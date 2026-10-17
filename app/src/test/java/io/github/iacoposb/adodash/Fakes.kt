@@ -69,6 +69,29 @@ object Fakes {
         ),
     )
 
+    /** A real process: many types, each with many open states. */
+    val manyTypesCatalog = FilterCatalog(
+        projects,
+        listOf(
+            TypeStates("Epic", "FF7B00", listOf("New", "Analysis", "Approved", "Active", "Resolved", "On Hold"), setOf("Contoso")),
+            TypeStates("Feature", "773B93", listOf("New", "Analysis", "Approved", "Active", "Resolved", "On Hold"), setOf("Contoso")),
+            TypeStates(
+                "User Story", "009CCC",
+                listOf("New", "Ready", "Committed", "Active", "In Review", "Resolved", "Blocked"), setOf("Contoso", "Clienti"),
+            ),
+            TypeStates(
+                "Bug", "CC293D",
+                listOf("New", "Triage", "Approved", "Committed", "Active", "In Review", "Resolved", "Reopened"),
+                setOf("Contoso", "Clienti"),
+            ),
+            TypeStates("Task", "F2CB1D", listOf("To Do", "In Progress", "Blocked", "In Review", "Waiting"), setOf("Contoso", "Clienti")),
+            TypeStates("Issue", "B4009E", listOf("Active", "Investigating", "Escalated", "Resolved"), setOf("Clienti")),
+            TypeStates("Test Case", "004B50", listOf("Design", "Ready"), setOf("Contoso")),
+            TypeStates("Change Request", "339947", listOf("Proposed", "Active", "Approved", "Resolved"), setOf("Clienti")),
+            TypeStates("Risk", "E60017", listOf("Identified", "Mitigating", "Monitoring"), setOf("Contoso")),
+        ),
+    )
+
     fun comment(thread: Int, id: Int, author: Identity, text: String, at: Instant = now) = PrComment(thread, id, author, text, at)
 
     /** Plain texts, so the logic tests do not depend on the resources. */

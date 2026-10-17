@@ -160,6 +160,11 @@
     <string name="filters_states_title">States to hide</string>
     <string name="filters_states_hint">Work items in the chosen states disappear from the dashboard, the activity and the notifications. Some processes count states such as Resolved as in progress: hide them here.</string>
     <string name="filters_states_empty">No work item types with open states</string>
+    <plurals name="filters_types_show_all">
+        <item quantity="one">Show all types (%1$d more)</item>
+        <item quantity="other">Show all types (%1$d more)</item>
+    </plurals>
+    <string name="filters_types_used_only">Show only the types I use</string>
     <string name="filters_prs_title">Pull requests</string>
     <string name="filters_show_drafts">Show draft PRs</string>
     <string name="filters_show_drafts_hint">In the To review section</string>

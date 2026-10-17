@@ -157,6 +157,12 @@
     <string name="filters_states_title">Stati da nascondere</string>
     <string name="filters_states_hint">I work item negli stati scelti spariscono da dashboard, attività e notifiche. Alcuni processi contano stati come Resolved fra quelli in corso: qui si possono nascondere.</string>
     <string name="filters_states_empty">Nessun tipo di work item con stati aperti</string>
+    <plurals name="filters_types_show_all">
+        <item quantity="one">Mostra tutti i tipi (ancora %1$d)</item>
+        <item quantity="many">Mostra tutti i tipi (ancora %1$d)</item>
+        <item quantity="other">Mostra tutti i tipi (ancora %1$d)</item>
+    </plurals>
+    <string name="filters_types_used_only">Mostra solo i tipi che uso</string>
     <string name="filters_prs_title">Pull request</string>
     <string name="filters_show_drafts">Mostra le PR in bozza</string>
     <string name="filters_show_drafts_hint">Nella sezione Da revisionare</string>

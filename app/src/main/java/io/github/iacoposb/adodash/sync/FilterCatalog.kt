@@ -3,6 +3,7 @@ package io.github.iacoposb.adodash.sync
 import io.github.iacoposb.adodash.api.AdoApi
 import io.github.iacoposb.adodash.api.AreaNode
 import io.github.iacoposb.adodash.api.WorkItemTypeInfo
+import io.github.iacoposb.adodash.data.Filters
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -25,6 +26,9 @@ data class CatalogState(
     val refreshing get() = loading && catalog != null
 }
 
+/** What "States to hide" lists: [shown] at first, [more] behind "Show all types". */
+data class TypesToShow(val shown: List<TypeStates>, val more: List<TypeStates>)
+
 /** A work item type across projects, with the states a filter can hide. */
 @Serializable
 data class TypeStates(
@@ -38,6 +42,23 @@ data class TypeStates(
 /** What the global filters choose from. */
 @Serializable
 data class FilterCatalog(val projects: List<AreaNode>, val types: List<TypeStates>) {
+
+    /**
+     * The types of the projects [filters] include (all of them while none is), in backlog
+     * order. Shown first: those among my work items, [used], and those with states hidden,
+     * so they can be shown again; the rest only on request. All are shown when [used] is
+     * unknown or nothing would be.
+     */
+    fun typesToShow(filters: Filters, used: Set<String>?): TypesToShow {
+        val types = types.filter { t -> t.projects.any(filters::includesProject) }.ifEmpty { types }
+        if (used == null) return TypesToShow(types, emptyList())
+        val (shown, more) = types.partition { t ->
+            used.any { it.equals(t.name, ignoreCase = true) } ||
+                filters.hiddenStates.any { (name, states) -> states.isNotEmpty() && name.equals(t.name, ignoreCase = true) }
+        }
+        return if (shown.isEmpty()) TypesToShow(more, emptyList()) else TypesToShow(shown, more)
+    }
+
     companion object {
         /**
          * Only states that can reach the dashboard (not started or in progress): the closed

@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -75,8 +76,12 @@ import io.github.iacoposb.adodash.ui.components.BannerTone
 import io.github.iacoposb.adodash.ui.components.SectionCard
 import io.github.iacoposb.adodash.ui.components.SwitchRow
 import io.github.iacoposb.adodash.ui.components.TextAction
+import io.github.iacoposb.adodash.ui.components.scrollbar
 
-private val pathSetSaver = listSaver<Set<String>, String>({ it.toList() }, { it.toSet() })
+/** The states to hide and the pull request options, side by side with the tree. */
+const val RIGHT_COLUMN_TAG = "filters-right-column"
+
+private val pathSetSaver =listSaver<Set<String>, String>({ it.toList() }, { it.toSet() })
 
 /**
  * "Global filters": the projects-and-areas tree on the left, states to hide and pull request
@@ -109,7 +114,13 @@ fun FiltersSection(
             error()
             Row(Modifier.weight(1f), horizontalArrangement = spacing) {
                 AreasCard(filters, catalog, onChange, true, initiallyExpanded, initialQuery, Modifier.weight(1.45f).fillMaxHeight())
-                Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = spacing) {
+                // Scrolls with the many types and states of a real process, with a thumb that shows it
+                val scroll = rememberScrollState()
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().testTag(RIGHT_COLUMN_TAG)
+                        .scrollbar(scroll, AdoTheme.colors.outline).verticalScroll(scroll),
+                    verticalArrangement = spacing,
+                ) {
                     StatesCard(filters, catalog, onChange)
                     PullRequestsCard(filters, onChange)
                 }
@@ -358,18 +369,31 @@ private fun StatesCard(filters: Filters, catalog: CatalogState, onChange: (Filte
     val c = AdoTheme.colors
     SectionCard(stringResource(R.string.filters_states_title)) {
         Text(stringResource(R.string.filters_states_hint), style = MaterialTheme.typography.bodySmall, color = c.textMuted)
-        val all = catalog.catalog?.types
+        val all = catalog.catalog
+        var showAll by rememberSaveable { mutableStateOf(false) }
         when {
             all == null -> if (catalog.loading) {
                 CircularProgressIndicator(Modifier.size(20.dp), color = c.primary, strokeWidth = 2.dp)
             }
             else -> {
-                // The types of the projects shown; all of them while none is
-                val types = all.filter { t -> t.projects.any(filters::includesProject) }.ifEmpty { all }
-                if (types.isEmpty()) {
+                val types = all.typesToShow(filters, catalog.usedTypes)
+                if (types.shown.isEmpty()) {
                     Text(stringResource(R.string.filters_states_empty), style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
                 }
-                types.forEach { type -> TypeRow(type, filters, onChange) }
+                types.shown.forEach { type -> TypeRow(type, filters, onChange) }
+                if (showAll) types.more.forEach { type -> TypeRow(type, filters, onChange) }
+                if (types.more.isNotEmpty()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        if (showAll) {
+                            TextAction(stringResource(R.string.filters_types_used_only), { showAll = false })
+                        } else {
+                            TextAction(
+                                pluralStringResource(R.plurals.filters_types_show_all, types.more.size, types.more.size),
+                                { showAll = true },
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -379,13 +403,16 @@ private fun StatesCard(filters: Filters, catalog: CatalogState, onChange: (Filte
 @Composable
 private fun TypeRow(type: TypeStates, filters: Filters, onChange: (Filters) -> Unit) {
     val c = AdoTheme.colors
-    Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.width(4.dp).height(22.dp).clip(RoundedCornerShape(2.dp)).background(typeColor(type)))
-        Spacer(Modifier.width(12.dp))
-        Text(
-            type.name, Modifier.width(84.dp), style = MaterialTheme.typography.titleSmall, color = c.text,
-            maxLines = 2, overflow = TextOverflow.Ellipsis,
-        )
+    // The name level with the first line of states, however many lines they take
+    Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.Top) {
+        Row(Modifier.heightIn(min = 32.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(4.dp).height(22.dp).clip(RoundedCornerShape(2.dp)).background(typeColor(type)))
+            Spacer(Modifier.width(12.dp))
+            Text(
+                type.name, Modifier.width(84.dp), style = MaterialTheme.typography.titleSmall, color = c.text,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
+        }
         FlowRow(
             Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(8.dp),

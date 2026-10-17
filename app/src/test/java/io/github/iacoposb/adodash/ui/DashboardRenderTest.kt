@@ -2,7 +2,10 @@ package io.github.iacoposb.adodash.ui
 
 import android.content.Context
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import com.github.takahirom.roborazzi.captureRoboImage
 import io.github.iacoposb.adodash.Fakes
@@ -149,7 +152,7 @@ class DashboardRenderTest {
     /** As in the design: Contoso partly selected, Resolved hidden for the Epics. */
     private val designFilters = Filters(areas = Fakes.designAreas, hiddenStates = mapOf("Epic" to setOf("Resolved")))
 
-    /** My work items are Bugs and User Stories. */
+    /** My work items are Bugs and User Stories; Epics are listed for their hidden state. */
     private val usedTypes = setOf("Bug", "User Story")
 
     private fun filters(
@@ -157,17 +160,20 @@ class DashboardRenderTest {
         query: String = "",
         catalog: CatalogState = CatalogState(Fakes.catalog, usedTypes = usedTypes),
         dark: Boolean = false,
+        filters: Filters = designFilters,
+        scrolledToEnd: Boolean = false,
     ) {
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
                 SettingsScreen(
-                    Settings(organization = "contoso", meId = "u1", meName = "Iacopo Sbalchiero", filters = designFilters),
+                    Settings(organization = "contoso", meId = "u1", meName = "Iacopo Sbalchiero", filters = filters),
                     busy = false, message = null, {}, { _, _ -> }, {}, {}, onBack = {},
                     initialSection = SettingsSection.FILTERS, catalog = catalog,
                     filtersExpanded = setOf("Contoso", "Contoso\\Backend"), filtersQuery = query,
                 )
             }
         }
+        if (scrolledToEnd) repeat(3) { compose.onNodeWithTag(RIGHT_COLUMN_TAG).performTouchInput { swipeUp() } }
         compose.onRoot().captureRoboImage("$name.png")
     }
 
@@ -194,6 +200,18 @@ class DashboardRenderTest {
     @Test fun settingsFiltersRefreshFailed() = filters(
         "settings-filters-refresh-failed",
         catalog = CatalogState(Fakes.catalog, error = context.getString(R.string.error_credentials), usedTypes = usedTypes),
+    )
+
+    /** A real process: only the types of my work items, the right column scrolls to the end. */
+    private val manyTypes = CatalogState(Fakes.manyTypesCatalog, usedTypes = setOf("Epic", "Feature", "User Story", "Bug", "Task", "Issue"))
+    private val manyTypesFilters = Filters(hiddenStates = mapOf("Epic" to setOf("Resolved"), "Risk" to setOf("Monitoring")))
+
+    @Test fun settingsFiltersManyTypes() =
+        filters("settings-filters-many-types", catalog = manyTypes, filters = manyTypesFilters)
+
+    @Test fun settingsFiltersManyTypesScrolled() = filters(
+        "settings-filters-many-types-scrolled", catalog = manyTypes, filters = manyTypesFilters,
+        scrolledToEnd = true,
     )
 
     @Test fun settingsFiltersError() =
