@@ -39,6 +39,18 @@ fun ago(at: Instant, now: Instant = Instant.now()): String {
 fun timeOfDay(at: Instant): String =
     DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale()).format(at.atZone(ZoneId.systemDefault()))
 
+/** "8 s", "2 min 31 s", "1 h 5 min". */
+@Composable
+@ReadOnlyComposable
+fun duration(d: Duration): String {
+    val s = d.seconds.coerceAtLeast(0)
+    return when {
+        s < 60 -> stringResource(R.string.duration_s, s.toInt())
+        s < 3600 -> stringResource(R.string.duration_min_s, (s / 60).toInt(), (s % 60).toInt())
+        else -> stringResource(R.string.duration_h_min, (s / 3600).toInt(), (s % 3600 / 60).toInt())
+    }
+}
+
 /** A reviewer's vote, as shown on a pull request. */
 @StringRes
 fun voteLabel(vote: Int): Int = when (vote) {

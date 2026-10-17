@@ -6,6 +6,10 @@ import androidx.lifecycle.viewModelScope
 import io.github.iacoposb.adodash.AdoApp
 import io.github.iacoposb.adodash.R
 import io.github.iacoposb.adodash.api.AdoClient
+import io.github.iacoposb.adodash.api.AdoException
+import io.github.iacoposb.adodash.api.Build
+import io.github.iacoposb.adodash.api.BuildState
+import io.github.iacoposb.adodash.sync.BuildSteps
 import io.github.iacoposb.adodash.data.AuthMethod
 import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.DashboardView
@@ -25,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -60,6 +65,90 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     fun downloadUpdate(release: Release) = app.updater.download(release)
     fun installUpdate(apk: File) = app.updater.install(apk)
     fun dismissUpdate(version: String) = app.updater.dismiss(version)
+
+    /** The build details open over the dashboard. */
+    private val _build = MutableStateFlow<BuildDetail?>(null)
+    val build = _build.asStateFlow()
+    private var buildJob: Job? = null
+    /** The credentials were refused a rerun: not offered again until the app restarts. */
+    private var rerunDenied = false
+
+    /**
+     * Opens the details of a build: [known] (from the pipeline tile) shows at once, otherwise
+     * (from an event) it is read first; then its timeline and failed tests.
+     */
+    fun openBuild(project: String, id: Int, known: Build? = null) {
+        buildJob?.cancel()
+        _build.value = BuildDetail(project, id, known, canRerun = !rerunDenied)
+        buildJob = viewModelScope.launch {
+            // Also from a notification, before the settings are on screen
+            val api = app.api(app.settings.current())
+            val build = known ?: try {
+                api.build(project, id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                updateBuild(id) { it.copy(error = app.errorText(e)) }
+                return@launch
+            }
+            updateBuild(id) { it.copy(build = build) }
+            launch {
+                val steps = runCatching { BuildSteps.of(api.buildTimeline(project, id)) }.getOrDefault(emptyList())
+                updateBuild(id) { it.copy(steps = steps) }
+            }
+            if (build.state != BuildState.SUCCEEDED) launch {
+                val tests = try {
+                    val runs = api.testRuns(project, id).filter { it.failed > 0 }
+                    val total = runs.sumOf { it.failed }
+                    val first = runs.take(MAX_TEST_RUNS).flatMap { api.failedTests(project, it.id, MAX_FAILED_TESTS) }
+                    TestsState.Loaded(first.take(MAX_FAILED_TESTS), maxOf(total, first.size))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    TestsState.Unavailable
+                }
+                updateBuild(id) { it.copy(tests = tests) }
+            }
+        }
+    }
+
+    fun markRead(key: String) {
+        viewModelScope.launch { app.sync.markRead(key) }
+    }
+
+    fun closeBuild() {
+        buildJob?.cancel()
+        _build.value = null
+    }
+
+    /** "Rerun failed jobs": one call; refused, it is not offered again. */
+    fun rerunBuild() {
+        val detail = _build.value ?: return
+        val s = settings.value ?: return
+        updateBuild(detail.buildId) { it.copy(rerun = RerunState.BUSY) }
+        viewModelScope.launch {
+            try {
+                app.api(s).retryBuild(detail.project, detail.buildId)
+                updateBuild(detail.buildId) { it.copy(rerun = RerunState.STARTED) }
+                app.sync.sync()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: AdoException) {
+                if (e.code == 401 || e.code == 403) {
+                    rerunDenied = true
+                    updateBuild(detail.buildId) { it.copy(rerun = RerunState.DENIED, canRerun = false) }
+                } else {
+                    updateBuild(detail.buildId) { it.copy(rerun = RerunState.FAILED, rerunError = app.errorText(e)) }
+                }
+            } catch (e: Exception) {
+                updateBuild(detail.buildId) { it.copy(rerun = RerunState.FAILED, rerunError = app.errorText(e)) }
+            }
+        }
+    }
+
+    private fun updateBuild(id: Int, change: (BuildDetail) -> BuildDetail) {
+        _build.update { current -> current?.takeIf { it.buildId == id }?.let(change) ?: current }
+    }
 
     data class SaveState(val busy: Boolean = false, val message: String? = null)
     private val _save = MutableStateFlow(SaveState())
@@ -203,5 +292,7 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
 
     private companion object {
         const val FILTER_SYNC_DELAY_MS = 1_500L
+        const val MAX_FAILED_TESTS = 10
+        const val MAX_TEST_RUNS = 3
     }
 }

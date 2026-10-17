@@ -14,7 +14,13 @@ import io.github.iacoposb.adodash.Fakes.marco
 import io.github.iacoposb.adodash.Fakes.me
 import io.github.iacoposb.adodash.Fakes.now
 import io.github.iacoposb.adodash.R
+import io.github.iacoposb.adodash.api.BuildState
+import io.github.iacoposb.adodash.api.FailedTest
 import io.github.iacoposb.adodash.api.Reviewer
+import io.github.iacoposb.adodash.data.AuthMethod
+import io.github.iacoposb.adodash.sync.BuildSignal
+import io.github.iacoposb.adodash.sync.BuildStep
+import io.github.iacoposb.adodash.sync.PrSignals
 import io.github.iacoposb.adodash.api.Vote
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.EventKind
@@ -60,6 +66,36 @@ class DashboardRenderTest {
 
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
+    /** The design's builds: 1 failed, 1 running, 6 ok, the latest first. */
+    private val failedBuild = Fakes.build(981, BuildState.FAILED, prId = 305, ago = 1090).copy(
+        number = "20261016.3", startedAt = now.minusSeconds(1080), finishedAt = now.minusSeconds(680),
+    )
+    private val pipeline = listOf(
+        failedBuild,
+        Fakes.build(980, BuildState.RUNNING, prId = 318, ago = 1200),
+    ) + (1..6).map { Fakes.build(970 + it, BuildState.SUCCEEDED, definition = it, repoId = "repo-$it", ago = 1300L + it * 600) }
+
+    private val designPrs = listOf(
+        Fakes.pr(311, anna, "Retry handling for payment gateway calls", listOf(Reviewer(me.id, me.name, Vote.NONE, true))),
+        Fakes.pr(305, marco, "Refactor the authentication module",
+            listOf(Reviewer(me.id, me.name, Vote.WAITING, false)), draft = true, ago = 200_000),
+        Fakes.pr(318, me, "Dashboard: filter by area path", listOf(
+            Reviewer(anna.id, anna.name, Vote.APPROVED, true),
+            Reviewer(marco.id, marco.name, Vote.WAITING, false),
+        ), ago = 3000),
+        Fakes.pr(320, me, "Update the payments SDK to 4.2", listOf(
+            Reviewer(anna.id, anna.name, Vote.APPROVED, true),
+            Reviewer("dddddddd-1111-2222-3333-444444444444", "Luca Rossi", Vote.APPROVED_WITH_SUGGESTIONS, false),
+        ), ago = 5000).copy(repoName = "payments", sourceBranch = "chore/sdk-4.2"),
+    )
+
+    private val signals = mapOf(
+        311 to PrSignals(BuildSignal.SUCCEEDED, activeThreads = 2),
+        305 to PrSignals(BuildSignal.FAILED, activeThreads = 1, conflicts = true),
+        318 to PrSignals(BuildSignal.SUCCEEDED, activeThreads = 1),
+        320 to PrSignals(BuildSignal.SUCCEEDED, activeThreads = 0, readyToComplete = true),
+    )
+
     private val snapshot = Snapshot(
         me = me,
         workItems = listOf(
@@ -68,25 +104,20 @@ class DashboardRenderTest {
             Fakes.workItem(4755, "Task", "Update the build dependencies", "Active", 3, 90_000),
             Fakes.workItem(4701, "Feature", "Push notifications for customers", "In Progress", 2, 300_000),
         ),
-        reviewPrs = listOf(
-            Fakes.pr(311, anna, "Retry handling for payment gateway calls",
-                listOf(Reviewer(me.id, me.name, Vote.NONE, true))),
-            Fakes.pr(305, marco, "Refactor the authentication module",
-                listOf(Reviewer(me.id, me.name, Vote.WAITING, false)), draft = true, ago = 200_000),
-        ),
-        myPrs = listOf(
-            Fakes.pr(318, me, "Dashboard: filter by area path", listOf(
-                Reviewer(anna.id, anna.name, Vote.APPROVED, true),
-                Reviewer(marco.id, marco.name, Vote.WAITING, false),
-            ), ago = 3000),
-        ),
+        reviewPrs = designPrs.take(2),
+        myPrs = designPrs.drop(2),
         syncedAt = now,
-    )
+        signals = signals,
+    ).let { it.copy(shown = Shown(DashboardView.global.queryKey, it.workItems, it.reviewPrs, it.myPrs, pipeline = pipeline)) }
 
     /** Titles in the language of the test, as a sync would store them. */
     private fun events() = ResourceSyncTexts(context).run {
         listOf(
             Event("1", EventKind.MENTION, prMention(anna.name, 311), "Retry handling\n@Iacopo Sbalchiero is exponential backoff fine here?", "", now.minusSeconds(240).toEpochMilli()),
+            Event(
+                "build:981:failed", EventKind.BUILD_FAILED, buildFailed(305),
+                buildFailedBody("backend-ci", "20261016.3", 2), "", now.minusSeconds(1080).toEpochMilli(), project = "Contoso",
+            ),
             Event("2", EventKind.ASSIGNED, assigned(4812, "SSO sign-in fails"), "Bug · Contoso · Active", "", now.minusSeconds(1800).toEpochMilli()),
             Event("3", EventKind.PR_VOTE, prVote(anna.name, Vote.APPROVED), "Dashboard: filter by area path", "", now.minusSeconds(2400).toEpochMilli(), read = true),
             Event("4", EventKind.PR_COMMENT, prComment(marco.name, 318), "Dashboard: filter\nThe empty case has no test", "", now.minusSeconds(2700).toEpochMilli(), read = true),
@@ -100,14 +131,61 @@ class DashboardRenderTest {
         state: SyncState = SyncState(snapshot),
         update: String? = null,
         events: List<Event> = events(),
+        build: BuildDetail? = null,
     ) {
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
-                DashboardScreen("contoso", state, events, {}, {}, {}, {}, {}, now = now, updateVersion = update)
+                DashboardScreen("contoso", state, events, {}, {}, {}, {}, {}, now = now, updateVersion = update, buildDetail = build)
             }
         }
         compose.onRoot().captureRoboImage("$name.png")
     }
+
+    /** The build of the design's modal: stages, two failed tests, rerun offered. */
+    private fun buildDetail(): BuildDetail {
+        fun step(name: String, state: BuildState, start: Long, seconds: Long, skipped: Boolean = false) = BuildStep(
+            name, state, skipped,
+            if (skipped) null else now.minusSeconds(start), if (skipped) null else now.minusSeconds(start - seconds),
+        )
+        val names = if (italian) listOf("Checkout", "Ripristino dipendenze", "Compilazione", "Test unitari", "Pubblicazione artefatti")
+        else listOf("Checkout", "Restore dependencies", "Build", "Unit tests", "Publish artifacts")
+        return BuildDetail(
+            "Contoso", failedBuild.id, failedBuild,
+            steps = listOf(
+                step(names[0], BuildState.SUCCEEDED, 1080, 8),
+                step(names[1], BuildState.SUCCEEDED, 1072, 72),
+                step(names[2], BuildState.SUCCEEDED, 1000, 151),
+                step(names[3], BuildState.FAILED, 849, 169),
+                step(names[4], BuildState.CANCELED, 0, 0, skipped = true),
+            ),
+            tests = TestsState.Loaded(
+                listOf(
+                    FailedTest("TokenRefreshTest.refreshesGuestAccount", "expected 200 but was 401"),
+                    FailedTest("SessionStoreTest.keepsSessionAfterRotation", "NullPointerException at SessionStore.kt:57"),
+                ),
+                total = 2,
+            ),
+        )
+    }
+
+    @Test fun buildModal() = dashboard("build-modal", dark = false, build = buildDetail())
+
+    @Config(qualifiers = "+it")
+    @Test fun buildModalItalian() = dashboard("build-modal-it", dark = false, build = buildDetail())
+
+    @Test fun buildModalDark() = dashboard("build-modal-dark", dark = true, build = buildDetail())
+
+    /** Opened from an event: the build is being read. */
+    @Test fun buildModalLoading() = dashboard("build-modal-loading", dark = false, build = BuildDetail("Contoso", 981))
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun buildModalPhone() = dashboard("build-modal-phone", dark = false, build = buildDetail())
+
+    /** Without Build (read): no tile, the PR rows without a build. */
+    @Test fun tabletNoBuilds() = dashboard(
+        "dashboard-tablet-no-builds", dark = false,
+        SyncState(snapshot.copy(buildsDenied = true, signals = signals.mapValues { it.value.copy(build = BuildSignal.NONE) })),
+    )
 
     @Test fun tabletLight() = dashboard("dashboard-tablet-light", dark = false)
     @Test fun tabletDark() = dashboard("dashboard-tablet-dark", dark = true)
@@ -155,6 +233,14 @@ class DashboardRenderTest {
 
     @Config(qualifiers = "+it")
     @Test fun settingsSignedInItalian() = signedIn("settings-account-signed-in-it", section = SettingsSection.ACCOUNT)
+
+    /** A PAT without Build (read): the hint under the account. */
+    @Test fun settingsPatNoBuilds() =
+        signedIn("settings-account-pat-no-builds", section = SettingsSection.ACCOUNT, pat = true, buildsDenied = true)
+
+    @Config(qualifiers = "+it")
+    @Test fun settingsPatNoBuildsItalian() =
+        signedIn("settings-account-pat-no-builds-it", section = SettingsSection.ACCOUNT, pat = true, buildsDenied = true)
 
     @Test fun settingsScreen() = signedIn("settings-screen", section = SettingsSection.SCREEN)
 
@@ -232,13 +318,16 @@ class DashboardRenderTest {
     @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
     @Test fun settingsFiltersPhone() = filters("settings-filters-phone")
 
-    private fun signedIn(name: String, section: SettingsSection?) {
+    private fun signedIn(name: String, section: SettingsSection?, pat: Boolean = false, buildsDenied: Boolean = false) {
         compose.setContent {
             AdoTheme(dark = false, dynamic = false) {
                 SettingsScreen(
-                    Settings(organization = "contoso", meId = "u1", meName = "Iacopo Sbalchiero"),
+                    Settings(
+                        organization = "contoso", meId = "u1", meName = "Iacopo Sbalchiero",
+                        authMethod = if (pat) AuthMethod.PAT else AuthMethod.ENTRA, pat = if (pat) "x" else "",
+                    ),
                     busy = false, message = null, {}, { _, _ -> }, {}, {}, onBack = {},
-                    version = "0.0.2", initialSection = section,
+                    version = "0.0.2", initialSection = section, buildsDenied = buildsDenied,
                 )
             }
         }

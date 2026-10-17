@@ -51,6 +51,9 @@ class AdoApp : Application() {
         )
     }
 
+    /** For calls outside a sync, such as the build details. */
+    fun api(s: Settings): AdoApi = AdoClient(s.organization, authorization(s))
+
     /** For the filters' catalog: many calls in a burst, so one token for all of them. */
     fun catalogApi(s: Settings): AdoApi = AdoClient(s.organization, AdoClient.reused(authorization(s)))
 

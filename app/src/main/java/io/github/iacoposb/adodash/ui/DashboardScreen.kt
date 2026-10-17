@@ -58,6 +58,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
+import io.github.iacoposb.adodash.api.Build
 import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.DashboardView
@@ -107,6 +108,11 @@ fun DashboardScreen(
     initialSwitcher: Boolean = false,
     initialSwitcherQuery: String = "",
     initialEditor: EditorTarget? = null,
+    /** The build details open over the dashboard, if any. */
+    buildDetail: BuildDetail? = null,
+    onOpenBuild: (Build) -> Unit = {},
+    onRerunBuild: () -> Unit = {},
+    onCloseBuild: () -> Unit = {},
 ) {
     val c = AdoTheme.colors
     val view = choices.views.current
@@ -119,9 +125,9 @@ fun DashboardScreen(
             Modifier.fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 // Under the switcher or the editor nothing is reachable
-                .then(if (switcher || editor != null) Modifier.clearAndSetSemantics {} else Modifier),
+                .then(if (switcher || editor != null || buildDetail != null) Modifier.clearAndSetSemantics {} else Modifier),
         ) {
-            DashboardBar(organization, view, state, onRefresh, onSettings, onTitle = { switcher = true })
+            DashboardBar(organization, view, state, onRefresh, onSettings, onTitle = { switcher = true }, onOpenBuild = onOpenBuild)
             Panels(
                 state, events, view, now, updateVersion, onUpdate, onDismissUpdate, onRefresh, onOpen, onEventOpen,
                 onMarkAllRead, onEdit = { editor = EditorTarget(view, focus = it) },
@@ -147,6 +153,7 @@ fun DashboardScreen(
                 onDismiss = { editor = null },
             )
         }
+        buildDetail?.let { BuildDetailsModal(it, now, onOpen, onRerunBuild, onCloseBuild) }
     }
 }
 
@@ -178,6 +185,7 @@ private fun Panels(
     val unread = events.count { !it.read }
     val loading = state.awaitingFirstSync || (snapshot != null && shown == null && state.error == null)
     val prScopes = view.pullRequests.show
+    val signals = snapshot?.signals.orEmpty()
 
     Column(Modifier.padding(horizontal = 12.dp)) {
         val top = Modifier.padding(top = 8.dp)
@@ -229,17 +237,17 @@ private fun Panels(
                 if (PrScope.TO_REVIEW in prScopes) {
                     item(key = "section-review") { SectionHeader(toReview, count = reviewPrs.size) }
                     if (reviewPrs.isEmpty()) empty(noReviews)
-                    items(reviewPrs, key = { "r${it.id}" }) { PrRow(it, me, reviewing = true, now, onClick = { onOpen(it.url) }) }
+                    items(reviewPrs, key = { "r${it.id}" }) { PrRow(it, me, reviewing = true, now, onClick = { onOpen(it.url) }, signals = signals[it.id]) }
                 }
                 if (PrScope.MINE in prScopes) {
                     item(key = "section-mine") { SectionHeader(mine, count = myPrs.size) }
                     if (myPrs.isEmpty()) empty(noMyPrs)
-                    items(myPrs, key = { "m${it.id}" }) { PrRow(it, me, reviewing = false, now, onClick = { onOpen(it.url) }) }
+                    items(myPrs, key = { "m${it.id}" }) { PrRow(it, me, reviewing = false, now, onClick = { onOpen(it.url) }, signals = signals[it.id]) }
                 }
                 if (PrScope.ALL in prScopes) {
                     item(key = "section-others") { SectionHeader(others, count = otherPrs.size) }
                     if (otherPrs.isEmpty()) empty(noOthers)
-                    items(otherPrs, key = { "o${it.id}" }) { PrRow(it, me, reviewing = false, now, onClick = { onOpen(it.url) }) }
+                    items(otherPrs, key = { "o${it.id}" }) { PrRow(it, me, reviewing = false, now, onClick = { onOpen(it.url) }, signals = signals[it.id]) }
                 }
                 if (prScopes.isEmpty()) empty(noOthers)
             }
@@ -311,47 +319,58 @@ private fun DashboardBar(
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
     onTitle: () -> Unit,
+    onOpenBuild: (Build) -> Unit,
 ) {
     val c = AdoTheme.colors
-    Row(
-        Modifier.fillMaxWidth().height(60.dp).padding(start = 8.dp, end = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f).padding(top = 4.dp)) {
-            val choose = stringResource(R.string.action_choose_view)
-            Row(
-                Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = choose, role = Role.Button, onClick = onTitle)
-                    .padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+    BoxWithConstraints {
+        val dots = maxWidth >= 600.dp
+        Row(
+            Modifier.fillMaxWidth().height(60.dp).padding(start = 8.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(top = 4.dp)) {
+                val choose = stringResource(R.string.action_choose_view)
+                Row(
+                    Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = choose, role = Role.Button, onClick = onTitle)
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        viewTitle(view), Modifier.weight(1f, fill = false).semantics { heading() },
+                        style = MaterialTheme.typography.titleLarge, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Filled.KeyboardArrowDown, choose, Modifier.size(24.dp), tint = c.textMuted)
+                }
+                val snapshot = state.snapshot
+                val status = when {
+                    snapshot != null && view.board != null -> stringResource(R.string.dashboard_updated_at, timeOfDay(snapshot.syncedAt))
+                    snapshot != null -> stringResource(R.string.dashboard_synced, snapshot.me.name, timeOfDay(snapshot.syncedAt))
+                    state.awaitingFirstSync -> stringResource(R.string.dashboard_syncing)
+                    else -> stringResource(R.string.dashboard_not_synced)
+                }
                 Text(
-                    viewTitle(view), Modifier.weight(1f, fill = false).semantics { heading() },
-                    style = MaterialTheme.typography.titleLarge, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    if (view.board != null) stringResource(R.string.view_board_subtitle, status) else "$organization · $status",
+                    Modifier.padding(horizontal = 8.dp),
+                    style = MaterialTheme.typography.bodySmall, color = c.textMuted,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.width(4.dp))
-                Icon(Icons.Filled.KeyboardArrowDown, choose, Modifier.size(24.dp), tint = c.textMuted)
             }
-            val snapshot = state.snapshot
-            val status = when {
-                snapshot != null && view.board != null -> stringResource(R.string.dashboard_updated_at, timeOfDay(snapshot.syncedAt))
-                snapshot != null -> stringResource(R.string.dashboard_synced, snapshot.me.name, timeOfDay(snapshot.syncedAt))
-                state.awaitingFirstSync -> stringResource(R.string.dashboard_syncing)
-                else -> stringResource(R.string.dashboard_not_synced)
+            // The view's builds: none, or none readable, hides the tile
+            val pipeline = state.snapshot?.takeIf { !it.buildsDenied }?.shownFor(view)?.pipeline.orEmpty()
+            if (pipeline.isNotEmpty()) {
+                Spacer(Modifier.width(12.dp))
+                PipelineTile(pipeline, onOpenBuild, dots = dots)
+                Spacer(Modifier.width(20.dp))
             }
-            Text(
-                if (view.board != null) stringResource(R.string.view_board_subtitle, status) else "$organization · $status",
-                Modifier.padding(horizontal = 8.dp),
-                style = MaterialTheme.typography.bodySmall, color = c.textMuted,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+            if (state.syncing) {
+                CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), color = c.primary, strokeWidth = 2.dp)
+            } else {
+                IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, stringResource(R.string.action_refresh), tint = c.textMuted) }
+            }
+            Spacer(Modifier.width(12.dp))
+            IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.action_settings), tint = c.textMuted) }
         }
-        if (state.syncing) {
-            CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), color = c.primary, strokeWidth = 2.dp)
-        } else {
-            IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, stringResource(R.string.action_refresh), tint = c.textMuted) }
-        }
-        Spacer(Modifier.width(12.dp))
-        IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.action_settings), tint = c.textMuted) }
     }
 }
 

@@ -116,6 +116,8 @@ fun SettingsScreen(
     /** For the screenshots: the filters' tree as in the design. */
     filtersExpanded: Set<String>? = null,
     filtersQuery: String = "",
+    /** The last sync could not read builds: with a PAT, a hint to add Build (read). */
+    buildsDenied: Boolean = false,
     /** "What do you want to see?" at launch; applied at once. */
     askViewAtLaunch: Boolean = true,
     onAskViewAtLaunchChange: (Boolean) -> Unit = {},
@@ -162,7 +164,7 @@ fun SettingsScreen(
             }
             SettingsSection.ACCOUNT -> if (initial.configured) {
                 Columns(wide, left = {
-                    SignedInCard(initial, busy, onSignOut)
+                    SignedInCard(initial, busy, onSignOut, buildsDenied)
                 })
             } else {
                 Columns(
@@ -407,7 +409,7 @@ private fun Navigation(
 }
 
 @Composable
-private fun SignedInCard(settings: Settings, busy: Boolean, onSignOut: () -> Unit) {
+private fun SignedInCard(settings: Settings, busy: Boolean, onSignOut: () -> Unit, buildsDenied: Boolean) {
     val c = AdoTheme.colors
     SectionCard(stringResource(R.string.settings_account)) {
         val (name, detail) = accountLine(settings)
@@ -423,6 +425,13 @@ private fun SignedInCard(settings: Settings, busy: Boolean, onSignOut: () -> Uni
                 Text(detail, style = MaterialTheme.typography.bodySmall, color = c.textMuted)
             }
             if (!busy) TextAction(stringResource(R.string.action_sign_out), onSignOut)
+        }
+        if (buildsDenied && settings.authMethod == AuthMethod.PAT) {
+            Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(AdoIcons.Error, null, Modifier.size(16.dp), tint = c.warning)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.settings_pat_no_builds), style = MaterialTheme.typography.bodySmall, color = c.textMuted)
+            }
         }
     }
 }
