@@ -7,6 +7,9 @@ import io.github.iacoposb.adodash.AdoApp
 import io.github.iacoposb.adodash.R
 import io.github.iacoposb.adodash.api.AdoClient
 import io.github.iacoposb.adodash.data.AuthMethod
+import io.github.iacoposb.adodash.data.BoardRef
+import io.github.iacoposb.adodash.data.DashboardView
+import io.github.iacoposb.adodash.data.ViewSet
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.Filters
 import io.github.iacoposb.adodash.data.Settings
@@ -29,10 +32,18 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     /** Null until read from disk. */
     val settings: StateFlow<Settings?> = app.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val sync = app.sync.state
-    /** Only what the filters include, also for what was stored before they changed. */
+    /**
+     * Only what the filters include, also for what was stored before they changed, and of that
+     * what the current view shows. Notifications are not filtered by the view.
+     */
     val events: StateFlow<List<Event>> = combine(app.database.events().recent(), app.settings.settings) { list, s ->
-        list.filter(s.filters::acceptsEvent)
+        val view = s.views.current
+        list.filter { s.filters.acceptsEvent(it) && view.acceptsEvent(it) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** "What do you want to see?" answered (or skipped) since the app started. */
+    private val _launchChoiceMade = MutableStateFlow(false)
+    val launchChoiceMade = _launchChoiceMade.asStateFlow()
 
     /** Projects, areas and types for the global filters: saved, and read again when they open. */
     val catalog = app.catalog.state
@@ -85,8 +96,52 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         viewModelScope.launch { app.sync.markRead(event.key) }
     }
 
+    /** Only what the view shows: the rest stays unread for the views that show it. */
     fun markAllRead() {
-        viewModelScope.launch { app.sync.markAllRead() }
+        val keys = events.value.filterNot { it.read }.map { it.key }
+        viewModelScope.launch { app.sync.markRead(keys) }
+    }
+
+    /** The views' pickers need the boards: the saved catalog, read again only when missing. */
+    fun loadBoards() {
+        val s = settings.value ?: return
+        if (s.configured) app.catalog.openForViews(s.organization) { app.catalogApi(s) }
+    }
+
+    fun openView(id: String) = changeViews { it.open(id) }
+
+    fun openBoard(board: BoardRef) = changeViews { it.openBoard(board) }
+
+    /** Saves [view] and opens it. */
+    fun saveView(view: DashboardView) = changeViews { it.put(view) }
+
+    fun deleteView(id: String) = changeViews { it.delete(id) }
+
+    /** From the launch screen: [id] opened, and from now on without asking if [always]. */
+    fun chooseAtLaunch(id: String?, board: BoardRef?, always: Boolean) {
+        _launchChoiceMade.value = true
+        changeViews { set ->
+            val opened = when {
+                board != null -> set.openBoard(board)
+                id != null -> set.open(id)
+                else -> set
+            }
+            opened.copy(alwaysOpen = always, chosenAtLaunch = true)
+        }
+    }
+
+    /** From the settings: ask again at the next launch, or not. */
+    fun setAskAtLaunch(ask: Boolean) {
+        viewModelScope.launch { app.settings.editViews { it.copy(alwaysOpen = !ask) } }
+    }
+
+    /** A change of what the sync reads syncs at once; one of the activity only shows. */
+    private fun changeViews(change: (ViewSet) -> ViewSet) {
+        val before = settings.value?.views?.current?.queryKey
+        viewModelScope.launch {
+            app.settings.editViews(change)
+            if (app.settings.current().views.current.queryKey != before) app.sync.sync()
+        }
     }
 
     /** Interactive Microsoft sign-in, then checks the token against the organization. */

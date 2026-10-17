@@ -18,7 +18,19 @@ import io.github.iacoposb.adodash.api.Reviewer
 import io.github.iacoposb.adodash.api.Vote
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.EventKind
+import io.github.iacoposb.adodash.data.ActivityKind
+import io.github.iacoposb.adodash.data.ActivityPanel
+import io.github.iacoposb.adodash.data.BoardRef
+import io.github.iacoposb.adodash.data.Condition
+import io.github.iacoposb.adodash.data.DashboardView
 import io.github.iacoposb.adodash.data.Filters
+import io.github.iacoposb.adodash.data.PrScope
+import io.github.iacoposb.adodash.data.PullRequestsPanel
+import io.github.iacoposb.adodash.data.ViewSet
+import io.github.iacoposb.adodash.data.WiField
+import io.github.iacoposb.adodash.data.WorkItemsPanel
+import io.github.iacoposb.adodash.sync.Shown
+import io.github.iacoposb.adodash.sync.TeamInfo
 import io.github.iacoposb.adodash.data.Settings
 import io.github.iacoposb.adodash.errorText
 import io.github.iacoposb.adodash.sync.CatalogState
@@ -283,4 +295,114 @@ class DashboardRenderTest {
 
     @Config(qualifiers = "+it")
     @Test fun tabletDarkItalian() = dashboard("dashboard-tablet-dark-it", dark = true)
+
+    private val italian get() = context.resources.configuration.locales[0].language == "it"
+
+    /** The views of the design: the global one, reviews only and urgent bugs. */
+    private fun designViews(current: String = DashboardView.GLOBAL_ID): ViewSet {
+        val reviews = DashboardView(
+            "reviews", if (italian) "Solo revisioni" else "Reviews only",
+            workItems = WorkItemsPanel(enabled = false),
+            pullRequests = PullRequestsPanel(show = setOf(PrScope.TO_REVIEW)),
+            activity = ActivityPanel(kinds = setOf(ActivityKind.MENTIONS, ActivityKind.REVIEW_REQUESTS, ActivityKind.COMMENTS)),
+        )
+        val bugs = DashboardView(
+            "bugs", if (italian) "Bug urgenti" else "Urgent bugs",
+            workItems = WorkItemsPanel(
+                conditions = listOf(
+                    Condition(WiField.TYPE, values = listOf("Bug")),
+                    Condition.assignedTo(Condition.ANYONE),
+                    Condition.notClosed,
+                ),
+            ),
+        )
+        return ViewSet(listOf(DashboardView.global, reviews, bugs), currentId = current)
+    }
+
+    private val designBoards = listOf(
+        ProjectBoards("Contoso", listOf(TeamInfo("Backend", "Sprint 42"), TeamInfo("Frontend", "Sprint 42"), TeamInfo("Mobile", "Sprint 42"))),
+        ProjectBoards("Interno", listOf(TeamInfo("Infrastruttura", "Sprint 18"))),
+    )
+
+    private fun choices(views: ViewSet = designViews()) = ViewChoices(
+        views, designBoards,
+        EditorOptions(
+            types = listOf("Epic", "Feature", "User Story", "Bug", "Task"),
+            states = listOf("New", "Active", "Resolved"),
+            people = listOf(anna.name, marco.name),
+            repositories = listOf("backend", "payments"),
+        ),
+    )
+
+    private fun picker(name: String) {
+        compose.setContent {
+            AdoTheme(dark = false, dynamic = false) {
+                ViewPickerScreen(choices(), onOpen = { _, _, _ -> }, onNewView = {})
+            }
+        }
+        compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    @Test fun viewsPicker() = picker("views-picker")
+
+    @Config(qualifiers = "+it")
+    @Test fun viewsPickerItalian() = picker("views-picker-it")
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun viewsPickerPhone() = picker("views-picker-phone")
+
+    private fun viewsDashboard(
+        name: String,
+        views: ViewSet = designViews(),
+        switcher: Boolean = false,
+        editor: EditorTarget? = null,
+        dark: Boolean = false,
+        state: SyncState = SyncState(snapshot),
+    ) {
+        compose.setContent {
+            AdoTheme(dark = dark, dynamic = false) {
+                DashboardScreen(
+                    "contoso", state, events(), {}, {}, {}, {}, {}, now = now,
+                    choices = choices(views), initialSwitcher = switcher, initialEditor = editor,
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    @Test fun viewsSwitcher() = viewsDashboard("views-switcher", switcher = true)
+
+    @Test fun viewsEditor() = viewsDashboard("views-editor", editor = EditorTarget(DashboardView.global))
+
+    @Config(qualifiers = "+it")
+    @Test fun viewsEditorItalian() = viewsDashboard("views-editor-it", editor = EditorTarget(DashboardView.global))
+
+    @Test fun viewsEditorDark() = viewsDashboard("views-editor-dark", editor = EditorTarget(DashboardView.global), dark = true)
+
+    /** Opened from the pull requests panel's header: scrolled to its section. */
+    @Test fun viewsEditorPullRequests() = viewsDashboard(
+        "views-editor-pull-requests", editor = EditorTarget(designViews().find("bugs")!!, focus = ViewPanel.PULL_REQUESTS),
+    )
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun viewsEditorPhone() = viewsDashboard("views-editor-phone", editor = EditorTarget(DashboardView.global))
+
+    @Test fun dashboardBoardView() {
+        val board = BoardRef("Contoso", "Backend")
+        val views = designViews().openBoard(board)
+        val view = views.current
+        val state = SyncState(snapshot.copy(shown = Shown(view.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs)))
+        viewsDashboard("dashboard-board-view", views = views, state = state)
+    }
+
+    /** A view of reviews only: the work items panel is off, the others share the width. */
+    @Test fun dashboardReviewsOnly() {
+        val views = designViews("reviews")
+        val state = SyncState(snapshot.copy(shown = Shown(views.current.queryKey, emptyList(), snapshot.reviewPrs, emptyList())))
+        viewsDashboard("dashboard-reviews-only", views = views, state = state)
+    }
+
+    /** Just switched view: the panels wait for the sync of the new one. */
+    @Test fun dashboardViewLoading() =
+        viewsDashboard("dashboard-view-loading", views = designViews("bugs"), state = SyncState(snapshot.copy(shown = Shown("old", emptyList(), emptyList(), emptyList())), syncing = true))
 }

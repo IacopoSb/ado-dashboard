@@ -67,6 +67,7 @@ fun SwitchRow(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     enabled: Boolean = true,
+    titleStyle: TextStyle = MaterialTheme.typography.bodyLarge,
 ) {
     val c = AdoTheme.colors
     Row(
@@ -75,7 +76,7 @@ fun SwitchRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = c.text)
+            Text(title, style = titleStyle, color = c.text)
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.textMuted)
         }
         Spacer(Modifier.width(16.dp))

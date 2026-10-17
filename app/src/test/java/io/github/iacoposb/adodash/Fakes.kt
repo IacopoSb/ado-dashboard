@@ -8,6 +8,7 @@ import io.github.iacoposb.adodash.api.Reviewer
 import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.sync.FilterCatalog
 import io.github.iacoposb.adodash.sync.SyncTexts
+import io.github.iacoposb.adodash.sync.TeamInfo
 import io.github.iacoposb.adodash.sync.TypeStates
 import java.time.Instant
 
@@ -67,6 +68,12 @@ object Fakes {
             TypeStates("Feature", "773B93", listOf("Resolved", "New"), setOf("Contoso")),
             TypeStates("Bug", "CC293D", listOf("Resolved"), setOf("Contoso", "Clienti")),
         ),
+        teams = mapOf(
+            "Contoso" to listOf(TeamInfo("Backend", "Sprint 42"), TeamInfo("Frontend", "Sprint 42"), TeamInfo("Mobile")),
+            "Interno" to listOf(TeamInfo("Infrastruttura", "Sprint 18")),
+        ),
+        repositories = mapOf("Contoso" to listOf("backend", "payments"), "Interno" to listOf("infra")),
+        version = FilterCatalog.VERSION,
     )
 
     /** A real process: many types, each with many open states. */
@@ -90,6 +97,7 @@ object Fakes {
             TypeStates("Change Request", "339947", listOf("Proposed", "Active", "Approved", "Resolved"), setOf("Clienti")),
             TypeStates("Risk", "E60017", listOf("Identified", "Mitigating", "Monitoring"), setOf("Contoso")),
         ),
+        version = FilterCatalog.VERSION,
     )
 
     fun comment(thread: Int, id: Int, author: Identity, text: String, at: Instant = now) = PrComment(thread, id, author, text, at)

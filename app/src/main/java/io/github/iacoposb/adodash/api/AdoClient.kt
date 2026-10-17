@@ -131,6 +131,7 @@ class AdoClient(
                 when (filter) {
                     is PrFilter.Reviewer -> addQueryParameter("searchCriteria.reviewerId", filter.id)
                     is PrFilter.Creator -> addQueryParameter("searchCriteria.creatorId", filter.id)
+                    PrFilter.All -> {}
                 }
                 addQueryParameter("\$top", "100")
             },
@@ -147,6 +148,31 @@ class AdoClient(
                 .filter { !it.isDeleted && it.commentType == "text" }
                 .map { PrComment(thread.id, it.id, it.author.toIdentity(), it.content.orEmpty(), Instant.parse(it.publishedDate)) }
         }
+    }
+
+    override suspend fun teams(project: String): List<String> {
+        val list: ValueList<ProjectDto> = get(
+            url("_apis", "projects", project, "teams") { addQueryParameter("\$top", "500") },
+        )
+        return list.value.map { it.name }.sortedBy { it.lowercase() }
+    }
+
+    override suspend fun teamAreas(project: String, team: String): List<TeamArea>? {
+        val values: TeamFieldValuesDto = get(url(project, team, "_apis", "work", "teamsettings", "teamfieldvalues"))
+        if (!values.field.referenceName.equals("System.AreaPath", ignoreCase = true)) return null
+        return values.values.map { TeamArea(it.value, it.includeChildren) }
+    }
+
+    override suspend fun currentSprint(project: String, team: String): String? {
+        val list: ValueList<ProjectDto> = get(
+            url(project, team, "_apis", "work", "teamsettings", "iterations") { addQueryParameter("\$timeframe", "current") },
+        )
+        return list.value.firstOrNull()?.name
+    }
+
+    override suspend fun repositories(project: String): List<String> {
+        val list: ValueList<RepoNameDto> = get(url(project, "_apis", "git", "repositories"))
+        return list.value.filterNot { it.isDisabled }.map { it.name }.sortedBy { it.lowercase() }
     }
 
     private fun url(
@@ -277,6 +303,13 @@ class AdoClient(
 @Serializable private data class ConnectionData(val authenticatedUser: UserDto)
 @Serializable private data class UserDto(val id: String, val providerDisplayName: String = "")
 @Serializable private data class ProjectDto(val name: String)
+@Serializable private data class RepoNameDto(val name: String, val isDisabled: Boolean = false)
+@Serializable private data class TeamFieldDto(val referenceName: String = "")
+@Serializable private data class TeamFieldValueDto(val value: String, val includeChildren: Boolean = false)
+@Serializable private data class TeamFieldValuesDto(
+    val field: TeamFieldDto = TeamFieldDto(),
+    val values: List<TeamFieldValueDto> = emptyList(),
+)
 @Serializable private data class StateDto(val name: String, val category: String = "")
 @Serializable private data class ClassificationNodeDto(
     val name: String,

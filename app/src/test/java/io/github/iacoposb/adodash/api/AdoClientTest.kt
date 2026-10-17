@@ -152,4 +152,46 @@ class AdoClientTest {
         val e = assertThrows(AdoException::class.java) { kotlinx.coroutines.runBlocking { client.me() } }
         assertEquals(401, e.code)
     }
+
+    @Test fun `team field values become the board's area paths`() = runTest {
+        server.enqueue(json("""
+            {"field":{"referenceName":"System.AreaPath","url":"x"},"defaultValue":"My Project\\Backend",
+             "values":[{"value":"My Project\\Backend","includeChildren":true},{"value":"My Project\\Shared","includeChildren":false}]}
+        """.trimIndent()))
+        assertEquals(
+            listOf(TeamArea("My Project\\Backend", true), TeamArea("My Project\\Shared", false)),
+            client.teamAreas("My Project", "Backend Team"),
+        )
+        assertEquals(
+            "/org/My%20Project/Backend%20Team/_apis/work/teamsettings/teamfieldvalues?api-version=7.1",
+            server.takeRequest().path,
+        )
+    }
+
+    @Test fun `a team field other than the area path gives no areas`() = runTest {
+        server.enqueue(json("""{"field":{"referenceName":"Custom.Team"},"values":[{"value":"Blue","includeChildren":false}]}"""))
+        assertEquals(null, client.teamAreas("P", "T"))
+    }
+
+    @Test fun `teams, current sprint and repositories`() = runTest {
+        route(
+            "/org/_apis/projects/My%20Project/teams" to json("""{"value":[{"id":"1","name":"web"},{"id":"2","name":"Backend"}]}"""),
+            "/org/My%20Project/web/_apis/work/teamsettings/iterations" to
+                json("""{"value":[{"id":"i","name":"Sprint 42","path":"My Project\\Sprint 42"}]}"""),
+            "/org/My%20Project/Backend/_apis/work/teamsettings/iterations" to json("""{"value":[]}"""),
+            "/org/My%20Project/_apis/git/repositories" to
+                json("""{"value":[{"id":"a","name":"payments"},{"id":"b","name":"Backend"},{"id":"c","name":"old","isDisabled":true}]}"""),
+        )
+        assertEquals(listOf("Backend", "web"), client.teams("My Project"))
+        assertEquals("Sprint 42", client.currentSprint("My Project", "web"))
+        assertEquals(null, client.currentSprint("My Project", "Backend"))
+        assertEquals(listOf("Backend", "payments"), client.repositories("My Project"))
+    }
+
+    @Test fun `all active pull requests have no reviewer or creator`() = runTest {
+        server.enqueue(json("""{"value":[]}"""))
+        client.activePullRequests("P", PrFilter.All)
+        val path = server.takeRequest().path!!
+        assertEquals("/org/P/_apis/git/pullrequests?searchCriteria.status=active&%24top=100&api-version=7.1", path)
+    }
 }

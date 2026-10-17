@@ -2,6 +2,8 @@ package io.github.iacoposb.adodash.sync
 
 import io.github.iacoposb.adodash.api.AdoApi
 import io.github.iacoposb.adodash.api.Identity
+import io.github.iacoposb.adodash.api.TeamArea
+import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.EventDao
 import io.github.iacoposb.adodash.data.EventKind
@@ -34,6 +36,7 @@ class SyncRepository(
 ) {
     private val mutex = Mutex()
     private val stateCategories = mutableMapOf<String, Map<String, String>>()
+    private val teamAreas = mutableMapOf<BoardRef, List<TeamArea>>()
     private val _state = MutableStateFlow(SyncState())
     val state: StateFlow<SyncState> = _state.asStateFlow()
 
@@ -43,10 +46,12 @@ class SyncRepository(
         _state.update { it.copy(syncing = true) }
         try {
             val now = Instant.now()
-            val fetched = SyncEngine(apiFor(s), stateCategories, texts = texts).fetch(
+            val fetched = SyncEngine(apiFor(s), stateCategories, teamAreas, texts = texts).fetch(
                 me = Identity(s.meId, s.meName),
                 since = s.lastSyncAt.takeIf { it > 0 }?.let(Instant::ofEpochMilli),
                 filters = s.filters,
+                // What is shown; the events below come from my own items only, whatever the view
+                view = s.views.current,
             )
             val firstSync = s.baselineAt == 0L
             val found = Events.from(fetched, if (firstSync) now else Instant.ofEpochMilli(s.baselineAt), texts)
@@ -89,11 +94,13 @@ class SyncRepository(
 
     suspend fun markRead(key: String) = events.markRead(key)
     suspend fun markAllRead() = events.markAllRead()
+    suspend fun markRead(keys: List<String>) = keys.chunked(500).forEach { events.markRead(it) }
 
     /** Forgets the previous account. */
     suspend fun reset() = mutex.withLock {
         events.clear()
         stateCategories.clear()
+        teamAreas.clear()
         _state.value = SyncState()
     }
 

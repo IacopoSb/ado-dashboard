@@ -39,9 +39,23 @@ data class TypeStates(
     val projects: Set<String>,
 )
 
-/** What the global filters choose from. */
+/** A team, with its current sprint when it has one. */
 @Serializable
-data class FilterCatalog(val projects: List<AreaNode>, val types: List<TypeStates>) {
+data class TeamInfo(val name: String, val sprint: String? = null)
+
+/**
+ * What the global filters choose from, and the views too: the teams of each project (their
+ * boards) and its repositories. [version] tells a catalog saved by an older release, which
+ * has neither: it is read again.
+ */
+@Serializable
+data class FilterCatalog(
+    val projects: List<AreaNode>,
+    val types: List<TypeStates>,
+    val teams: Map<String, List<TeamInfo>> = emptyMap(),
+    val repositories: Map<String, List<String>> = emptyMap(),
+    val version: Int = 1,
+) {
 
     /**
      * The types of the projects [filters] include (all of them while none is), in backlog
@@ -87,6 +101,8 @@ data class FilterCatalog(val projects: List<AreaNode>, val types: List<TypeState
         }
 
         const val PARALLEL_PROJECTS = 4
+        /** 2: teams with their sprint and repositories, for the views. */
+        const val VERSION = 2
 
         private fun rank(type: String) = when (type.lowercase()) {
             "epic" -> 0
@@ -103,8 +119,10 @@ data class FilterCatalog(val projects: List<AreaNode>, val types: List<TypeState
          * can still be chosen whole; one whose types cannot be read just adds none.
          */
         suspend fun load(api: AdoApi): FilterCatalog = coroutineScope {
-            // Four projects at a time, each with its areas and types read together
+            // Four projects at a time, each with its areas, types, teams and repositories read
+            // together; the teams' sprints four at a time too
             val limit = Semaphore(PARALLEL_PROJECTS)
+            val sprints = Semaphore(PARALLEL_PROJECTS)
             val projects = api.projects()
             val read = projects.map { project ->
                 async {
@@ -112,15 +130,33 @@ data class FilterCatalog(val projects: List<AreaNode>, val types: List<TypeState
                         coroutineScope {
                             val areas = async { runCatching { api.areas(project) }.getOrElse { AreaNode(project, project) } }
                             val types = async { runCatching { api.workItemTypes(project) }.getOrDefault(emptyList()) }
-                            Triple(project, areas.await(), types.await())
+                            val repos = async { runCatching { api.repositories(project) }.getOrDefault(emptyList()) }
+                            val teams = runCatching { api.teams(project) }.getOrDefault(emptyList()).map { team ->
+                                async {
+                                    val sprint = sprints.withPermit { runCatching { api.currentSprint(project, team) }.getOrNull() }
+                                    TeamInfo(team, sprint)
+                                }
+                            }.awaitAll()
+                            ProjectRead(project, areas.await(), types.await(), teams, repos.await())
                         }
                     }
                 }
             }.awaitAll()
             FilterCatalog(
-                projects = read.map { it.second },
-                types = merge(read.associate { it.first to it.third }),
+                projects = read.map { it.areas },
+                types = merge(read.associate { it.name to it.types }),
+                teams = read.associate { it.name to it.teams },
+                repositories = read.associate { it.name to it.repositories },
+                version = VERSION,
             )
         }
+
+        private class ProjectRead(
+            val name: String,
+            val areas: AreaNode,
+            val types: List<WorkItemTypeInfo>,
+            val teams: List<TeamInfo>,
+            val repositories: List<String>,
+        )
     }
 }

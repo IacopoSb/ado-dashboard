@@ -33,6 +33,8 @@ data class Settings(
     val filters: Filters = Filters(),
     /** Last change of [filters]: the next sync takes what they newly include as history. */
     val filtersChangedAt: Long = 0,
+    /** The organization's views and the one open; another organization starts from the defaults. */
+    val views: ViewSet = ViewSet(),
 ) {
     val configured get() = organization.isNotBlank() && meId.isNotBlank() &&
         (authMethod == AuthMethod.ENTRA || pat.isNotBlank())
@@ -55,6 +57,7 @@ class SettingsStore(private val context: Context) {
         val entraTenant = stringPreferencesKey("entra_tenant_id")
         val filters = stringPreferencesKey("filters")
         val filtersChanged = longPreferencesKey("filters_changed_at")
+        val views = stringPreferencesKey("views")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { it.toSettings() }
@@ -75,6 +78,7 @@ class SettingsStore(private val context: Context) {
         entraTenantId = this[K.entraTenant].orEmpty(),
         filters = Filters.decode(this[K.filters]),
         filtersChangedAt = this[K.filtersChanged] ?: 0,
+        views = ViewSet.decode(this[K.views]),
     )
 
     /** Saving a different account restarts the baseline. */
@@ -85,7 +89,10 @@ class SettingsStore(private val context: Context) {
                 it[K.lastSync] = 0
             }
             // Another organization's projects and areas mean nothing here
-            if (it[K.org] != organization) it.remove(K.filters)
+            if (it[K.org] != organization) {
+                it.remove(K.filters)
+                it.remove(K.views)
+            }
             it[K.org] = organization
             it[K.auth] = method.name
             if (method == AuthMethod.PAT) it[K.pat] = TokenCipher.encrypt(pat) else it.remove(K.pat)
@@ -106,6 +113,11 @@ class SettingsStore(private val context: Context) {
             it[K.filters] = filters.encode()
             it[K.filtersChanged] = at
         }
+    }
+
+    /** Changes the views as they are stored now, so that two quick changes never undo each other. */
+    suspend fun editViews(change: (ViewSet) -> ViewSet) {
+        context.dataStore.edit { it[K.views] = change(ViewSet.decode(it[K.views])).encode() }
     }
 
     /** Identifiers, not secrets: stored in clear. */

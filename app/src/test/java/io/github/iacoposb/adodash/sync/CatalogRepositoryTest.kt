@@ -109,6 +109,32 @@ class CatalogRepositoryTest {
         assertEquals(2, api.areaCalls)
     }
 
+    @Test fun `a catalog saved before the views is read again, for the teams`() = runTest {
+        val cache = cache()
+        val api = FakeApi()
+        cache.saveCatalog("contoso", Fakes.catalog.copy(teams = emptyMap(), version = 1), at = DAY * 10 - 1_000)
+        repository(cache).synced("contoso", setOf("Task")) { api }
+        advanceUntilIdle()
+        assertEquals(2, api.areaCalls)
+        assertEquals(FilterCatalog.VERSION, cache.load("contoso")!!.catalog!!.version)
+    }
+
+    @Test fun `the view pickers read the catalog only when none is saved`() = runTest {
+        val cache = cache()
+        val api = FakeApi()
+        cache.saveCatalog("contoso", Fakes.catalog, at = 0)
+        val repo = repository(cache)
+        repo.openForViews("contoso") { api }
+        advanceUntilIdle()
+        assertEquals("even an old one is good enough to pick a board", 0, api.areaCalls)
+        assertEquals(Fakes.catalog.teams, repo.state.value.catalog!!.teams)
+
+        val empty = repository(CatalogCache(File(folder.root, "empty.json"), StandardTestDispatcher(testScheduler)))
+        empty.openForViews("contoso") { api }
+        advanceUntilIdle()
+        assertEquals(2, api.areaCalls)
+    }
+
     @Test fun `forgetting drops the saved catalog`() = runTest {
         val cache = cache()
         val repo = repository(cache)

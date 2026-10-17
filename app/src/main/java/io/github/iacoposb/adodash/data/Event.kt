@@ -48,6 +48,9 @@ interface EventDao {
     @Query("UPDATE events SET read = 1 WHERE `key` = :key")
     suspend fun markRead(key: String)
 
+    @Query("UPDATE events SET read = 1 WHERE `key` IN (:keys)")
+    suspend fun markRead(keys: List<String>)
+
     @Query("UPDATE events SET read = 1")
     suspend fun markAllRead()
 

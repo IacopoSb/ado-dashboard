@@ -31,7 +31,25 @@ interface AdoApi {
 
     /** All comments of all threads, system ones excluded. */
     suspend fun pullRequestComments(pr: PullRequest): List<PrComment>
+
+    /** The project's team names, sorted. */
+    suspend fun teams(project: String): List<String> = emptyList()
+
+    /**
+     * The area paths of a team's board (its Team field values); null when the team field is
+     * not the area path, so the board cannot be told apart from the rest of the project.
+     */
+    suspend fun teamAreas(project: String, team: String): List<TeamArea>? = null
+
+    /** The name of the team's current sprint; null when it has none. */
+    suspend fun currentSprint(project: String, team: String): String? = null
+
+    /** The project's Git repository names, sorted. */
+    suspend fun repositories(project: String): List<String> = emptyList()
 }
+
+/** An area path of a team, with or without the areas below it. */
+data class TeamArea(val path: String, val includeChildren: Boolean)
 
 /** [message] is English; a 401 is shown to the user translated (see errorText). */
 class AdoException(val code: Int, message: String) : Exception(message)
@@ -79,6 +97,8 @@ data class Comment(
 sealed interface PrFilter {
     data class Reviewer(val id: String) : PrFilter
     data class Creator(val id: String) : PrFilter
+    /** Every active PR, for views that show all of them. */
+    data object All : PrFilter
 }
 
 data class Reviewer(val id: String, val name: String, val vote: Int, val required: Boolean)

@@ -10,7 +10,7 @@
     <string name="action_retry">Retry</string>
     <string name="action_refresh">Refresh</string>
     <string name="action_settings">Settings</string>
-    <string name="panel_work_items">Assigned work items</string>
+    <string name="panel_work_items">Work items</string>
     <string name="empty_work_items">No open work items</string>
     <string name="panel_pull_requests">Pull requests</string>
     <string name="section_to_review">To review</string>
@@ -196,4 +196,91 @@
     <string name="update_error_checksum">the downloaded file doesn\'t match SHA256SUMS</string>
     <string name="update_error_download_http">download failed (HTTP %1$d)</string>
     <string name="update_error_unreachable">can\'t reach GitHub, check your connection</string>
+    <!-- Views -->
+    <string name="view_board_title" translatable="false">%1$s › %2$s</string>
+    <!-- App bar subtitle of a board view: "team board · updated at 12:00" -->
+    <string name="view_board_subtitle">team board · %1$s</string>
+    <string name="dashboard_updated_at">updated at %1$s</string>
+    <string name="action_choose_view">Choose what to show</string>
+    <string name="switcher_views">Views</string>
+    <string name="switcher_boards">Boards</string>
+    <string name="action_edit_view">Edit view</string>
+    <string name="action_new_view">New view</string>
+    <string name="section_others_in_my_repos">Others in my repos</string>
+    <string name="section_in_my_repos">In my repos</string>
+    <string name="empty_others">No other open pull requests</string>
+
+    <!-- "What do you want to see?" at launch -->
+    <string name="picker_title">What do you want to see?</string>
+    <string name="picker_subtitle">You can change it anytime by tapping the title at the top.</string>
+    <string name="picker_my_views">My views</string>
+    <string name="picker_project_board">Project and board</string>
+    <string name="picker_new_view">New view with filters</string>
+    <string name="picker_always_open">Always open this view</string>
+    <string name="picker_open">Open %1$s</string>
+    <string name="picker_loading_boards">Loading boards…</string>
+    <string name="picker_no_boards">No team boards in the projects of the global filters</string>
+    <plurals name="picker_board_count">
+        <item quantity="one">%d board</item>
+        <item quantity="other">%d boards</item>
+    </plurals>
+
+    <!-- The view editor -->
+    <string name="editor_title_edit">Edit view</string>
+    <string name="editor_title_new">New view</string>
+    <string name="editor_subtitle">Choose what each panel shows. Conditions combine with AND.</string>
+    <string name="editor_name">View name</string>
+    <string name="editor_board_hint">A board shows only the team\'s area paths and the project\'s pull requests and activity.</string>
+    <string name="editor_field">Field</string>
+    <string name="editor_operator">Operator</string>
+    <string name="editor_values">Values</string>
+    <string name="editor_add_condition">Add condition</string>
+    <string name="editor_sort_by">Sort by</string>
+    <string name="editor_show">Show</string>
+    <string name="editor_repository">Repository</string>
+    <string name="editor_include_drafts">Include drafts</string>
+    <string name="action_remove_condition">Remove condition</string>
+    <string name="action_delete_view">Delete view</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_close">Close</string>
+    <string name="field_type">Type</string>
+    <string name="field_assigned_to">Assigned to</string>
+    <string name="field_state">State</string>
+    <string name="op_is">is</string>
+    <string name="op_is_one_of">is one of</string>
+    <string name="op_is_not_one_of">is not one of</string>
+    <string name="value_me">Me</string>
+    <string name="value_anyone">Anyone</string>
+    <!-- Every state of the closed categories (Resolved, Completed, Removed) -->
+    <string name="value_closed">Closed states</string>
+    <string name="value_any">Any</string>
+    <string name="value_all">All</string>
+    <string name="order_priority">Priority, then changed date</string>
+    <string name="order_changed">Changed date</string>
+    <string name="pr_show_to_review">To review</string>
+    <string name="pr_show_mine">Mine</string>
+    <string name="pr_show_all">All in my repos</string>
+    <string name="activity_mentions">Mentions</string>
+    <string name="activity_assignments">Assignments</string>
+    <string name="activity_votes">Votes</string>
+    <string name="activity_comments">Comments</string>
+    <string name="activity_review_requests">Review requests</string>
+    <string name="activity_builds_failed">Failed builds</string>
+
+    <!-- What a view shows, in the panel headers and the launch screen -->
+    <string name="summary_mine">Mine</string>
+    <string name="summary_anyone">Everyone\'s</string>
+    <string name="summary_closed">closed</string>
+    <!-- "not closed", "not Bug, Task" -->
+    <string name="summary_not">not %1$s</string>
+    <string name="summary_pr_reviews_and_mine">Reviews and mine</string>
+    <string name="summary_pr_all">All in my repos</string>
+    <string name="summary_no_drafts">no drafts</string>
+    <string name="summary_activity_all">all activity</string>
+    <string name="summary_none">nothing</string>
+    <string name="view_desc_work_items">work items: %1$s</string>
+    <string name="view_desc_prs">PRs: %1$s</string>
+    <string name="view_desc_activity">activity: %1$s</string>
+    <string name="settings_ask_view">Ask what to show at launch</string>
+    <string name="settings_ask_view_hint">Otherwise the last view opens</string>
 </resources>

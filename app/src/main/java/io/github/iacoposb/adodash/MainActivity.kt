@@ -26,7 +26,13 @@ import androidx.lifecycle.viewmodel.CreationExtras
 import io.github.iacoposb.adodash.ui.AdoTheme
 import io.github.iacoposb.adodash.ui.AppViewModel
 import io.github.iacoposb.adodash.ui.DashboardScreen
+import io.github.iacoposb.adodash.ui.EditorTarget
 import io.github.iacoposb.adodash.ui.SettingsScreen
+import io.github.iacoposb.adodash.ui.ViewEditor
+import io.github.iacoposb.adodash.ui.ViewPickerScreen
+import io.github.iacoposb.adodash.ui.viewChoices
+import io.github.iacoposb.adodash.data.DashboardView
+import androidx.compose.runtime.remember
 
 class MainActivity : ComponentActivity() {
     private val vm: AppViewModel by viewModels {
@@ -57,6 +63,8 @@ class MainActivity : ComponentActivity() {
                 val update by vm.update.collectAsStateWithLifecycle()
                 val updateBanner by vm.updateBanner.collectAsStateWithLifecycle()
                 val catalog by vm.catalog.collectAsStateWithLifecycle()
+                val launchChoiceMade by vm.launchChoiceMade.collectAsStateWithLifecycle()
+                val choices = viewChoices(settings.views, catalog.catalog, settings.filters, sync.snapshot, catalog.loading)
                 var editing by rememberSaveable { mutableStateOf(false) }
                 val close = { editing = false; showUpdate = false }
 
@@ -87,6 +95,27 @@ class MainActivity : ComponentActivity() {
                         catalog = catalog,
                         onLoadCatalog = vm::loadCatalog,
                         onFiltersChange = vm::updateFilters,
+                        askViewAtLaunch = !settings.views.alwaysOpen,
+                        onAskViewAtLaunchChange = vm::setAskAtLaunch,
+                    )
+                } else if (!launchChoiceMade && !settings.views.alwaysOpen) {
+                    var newView by remember { mutableStateOf<EditorTarget?>(null) }
+                    ViewPickerScreen(
+                        choices,
+                        onOpen = vm::chooseAtLaunch,
+                        onNewView = { newView = EditorTarget(DashboardView.newSaved(""), isNew = true) },
+                        onLoadBoards = vm::loadBoards,
+                        editorOpen = newView != null,
+                        editor = {
+                            newView?.let { target ->
+                                ViewEditor(
+                                    target, choices.options,
+                                    onSave = { newView = null; vm.saveView(it) },
+                                    onDelete = { newView = null },
+                                    onDismiss = { newView = null },
+                                )
+                            }
+                        },
                     )
                 } else {
                     // Polls only while the dashboard is visible; the worker covers the rest
@@ -103,6 +132,12 @@ class MainActivity : ComponentActivity() {
                         updateVersion = updateBanner,
                         onUpdate = { showUpdate = true },
                         onDismissUpdate = { updateBanner?.let(vm::dismissUpdate) },
+                        choices = choices,
+                        onOpenView = vm::openView,
+                        onOpenBoard = vm::openBoard,
+                        onSaveView = vm::saveView,
+                        onDeleteView = { vm.deleteView(it.id) },
+                        onLoadBoards = vm::loadBoards,
                     )
                 }
             }

@@ -50,11 +50,23 @@ class CatalogRepository(
         lock.withLock {
             if (shown.equals(organization, ignoreCase = true)) _state.update { it.copy(usedTypes = usedTypes) }
         }
-        if (saved.catalog == null || now() - saved.savedAt > maxAgeMillis) {
+        if (saved.catalog == null || saved.catalog.version < FilterCatalog.VERSION || now() - saved.savedAt > maxAgeMillis) {
             scope.launch {
                 show(organization)
                 startRefresh(organization, api)
             }
+        }
+    }
+
+    /**
+     * The views' pickers opened: what is saved now, and a fresh catalog only when nothing is
+     * saved or it comes from an older release (no teams yet).
+     */
+    fun openForViews(organization: String, api: () -> AdoApi) {
+        scope.launch {
+            show(organization)
+            val saved = _state.value.catalog
+            if (saved == null || saved.version < FilterCatalog.VERSION) startRefresh(organization, api)
         }
     }
 

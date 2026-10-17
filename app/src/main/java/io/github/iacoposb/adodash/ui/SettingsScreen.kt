@@ -116,6 +116,9 @@ fun SettingsScreen(
     /** For the screenshots: the filters' tree as in the design. */
     filtersExpanded: Set<String>? = null,
     filtersQuery: String = "",
+    /** "What do you want to see?" at launch; applied at once. */
+    askViewAtLaunch: Boolean = true,
+    onAskViewAtLaunchChange: (Boolean) -> Unit = {},
 ) {
     var organization by rememberSaveable { mutableStateOf(initial.organization) }
     var pat by rememberSaveable { mutableStateOf("") }
@@ -234,6 +237,14 @@ fun SettingsScreen(
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             AdoButton(stringResource(R.string.action_save), { onSavePreferences(form()) }, enabled = !busy)
                         }
+                    }
+                }
+                if (initial.configured) {
+                    SectionCard(stringResource(R.string.switcher_views)) {
+                        SwitchRow(
+                            stringResource(R.string.settings_ask_view), askViewAtLaunch, onAskViewAtLaunchChange,
+                            subtitle = stringResource(R.string.settings_ask_view_hint),
+                        )
                     }
                 }
             })
