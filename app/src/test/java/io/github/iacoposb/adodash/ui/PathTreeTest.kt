@@ -32,6 +32,10 @@ class PathTreeTest {
 
     private fun names(node: PathNode) = node.children.map { it.name }
 
+    /** Node names, past sprints lines as "past N". */
+    private fun List<PathLine>.names() = map { if (it is PathRow) it.node.name else "past ${(it as PastRow).count}" }
+    private fun List<PathLine>.nodes() = filterIsInstance<PathRow>()
+
     @Test fun `the path below the project, the project alone by its name`() {
         assertEquals(listOf("PTD", "PTD-S6"), PathTree.segments("Progress Rail\\PTD\\PTD-S6"))
         assertEquals("PTD › PTD-S6", PathTree.label("Progress Rail\\PTD\\PTD-S6"))
@@ -97,9 +101,9 @@ class PathTreeTest {
             setOf("Progress Rail", "Progress Rail\\PTD"),
             PathTree.initiallyExpanded(tree, "Progress Rail\\PTD\\PTD-S6", now),
         )
-        // Selected elsewhere: both ways open
+        // Selected elsewhere: both ways open, Release 1 being over its past sprints line too
         assertEquals(
-            setOf("Progress Rail", "Progress Rail\\Release 1", "Progress Rail\\PTD"),
+            setOf("Progress Rail", PathTree.pastKey("Progress Rail"), "Progress Rail\\Release 1", "Progress Rail\\PTD"),
             PathTree.initiallyExpanded(tree, "progress rail\\release 1\\sprint 1", now),
         )
         // Areas have no current node; a path not in the tree opens only the root
@@ -110,32 +114,69 @@ class PathTreeTest {
         val rows = PathTree.rows(tree, setOf("Progress Rail", "Progress Rail\\PTD"), null)
         assertEquals(
             listOf("Progress Rail", "Release 1", "PTD", "PTD-S5", "PTD-S6", "PTD-S7", "Backlog"),
-            rows.map { it.node.name },
+            rows.names(),
         )
         assertEquals(listOf(0, 1, 1, 2, 2, 2, 1), rows.map { it.level })
-        val release = rows[1]
+        val release = rows[1] as PathRow
         assertTrue(release.expandable)
         assertFalse(release.open)
-        assertFalse(rows.last().expandable)
-        assertTrue(rows.none { it.match })
-        assertEquals(listOf("Progress Rail"), PathTree.rows(tree, emptySet(), null).map { it.node.name })
+        assertFalse((rows.last() as PathRow).expandable)
+        assertTrue(rows.nodes().none { it.match })
+        assertEquals(listOf("Progress Rail"), PathTree.rows(tree, emptySet(), null).names())
     }
 
     @Test fun `search keeps the ancestors open and marks the matches`() {
         val search = PathTree.search(tree, " s6 ")!!
         assertEquals("s6", search.query)
-        val rows = PathTree.rows(tree, emptySet(), search)
+        val rows = PathTree.rows(tree, emptySet(), search, now).nodes()
         assertEquals(listOf("Progress Rail", "PTD", "PTD-S6"), rows.map { it.node.name })
         assertEquals(listOf(false, false, true), rows.map { it.match })
         assertTrue(rows.dropLast(1).all { it.open })
 
-        // A folder and a sprint below another one both match
-        val sprint = PathTree.rows(tree, emptySet(), PathTree.search(tree, "PTD"))
-        assertEquals(listOf("Progress Rail", "PTD", "PTD-S5", "PTD-S6", "PTD-S7"), sprint.map { it.node.name })
-        assertEquals(listOf(false, true, true, true, true), sprint.map { it.match })
+        // A folder and a sprint below another one both match; past ones are not gathered
+        val sprint = PathTree.rows(tree, emptySet(), PathTree.search(tree, "PTD"), now)
+        assertEquals(listOf("Progress Rail", "PTD", "PTD-S5", "PTD-S6", "PTD-S7"), sprint.names())
+        assertEquals(listOf(false, true, true, true, true), sprint.nodes().map { it.match })
+        assertEquals(
+            listOf("Progress Rail", "Release 1", "Sprint 1"),
+            PathTree.rows(tree, emptySet(), PathTree.search(tree, "sprint"), now).names(),
+        )
 
         assertTrue(PathTree.rows(tree, emptySet(), PathTree.search(tree, "nothing")).isEmpty())
         assertNull(PathTree.search(tree, "  "))
+    }
+
+    @Test fun `past sprints gathered first in each folder, closed`() {
+        val all = setOf("Progress Rail", "Progress Rail\\PTD", "Progress Rail\\Release 1")
+        val rows = PathTree.rows(tree, all, null, now)
+        // Release 1 is over at the root, PTD-S5 in PTD; Release 1's sprints all are, so not gathered there
+        assertEquals(listOf("Progress Rail", "past 1", "PTD", "past 1", "PTD-S6", "PTD-S7", "Backlog"), rows.names())
+        assertEquals(listOf(0, 1, 1, 2, 2, 2, 1), rows.map { it.level })
+        assertTrue(rows.filterIsInstance<PastRow>().none { it.open })
+        assertEquals(PathTree.pastKey("Progress Rail\\PTD"), rows[3].key)
+
+        // Open: below their line, one level deeper
+        val open = PathTree.rows(tree, all + PathTree.pastKey("Progress Rail") + PathTree.pastKey("Progress Rail\\PTD"), null, now)
+        assertEquals(
+            listOf("Progress Rail", "past 1", "Release 1", "Sprint 1", "PTD", "past 1", "PTD-S5", "PTD-S6", "PTD-S7", "Backlog"),
+            open.names(),
+        )
+        assertEquals(listOf(0, 1, 2, 3, 1, 2, 3, 2, 2, 1), open.map { it.level })
+        assertTrue(open.filterIsInstance<PastRow>().all { it.open })
+
+        // Without dates (areas) nothing is gathered
+        assertTrue(PathTree.rows(tree, all, null, null).all { it is PathRow })
+    }
+
+    @Test fun `a past selected sprint opens its line, a current one does not`() {
+        val expanded = PathTree.initiallyExpanded(tree, "Progress Rail\\PTD\\PTD-S5", now)
+        assertTrue(PathTree.pastKey("Progress Rail\\PTD") in expanded)
+        assertFalse(PathTree.pastKey("Progress Rail") in expanded)
+        assertEquals(
+            listOf("Progress Rail", "past 1", "PTD", "past 1", "PTD-S5", "PTD-S6", "PTD-S7", "Backlog"),
+            PathTree.rows(tree, expanded, null, now).names(),
+        )
+        assertTrue(PathTree.initiallyExpanded(tree, "Progress Rail\\PTD\\PTD-S6", now).none { it.startsWith(PathTree.pastKey("")) })
     }
 
     @Test fun `lineage down to a node, any case`() {

@@ -19,8 +19,23 @@ data class PathNode(
     val children: List<PathNode> = emptyList(),
 )
 
-/** A line of the tree as the picker shows it: [open] when its children are shown below it. */
-data class PathRow(val node: PathNode, val level: Int, val expandable: Boolean, val open: Boolean, val match: Boolean)
+/** A line of the tree as the picker shows it: a node, or the past sprints of a folder. */
+sealed interface PathLine {
+    val level: Int
+
+    /** Unique in the tree: what the picker keys the line by and keeps in its expanded set. */
+    val key: String
+}
+
+/** A node: [open] when its children are shown below it. */
+data class PathRow(val node: PathNode, override val level: Int, val expandable: Boolean, val open: Boolean, val match: Boolean) : PathLine {
+    override val key: String get() = node.path
+}
+
+/** The [count] children of [parent] that are over, gathered in one line; [open] shows them below it. */
+data class PastRow(val parent: String, val count: Int, override val level: Int, val open: Boolean) : PathLine {
+    override val key: String get() = PathTree.pastKey(parent)
+}
 
 /** Nodes whose name contains [query], and the ones shown for them: those with their ancestors. */
 data class PathSearch(val query: String, val matches: Set<String>, val visible: Set<String>)
@@ -107,13 +122,34 @@ object PathTree {
     /** All the nodes, depth first. */
     fun all(root: PathNode): List<PathNode> = listOf(root) + root.children.flatMap(::all)
 
+    /** The key of [parent]'s past sprints line in the expanded set: never a path. */
+    fun pastKey(parent: String): String = "\u0000past:$parent"
+
+    /**
+     * The children of [node] gathered as past, with [now]: those over, when some are not (a
+     * folder all over is muted itself and lists its sprints as they are).
+     */
+    fun pastChildren(node: PathNode, now: Instant?): List<PathNode> {
+        if (now == null) return emptyList()
+        val past = node.children.filter { isPast(it, now) }
+        return if (past.size == node.children.size) emptyList() else past
+    }
+
     /**
      * Open at first: the root, and the way to the [selected] node and to the current iterations
-     * (the nodes themselves stay closed).
+     * (the nodes themselves stay closed), past sprints lines on that way included.
      */
     fun initiallyExpanded(root: PathNode, selected: String, now: Instant?): Set<String> {
         val targets = listOf(selected) + (now?.let { n -> all(root).filter { isCurrent(it, n) }.map { it.path } }.orEmpty())
-        return setOf(root.path) + targets.flatMap { lineage(root, it)?.dropLast(1).orEmpty() }.map { it.path }
+        val out = mutableSetOf(root.path)
+        targets.forEach { target ->
+            val way = lineage(root, target) ?: return@forEach
+            way.zipWithNext().forEach { (parent, child) ->
+                out += parent.path
+                if (child in pastChildren(parent, now)) out += pastKey(parent.path)
+            }
+        }
+        return out
     }
 
     /** Null for an empty [query]. */
@@ -135,17 +171,25 @@ object PathTree {
     }
 
     /**
-     * The lines shown: the children of the [expanded] nodes, or while searching the matches with
-     * their ancestors, all open.
+     * The lines shown: the children of the [expanded] nodes, those over before [now] gathered
+     * first in a line of their own, or while searching the matches with their ancestors, all
+     * open and nothing gathered.
      */
-    fun rows(root: PathNode, expanded: Set<String>, search: PathSearch?): List<PathRow> {
-        val out = mutableListOf<PathRow>()
+    fun rows(root: PathNode, expanded: Set<String>, search: PathSearch?, now: Instant? = null): List<PathLine> {
+        val out = mutableListOf<PathLine>()
         fun walk(node: PathNode, level: Int) {
             if (search != null && node.path !in search.visible) return
             val children = if (search != null) node.children.filter { it.path in search.visible } else node.children
             val open = children.isNotEmpty() && (search != null || node.path in expanded)
             out += PathRow(node, level, expandable = children.isNotEmpty(), open = open, match = search?.matches?.contains(node.path) == true)
-            if (open) children.forEach { walk(it, level + 1) }
+            if (!open) return
+            val past = if (search == null) pastChildren(node, now) else emptyList()
+            if (past.isNotEmpty()) {
+                val pastOpen = pastKey(node.path) in expanded
+                out += PastRow(node.path, past.size, level + 1, pastOpen)
+                if (pastOpen) past.forEach { walk(it, level + 2) }
+            }
+            children.filter { it !in past }.forEach { walk(it, level + 1) }
         }
         walk(root, 0)
         return out

@@ -375,6 +375,7 @@
     <string name="wi_priority">Priority</string>
     <string name="wi_iteration">Iteration</string>
     <string name="wi_iteration_current">Current</string>
+    <string name="wi_iteration_past">Past sprints (%1$d)</string>
     <string name="wi_search_iterations">Search iterations</string>
     <string name="wi_area">Area</string>
     <string name="wi_search_areas">Search areas</string>

@@ -190,7 +190,11 @@ class DashboardRenderTest {
     }
 
     /** The design's bug: description, a pull request and its parent, three comments, every field. */
-    private fun designWorkItem(readOnly: Boolean = false, fieldError: FieldError? = null): WorkItemModal {
+    private fun designWorkItem(
+        readOnly: Boolean = false,
+        fieldError: FieldError? = null,
+        iteration: String = "Contoso\\Release 3\\Sprint 42",
+    ): WorkItemModal {
         val title = if (italian) "Il login con SSO fallisce dopo il rinnovo del token" else "SSO sign-in fails after the token is renewed"
         val item = Fakes.workItem(4812, "Bug", title, "Active", 1, 1800, area = "Contoso\\Backend")
         val description = if (italian) {
@@ -204,7 +208,7 @@ class DashboardRenderTest {
         }
         val detail = WorkItemDetail(
             item, rev = 7, descriptionHtml = description, assignee = Person(me.id, me.name, "iacopo@contoso.com"),
-            iterationPath = "Contoso\\Release 3\\Sprint 42", remainingWork = 3.0, changedBy = anna.name, commentCount = 3,
+            iterationPath = iteration, remainingWork = 3.0, changedBy = anna.name, commentCount = 3,
             links = listOf(WorkItemLink(LinkKind.PULL_REQUEST, 311, ""), WorkItemLink(LinkKind.PARENT, 4790, "")),
         )
         val links = listOf(
@@ -239,6 +243,12 @@ class DashboardRenderTest {
     @Config(qualifiers = "+it")
     @Test fun workItemIterationPickerItalian() = dashboard(
         "work-item-iteration-picker-it", dark = false, workItem = designWorkItem(), workItemMenu = WiFields.ITERATION,
+    )
+
+    /** A sprint that is over selected: its past sprints open, the others closed. */
+    @Test fun workItemIterationPickerPast() = dashboard(
+        "work-item-iteration-picker-past", dark = false, workItem = designWorkItem(iteration = "Contoso\\Release 3\\Sprint 40"),
+        workItemMenu = WiFields.ITERATION,
     )
 
     /** Searching: the matches highlighted with the folders that lead to them. */

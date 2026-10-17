@@ -139,12 +139,13 @@ private fun PathList(root: PathNode, selected: String, now: Instant?, query: Str
     val c = AdoTheme.colors
     var expanded by remember(root) { mutableStateOf(PathTree.initiallyExpanded(root, selected, now)) }
     val search = remember(root, query) { PathTree.search(root, query) }
-    val rows = remember(root, expanded, search) { PathTree.rows(root, expanded, search) }
+    val rows = remember(root, expanded, search, now) { PathTree.rows(root, expanded, search, now) }
     // The current iteration in view, or else the one selected, with a line or two above it
     val target = remember(root) {
-        rows.indexOfFirst { now != null && PathTree.isCurrent(it.node, now) }.takeIf { it >= 0 }
-            ?: rows.indexOfFirst { it.node.path.equals(selected, ignoreCase = true) }
+        rows.indexOfFirst { now != null && it is PathRow && PathTree.isCurrent(it.node, now) }.takeIf { it >= 0 }
+            ?: rows.indexOfFirst { it is PathRow && it.node.path.equals(selected, ignoreCase = true) }
     }
+    val toggle = { key: String -> expanded = if (key in expanded) expanded - key else expanded + key }
     // Rows are ROW_HEIGHT tall but for large fonts: close enough to start there
     val density = LocalDensity.current
     val scroll = rememberScrollState(with(density) { (ROW_HEIGHT * (target - 2).coerceAtLeast(0)).roundToPx() })
@@ -162,13 +163,16 @@ private fun PathList(root: PathNode, selected: String, now: Instant?, query: Str
                 .scrollbar(scroll, c.outline, gap = (-6).dp).verticalScroll(scroll),
         ) {
             rows.forEach { row ->
-                key(row.node.path) {
-                    PathRowView(
-                        row, row.node.path.equals(selected, ignoreCase = true), now, search?.query,
-                        dates = now?.let { PathTree.dates(row.node, it, locale) },
-                        onExpand = { p -> expanded = if (p in expanded) expanded - p else expanded + p },
-                        onPick = onPick,
-                    )
+                key(row.key) {
+                    when (row) {
+                        is PastRow -> PastRowView(row) { toggle(row.key) }
+                        is PathRow -> PathRowView(
+                            row, row.node.path.equals(selected, ignoreCase = true), now, search?.query,
+                            dates = now?.let { PathTree.dates(row.node, it, locale) },
+                            onExpand = toggle,
+                            onPick = onPick,
+                        )
+                    }
                 }
             }
         }
@@ -176,6 +180,32 @@ private fun PathList(root: PathNode, selected: String, now: Instant?, query: Str
 }
 
 private val ROW_HEIGHT = 44.dp
+
+/** "Past sprints (3)": the folder's sprints that are over, shown below it when open. */
+@Composable
+private fun PastRowView(row: PastRow, onToggle: () -> Unit) {
+    val c = AdoTheme.colors
+    val text = stringResource(R.string.wi_iteration_past, row.count)
+    val label = stringResource(if (row.open) R.string.action_collapse else R.string.action_expand, text)
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = ROW_HEIGHT).padding(horizontal = 8.dp).clip(RoundedCornerShape(8.dp))
+            .clickable(role = Role.Button, onClickLabel = label, onClick = onToggle)
+            .padding(start = 4.dp + 20.dp * row.level, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+            Icon(
+                if (row.open) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                null, Modifier.size(20.dp), tint = c.textMuted,
+            )
+        }
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text, Modifier.weight(1f).padding(vertical = 4.dp), style = MaterialTheme.typography.bodyMedium,
+            color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
 
 @Composable
 private fun PathRowView(

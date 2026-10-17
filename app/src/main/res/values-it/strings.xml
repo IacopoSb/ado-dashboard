@@ -373,6 +373,7 @@
     <string name="wi_priority">Priorità</string>
     <string name="wi_iteration">Iterazione</string>
     <string name="wi_iteration_current">Corrente</string>
+    <string name="wi_iteration_past">Sprint passati (%1$d)</string>
     <string name="wi_search_iterations">Cerca iterazioni</string>
     <string name="wi_area">Area</string>
     <string name="wi_search_areas">Cerca aree</string>
