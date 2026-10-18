@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -66,6 +67,7 @@ import io.github.iacoposb.adodash.ui.components.DropdownField
 import io.github.iacoposb.adodash.ui.components.DropdownOption
 import io.github.iacoposb.adodash.ui.components.ModalOverlay
 import io.github.iacoposb.adodash.ui.components.SwitchRow
+import io.github.iacoposb.adodash.ui.components.TextAction
 
 /** A panel of a view, to open the editor on it. */
 enum class ViewPanel { WORK_ITEMS, PULL_REQUESTS, ACTIVITY }
@@ -104,10 +106,13 @@ fun ViewEditor(
     onSave: (DashboardView) -> Unit,
     onDelete: (DashboardView) -> Unit,
     onDismiss: () -> Unit,
+    /** For the screenshots: the deletion's confirmation shown. */
+    initialConfirmDelete: Boolean = false,
 ) {
     val view = target.view
     val defaultName = viewTitle(view)
     var draft by rememberSaveable(view.id, stateSaver = viewSaver) { mutableStateOf(view) }
+    var confirmDelete by rememberSaveable(view.id) { mutableStateOf(initialConfirmDelete) }
     var name by rememberSaveable(view.id) { mutableStateOf(if (target.isNew) "" else defaultName) }
     val title = stringResource(if (target.isNew) R.string.editor_title_new else R.string.editor_title_edit)
     val canSave = draft.showsSomething && (view.board != null || view.isGlobal || name.isNotBlank())
@@ -170,7 +175,7 @@ fun ViewEditor(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (!view.isGlobal && view.board == null && !target.isNew) {
-                TextButton(onClick = { onDelete(view) }) {
+                TextButton(onClick = { confirmDelete = true }) {
                     Text(stringResource(R.string.action_delete_view), style = MaterialTheme.typography.labelLarge, color = c.primary)
                 }
             }
@@ -178,6 +183,24 @@ fun ViewEditor(
             AdoButton(stringResource(R.string.action_cancel), onDismiss, style = ButtonStyle.Outlined)
             AdoButton(stringResource(R.string.action_save), ::save, icon = Icons.Filled.Check, enabled = canSave)
         }
+    }
+    if (confirmDelete) {
+        val c = AdoTheme.colors
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            containerColor = c.surface,
+            title = { Text(stringResource(R.string.dialog_delete_view_title, defaultName), color = c.text) },
+            text = {
+                Text(stringResource(R.string.dialog_delete_view_text), style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
+            },
+            confirmButton = {
+                TextAction(stringResource(R.string.action_delete), {
+                    confirmDelete = false
+                    onDelete(view)
+                }, color = c.danger)
+            },
+            dismissButton = { TextAction(stringResource(R.string.action_cancel), { confirmDelete = false }) },
+        )
     }
 }
 

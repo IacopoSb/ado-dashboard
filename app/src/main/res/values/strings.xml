@@ -244,6 +244,9 @@
     <string name="editor_include_drafts">Include drafts</string>
     <string name="action_remove_condition">Remove condition</string>
     <string name="action_delete_view">Delete view</string>
+    <string name="action_delete">Delete</string>
+    <string name="dialog_delete_view_title">Delete “%1$s”?</string>
+    <string name="dialog_delete_view_text">The view and its settings will be gone. This cannot be undone.</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_close">Close</string>
     <string name="field_type">Type</string>

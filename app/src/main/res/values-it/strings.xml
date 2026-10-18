@@ -239,6 +239,9 @@
     <string name="editor_include_drafts">Includi le bozze</string>
     <string name="action_remove_condition">Rimuovi condizione</string>
     <string name="action_delete_view">Elimina vista</string>
+    <string name="action_delete">Elimina</string>
+    <string name="dialog_delete_view_title">Eliminare “%1$s”?</string>
+    <string name="dialog_delete_view_text">La vista e le sue impostazioni non ci saranno più. Non si può annullare.</string>
     <string name="action_cancel">Annulla</string>
     <string name="action_close">Chiudi</string>
     <string name="field_type">Tipo</string>

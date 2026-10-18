@@ -98,6 +98,10 @@ private const val PHONE = "en-w412dp-h915dp-port-xxhdpi"
 private const val PHONE_IT = "it-w412dp-h915dp-port-xxhdpi"
 private const val PHONE_LANDSCAPE = "en-w915dp-h412dp-land-xxhdpi"
 
+/** The narrowest usual phone. */
+private const val SMALL_PHONE = "en-w360dp-h740dp-port-xxhdpi"
+private const val SMALL_PHONE_IT = "it-w360dp-h740dp-port-xxhdpi"
+
 /** A tablet held upright: narrower than the two-column layouts. */
 private const val PORTRAIT = "en-w800dp-h1280dp-port-mdpi"
 
@@ -1043,6 +1047,28 @@ class DashboardRenderTest {
 
     @Config(qualifiers = PHONE)
     @Test fun viewsEditorPhone() = viewsDashboard("views-editor-phone", editor = EditorTarget(DashboardView.global))
+
+    /** A saved view on the narrowest usual phone, in Italian: "Elimina vista", "Annulla" and "Salva" fit. */
+    @Config(qualifiers = SMALL_PHONE_IT)
+    @Test fun viewsEditorSmallPhoneItalian() =
+        viewsDashboard("views-editor-small-phone-it", editor = EditorTarget(designViews().find("bugs")!!))
+
+    @Config(qualifiers = SMALL_PHONE)
+    @Test fun viewsEditorSmallPhone() = viewsDashboard("views-editor-small-phone", editor = EditorTarget(designViews().find("bugs")!!))
+
+    private fun deleteViewDialog(name: String) {
+        compose.setContent {
+            AdoTheme(dark = false, dynamic = false) {
+                ViewEditor(EditorTarget(designViews().find("bugs")!!), EditorOptions(), {}, {}, {}, initialConfirmDelete = true)
+            }
+        }
+        compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    @Test fun viewsEditorDeleteConfirmation() = deleteViewDialog("views-editor-delete-confirmation")
+
+    @Config(qualifiers = "+it")
+    @Test fun viewsEditorDeleteConfirmationItalian() = deleteViewDialog("views-editor-delete-confirmation-it")
 
     @Test fun dashboardBoardView() {
         val board = BoardRef("Contoso", "Backend")
