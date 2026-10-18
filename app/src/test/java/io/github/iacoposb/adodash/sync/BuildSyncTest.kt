@@ -181,6 +181,26 @@ class BuildSyncTest {
         assertEquals("views do not change notifications", listOf(2), fetched.failedPrBuilds.map { it.build.id })
     }
 
+    @Test fun `the widgets count the failed builds of all my PRs, also from another project's board`() = runTest {
+        val api = FakeApi(
+            mine = listOf(Fakes.pr(305, me), Fakes.pr(306, me), Fakes.pr(307, me, project = "Clienti")),
+            builds = mapOf(
+                "Contoso" to listOf(
+                    Fakes.build(2, BuildState.FAILED, prId = 305, ago = 420),
+                    Fakes.build(4, BuildState.SUCCEEDED, prId = 306, ago = 420),
+                ),
+                "Clienti" to listOf(Fakes.build(3, BuildState.FAILED, prId = 307, project = "Clienti", ago = 100)),
+            ),
+        )
+        val board = DashboardView.forBoard(BoardRef("Interno", "Team"))
+        val snapshot = SyncEngine(api, texts = Fakes.Texts, now = { now }).fetch(me, since = since, view = board).snapshot
+        assertTrue("the board shows none of them", snapshot.shown!!.myPrs.isEmpty())
+        val summary = io.github.iacoposb.adodash.widget.WidgetSummaries.synced(
+            io.github.iacoposb.adodash.widget.WidgetSummary(), "contoso", snapshot,
+        )
+        assertEquals(2, summary.failedBuilds)
+    }
+
     @Test fun `builds refused hide the pipeline and are not asked again for a while`() = runTest {
         var clock = now
         val api = FakeApi(mine = listOf(Fakes.pr(305, me)), buildsError = 401)

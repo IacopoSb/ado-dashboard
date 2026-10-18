@@ -5,6 +5,7 @@ import io.github.iacoposb.adodash.Fakes.anna
 import io.github.iacoposb.adodash.Fakes.marco
 import io.github.iacoposb.adodash.Fakes.me
 import io.github.iacoposb.adodash.Fakes.now
+import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.DashboardView
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.EventKind
@@ -19,8 +20,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WidgetSummaryTest {
-    private val view = DashboardView.global
-
     private fun snapshot(shown: Shown? = null, signals: Map<Int, PrSignals> = emptyMap()) = Snapshot(
         me = me,
         workItems = listOf(Fakes.workItem(1), Fakes.workItem(2), Fakes.workItem(3)),
@@ -45,7 +44,7 @@ class WidgetSummaryTest {
             // To review, not mine
             311 to PrSignals(build = BuildSignal.FAILED),
         )
-        val s = WidgetSummaries.synced(WidgetSummary(), "contoso", snapshot(signals = signals), view)
+        val s = WidgetSummaries.synced(WidgetSummary(), "contoso", snapshot(signals = signals))
         assertEquals("contoso", s.organization)
         assertEquals(now.toEpochMilli(), s.syncedAt)
         assertEquals(2, s.toReview)
@@ -53,14 +52,19 @@ class WidgetSummaryTest {
         assertEquals(2, s.failedBuilds)
     }
 
-    @Test fun `work items are those the current view shows`() {
-        val shown = Shown(view.queryKey, workItems = listOf(Fakes.workItem(9)), reviewPrs = emptyList(), myPrs = emptyList())
-        assertEquals(1, WidgetSummaries.synced(WidgetSummary(), "contoso", snapshot(shown), view).workItems)
+    @Test fun `a board view open in the app counts like the global view`() {
+        // The board shows someone else's work item and none of my pull requests
+        val board = DashboardView.forBoard(BoardRef("Contoso", "Backend"))
+        val shown = Shown(board.queryKey, workItems = listOf(Fakes.workItem(9)), reviewPrs = emptyList(), myPrs = emptyList())
+        val s = WidgetSummaries.synced(WidgetSummary(), "contoso", snapshot(shown, mapOf(318 to PrSignals(build = BuildSignal.FAILED))))
+        assertEquals(3, s.workItems)
+        assertEquals(1, s.failedBuilds)
+        assertEquals(2, s.toReview)
     }
 
     @Test fun `a sync keeps the mentions it does not recompute`() {
         val previous = WidgetSummary(unreadMentions = 4, mentions = listOf(WidgetSummaries.mention(mention("wi:1:c1", 60))))
-        val s = WidgetSummaries.synced(previous, "contoso", snapshot(), view)
+        val s = WidgetSummaries.synced(previous, "contoso", snapshot())
         assertEquals(4, s.unreadMentions)
         assertEquals(previous.mentions, s.mentions)
     }

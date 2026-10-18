@@ -1,6 +1,5 @@
 package io.github.iacoposb.adodash.widget
 
-import io.github.iacoposb.adodash.data.DashboardView
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.EventKind
 import io.github.iacoposb.adodash.data.Filters
@@ -36,9 +35,12 @@ data class WidgetSummary(
     val syncedAt: Long = 0,
     /** Pull requests waiting for my review. */
     val toReview: Int = 0,
-    /** My open work items, as the current view and the global filters show them. */
+    /**
+     * My open work items as the global view shows them by default (with the global filters),
+     * whatever view the app has open.
+     */
     val workItems: Int = 0,
-    /** My pull requests whose build failed. */
+    /** My pull requests whose build failed, all of them whatever view the app has open. */
     val failedBuilds: Int = 0,
     val unreadMentions: Int = 0,
     /** The latest mentions, newest first. */
@@ -64,12 +66,17 @@ data class WidgetSummary(
 object WidgetSummaries {
     const val MENTIONS = 3
 
-    /** The counters of [snapshot], read for [view], over [previous] (its mentions are kept). */
-    fun synced(previous: WidgetSummary, organization: String, snapshot: Snapshot, view: DashboardView) = previous.copy(
+    /**
+     * The counters of [snapshot] over [previous] (its mentions are kept). They never depend on
+     * the view the sync read: every sync reads my open work items (the global view's default
+     * panel, with the global filters), my pull requests and their builds for the notifications,
+     * so a board view open in the app counts the same as the global view.
+     */
+    fun synced(previous: WidgetSummary, organization: String, snapshot: Snapshot) = previous.copy(
         organization = organization,
         syncedAt = snapshot.syncedAt.toEpochMilli(),
         toReview = snapshot.reviewPrs.size,
-        workItems = (snapshot.shownFor(view)?.workItems ?: snapshot.workItems).size,
+        workItems = snapshot.workItems.size,
         failedBuilds = snapshot.myPrs.count { snapshot.signals[it.id]?.build == BuildSignal.FAILED },
     )
 

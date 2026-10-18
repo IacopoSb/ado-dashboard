@@ -34,7 +34,7 @@ class Widgets(
     /** After each successful sync, foreground or background: its counters, the stored [events]' mentions. */
     suspend fun synced(s: Settings, snapshot: Snapshot, events: List<Event>) {
         store.update {
-            WidgetSummaries.withMentions(WidgetSummaries.synced(it, s.organization, snapshot, s.views.current), events, s.filters)
+            WidgetSummaries.withMentions(WidgetSummaries.synced(it, s.organization, snapshot), events, s.filters)
                 .copy(refreshingSince = 0)
         }
         updateAll()

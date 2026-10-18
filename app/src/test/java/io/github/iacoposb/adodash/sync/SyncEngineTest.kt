@@ -210,4 +210,18 @@ class SyncEngineTest {
             .fetch(Fakes.me, since = null, view = DashboardView.forBoard(BoardRef("Contoso", "Backend"))).snapshot.shown!!
         assertEquals(listOf(1), shown.workItems.map { it.id })
     }
+
+    @Test fun `on a board the widgets still count all my open work items`() = runTest {
+        val items = listOf(Fakes.workItem(1, area = "Contoso\\Backend"), Fakes.workItem(2, area = "Clienti"), Fakes.workItem(3, state = "Resolved"))
+        val api = FakeApi(items, categories, areas = listOf(TeamArea("Contoso\\Backend", includeChildren = true)))
+        val board = DashboardView.forBoard(BoardRef("Contoso", "Backend"))
+        val snapshot = SyncEngine(api, texts = Fakes.Texts).fetch(Fakes.me, since = null, view = board).snapshot
+        assertEquals(listOf(1), snapshot.shown!!.workItems.map { it.id })
+        val global = SyncEngine(api, texts = Fakes.Texts).fetch(Fakes.me, since = null).snapshot
+        val counted = io.github.iacoposb.adodash.widget.WidgetSummaries.synced(
+            io.github.iacoposb.adodash.widget.WidgetSummary(), "contoso", snapshot,
+        )
+        assertEquals(global.shownFor(DashboardView.global)!!.workItems.size, counted.workItems)
+        assertEquals(2, counted.workItems)
+    }
 }
