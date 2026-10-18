@@ -32,6 +32,7 @@ import io.github.iacoposb.adodash.ui.ViewEditor
 import io.github.iacoposb.adodash.ui.ViewPickerScreen
 import io.github.iacoposb.adodash.ui.viewChoices
 import io.github.iacoposb.adodash.data.DashboardView
+import io.github.iacoposb.adodash.data.PrCommentRef
 import androidx.compose.runtime.remember
 
 class MainActivity : ComponentActivity() {
@@ -55,6 +56,7 @@ class MainActivity : ComponentActivity() {
             showUpdate = intent.getBooleanExtra(EXTRA_SHOW_UPDATE, false)
             openBuildFrom(intent)
             openCommentFrom(intent)
+            openPullRequestFrom(intent)
         }
         if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
 
@@ -72,6 +74,7 @@ class MainActivity : ComponentActivity() {
                 val pipelines by vm.pipelines.collectAsStateWithLifecycle()
                 val workItem by vm.workItem.collectAsStateWithLifecycle()
                 val workItemsReadOnly by vm.workItemsReadOnly.collectAsStateWithLifecycle()
+                val pullRequest by vm.pullRequest.collectAsStateWithLifecycle()
                 val choices = viewChoices(settings.views, catalog, settings.filters, sync.snapshot)
                 var editing by rememberSaveable { mutableStateOf(false) }
                 val close = { editing = false; showUpdate = false }
@@ -141,9 +144,11 @@ class MainActivity : ComponentActivity() {
                             vm.markRead(event)
                             val build = event.buildId
                             val comment = event.workItemComment
+                            val pr = event.pullRequest
                             when {
                                 build != null && event.project != null -> vm.openBuild(event.project, build)
                                 comment != null -> vm.openWorkItemComment(comment.workItemId, comment.commentId)
+                                pr != null -> vm.openPullRequest(pr)
                                 else -> openUrl(event.url)
                             }
                         },
@@ -166,6 +171,9 @@ class MainActivity : ComponentActivity() {
                         onOpenWorkItem = vm::openWorkItem,
                         workItem = workItem,
                         workItemActions = remember(vm) { vm.workItemActions(::openUrl) },
+                        onOpenPullRequest = vm::openPullRequest,
+                        pullRequest = pullRequest,
+                        prActions = remember(vm) { vm.prActions(::openUrl) },
                     )
                 }
             }
@@ -177,6 +185,21 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra(EXTRA_SHOW_UPDATE, false)) showUpdate = true
         openBuildFrom(intent)
         openCommentFrom(intent)
+        openPullRequestFrom(intent)
+    }
+
+    /**
+     * From a pull request's notification: its page; for a comment or a mention, at its thread
+     * with the reply to its author ready.
+     */
+    private fun openPullRequestFrom(intent: Intent) {
+        val pr = intent.getIntExtra(EXTRA_PR_ID, -1)
+        if (pr < 0) return
+        val thread = intent.getIntExtra(EXTRA_PR_THREAD_ID, -1).takeIf { it >= 0 }
+        val comment = intent.getIntExtra(EXTRA_COMMENT_ID, -1).takeIf { it >= 0 }
+        intent.getStringExtra(EXTRA_EVENT_KEY)?.let { vm.markRead(it) }
+        vm.openPullRequest(PrCommentRef(pr, thread, comment))
+        intent.removeExtra(EXTRA_PR_ID)
     }
 
     /** From a mention in a work item's comments: the work item at that comment, ready to reply. */
@@ -215,5 +238,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_EVENT_KEY = "event_key"
         const val EXTRA_WORK_ITEM_ID = "work_item_id"
         const val EXTRA_COMMENT_ID = "comment_id"
+        const val EXTRA_PR_ID = "pr_id"
+        const val EXTRA_PR_THREAD_ID = "pr_thread_id"
     }
 }

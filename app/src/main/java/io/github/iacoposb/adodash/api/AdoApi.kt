@@ -118,6 +118,31 @@ interface AdoApi {
 
     /** A pull request by id alone, as a work item links it. */
     suspend fun pullRequestById(id: Int): LinkedPullRequest = throw AdoException(404, "No pull request $id")
+
+    /** A pull request by id alone, for its page (opened from an event or a notification). */
+    suspend fun pullRequest(id: Int): PullRequest = throw AdoException(404, "No pull request $id")
+
+    /** [pr] read again with its description, labels and linked work items, for its page. */
+    suspend fun pullRequestDetail(pr: PullRequest): PullRequestDetail = PullRequestDetail(pr)
+
+    /** Sets the vote of [reviewerId] (me) on [pr], adding them as a reviewer if needed. */
+    suspend fun votePullRequest(pr: PullRequest, reviewerId: String, vote: Int): Reviewer =
+        throw AdoException(403, "Not supported")
+
+    /** Replies in a thread of [pr]: [content] is markdown, mentions as `@<id>`. */
+    suspend fun addPullRequestComment(pr: PullRequest, threadId: Int, parentId: Int, content: String): PrComment =
+        throw AdoException(403, "Not supported")
+
+    /** A new thread on [pr] as a whole (not on a file), active, with [content] as its comment. */
+    suspend fun createPullRequestThread(pr: PullRequest, content: String): PrThread =
+        throw AdoException(403, "Not supported")
+
+    /** Changes a thread's status (see [ThreadStatus]); returns it as saved. */
+    suspend fun setPullRequestThreadStatus(pr: PullRequest, threadId: Int, status: String): PrThread =
+        throw AdoException(403, "Not supported")
+
+    /** Display names of identities by id (those mentioned as `@<id>`); those not found are left out. */
+    suspend fun identityNames(ids: Collection<String>): Map<String, String> = emptyMap()
 }
 
 /** An area path of a team, with or without the areas below it. */
@@ -183,7 +208,14 @@ sealed interface PrFilter {
     data object All : PrFilter
 }
 
-data class Reviewer(val id: String, val name: String, val vote: Int, val required: Boolean)
+data class Reviewer(
+    val id: String,
+    val name: String,
+    val vote: Int,
+    val required: Boolean,
+    /** A group or a team rather than a person. */
+    val group: Boolean = false,
+)
 
 data class PullRequest(
     val id: Int,
@@ -211,8 +243,11 @@ data class PrComment(
     val threadId: Int,
     val id: Int,
     val author: Identity,
+    /** Markdown, mentions as `@<id>`. */
     val text: String,
     val publishedAt: Instant,
+    /** The comment it replies to; 0 for the thread's first. */
+    val parentId: Int = 0,
 )
 
 /** Reviewer votes as Azure DevOps encodes them. */

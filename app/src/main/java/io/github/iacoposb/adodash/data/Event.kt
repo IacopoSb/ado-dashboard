@@ -51,9 +51,19 @@ data class Event(
             null
         }
 
+    /** The pull request of a review, comment, mention or vote, with the comment for those. */
+    val pullRequest: PrCommentRef?
+        get() = PR_KEY.matchEntire(key)?.let { m ->
+            PrCommentRef(m.groupValues[1].toInt(), m.groupValues[2].toIntOrNull(), m.groupValues[3].toIntOrNull())
+        }
+
     companion object {
         const val BUILD_PREFIX = "build:"
         private val WI_COMMENT = Regex("wi:(\\d+):c(\\d+)")
+        private val PR_KEY = Regex("pr:(\\d+)(?::t(\\d+):c(\\d+))?(?::.*)?")
+
+        /** A comment of a pull request's thread, whoever wrote it. */
+        fun prCommentKey(prId: Int, threadId: Int, commentId: Int) = "pr:$prId:t$threadId:c$commentId"
 
         fun buildFailedKey(buildId: Int) = "$BUILD_PREFIX$buildId:failed"
 
@@ -64,6 +74,9 @@ data class Event(
 
 /** A comment of a work item, to open it there. */
 data class WorkItemCommentRef(val workItemId: Int, val commentId: Int)
+
+/** A pull request, and the thread and comment an event is about (null for reviews and votes). */
+data class PrCommentRef(val prId: Int, val threadId: Int? = null, val commentId: Int? = null)
 
 @Dao
 interface EventDao {

@@ -64,7 +64,7 @@ class AdoClientBuildsTest {
         val evaluations = client.policyEvaluations(pr)
         assertEquals(
             listOf(
-                PolicyEvaluation(PolicyEvaluation.BUILD_POLICY, "Build", true, true, "rejected", 981, false),
+                PolicyEvaluation(PolicyEvaluation.BUILD_POLICY, "Build", true, true, "rejected", 981, false, displayName = "backend-ci"),
                 PolicyEvaluation("fa4e907d-c16b-4a4c-9dfa-4906e5d171dd", "Minimum number of reviewers", false, true, "approved"),
             ),
             evaluations,

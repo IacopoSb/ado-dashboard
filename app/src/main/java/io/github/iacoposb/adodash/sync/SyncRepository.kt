@@ -3,6 +3,8 @@ package io.github.iacoposb.adodash.sync
 import io.github.iacoposb.adodash.api.AdoApi
 import io.github.iacoposb.adodash.api.Comment
 import io.github.iacoposb.adodash.api.Identity
+import io.github.iacoposb.adodash.api.PrThread
+import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.TeamArea
 import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.data.BoardRef
@@ -133,6 +135,21 @@ class SyncRepository(
     suspend fun applyOwnComment(item: WorkItem, comment: Comment) {
         val s = settings.current()
         events.insertNew(listOf(Events.ownComment(item, comment, Identity(s.meId, s.meName), texts)))
+    }
+
+    /**
+     * My vote from the app: the dashboard row shows it at once. Votes are notified only for
+     * other people's votes on my pull requests, so mine never comes back to me.
+     */
+    fun applyOwnVote(prId: Int, vote: Int) {
+        _state.update { s -> s.snapshot?.let { s.copy(snapshot = it.withMyVote(prId, vote)) } ?: s }
+    }
+
+    /** A thread I commented in from the app: never notified back to me (see [Events.ownPrThread]). */
+    suspend fun applyOwnPrComments(pr: PullRequest, thread: PrThread) {
+        val s = settings.current()
+        val found = Events.ownPrThread(pr, thread, Identity(s.meId, s.meName), texts)
+        if (found.isNotEmpty()) events.insertNew(found)
     }
 
     suspend fun markRead(key: String) = events.markRead(key)

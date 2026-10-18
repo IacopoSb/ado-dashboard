@@ -60,6 +60,27 @@ data class Snapshot(
         fun List<WorkItem>.swap() = map { if (it.id == item.id) item else it }
         return copy(workItems = workItems.swap(), shown = shown?.copy(workItems = shown.workItems.swap()))
     }
+
+    /** My [vote] on pull request [prId] wherever it is listed: added as a reviewer if I was not one. */
+    fun withMyVote(prId: Int, vote: Int): Snapshot {
+        fun List<PullRequest>.swap() = map { pr ->
+            if (pr.id != prId) return@map pr
+            val reviewers = if (pr.reviewers.any { it.id.equals(me.id, ignoreCase = true) }) {
+                pr.reviewers.map { if (it.id.equals(me.id, ignoreCase = true)) it.copy(vote = vote) else it }
+            } else {
+                pr.reviewers + io.github.iacoposb.adodash.api.Reviewer(me.id, me.name, vote, required = false)
+            }
+            pr.copy(reviewers = reviewers)
+        }
+        return copy(
+            reviewPrs = reviewPrs.swap(), myPrs = myPrs.swap(),
+            shown = shown?.copy(reviewPrs = shown.reviewPrs.swap(), myPrs = shown.myPrs.swap(), otherPrs = shown.otherPrs.swap()),
+        )
+    }
+
+    /** A pull request listed anywhere, for its page. */
+    fun pullRequest(id: Int): PullRequest? =
+        (reviewPrs + myPrs + shown?.let { it.reviewPrs + it.myPrs + it.otherPrs }.orEmpty()).firstOrNull { it.id == id }
 }
 
 /**

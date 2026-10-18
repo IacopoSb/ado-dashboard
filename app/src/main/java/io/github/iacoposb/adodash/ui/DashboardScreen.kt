@@ -59,6 +59,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
 import io.github.iacoposb.adodash.api.Identity
+import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.DashboardView
@@ -130,6 +131,14 @@ fun DashboardScreen(
     workItemMenu: String? = null,
     /** For the screenshots: what that menu's search starts with. */
     workItemMenuQuery: String = "",
+    /** A pull request row tapped: its page (null: the browser). */
+    onOpenPullRequest: ((PullRequest) -> Unit)? = null,
+    /** The pull request page open over the dashboard, if any. */
+    pullRequest: PrScreen? = null,
+    prActions: PrActions = PrActions(),
+    /** For the screenshots: the vote menu open, and threads expanded, on the pull request page. */
+    prVoteMenu: Boolean = false,
+    prExpanded: Set<Int> = emptySet(),
 ) {
     val c = AdoTheme.colors
     val view = choices.views.current
@@ -142,13 +151,20 @@ fun DashboardScreen(
             Modifier.fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 // Under the switcher or the editor nothing is reachable
-                .then(if (switcher || editor != null || buildDetail != null || workItem != null || pipelines != null) Modifier.clearAndSetSemantics {} else Modifier),
+                .then(
+                    if (switcher || editor != null || buildDetail != null || workItem != null || pipelines != null || pullRequest != null) {
+                        Modifier.clearAndSetSemantics {}
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
             DashboardBar(organization, view, state, onRefresh, onSettings, onTitle = { switcher = true }, onOpenPipelines = onOpenPipelines)
             Panels(
                 state, events, view, now, updateVersion, onUpdate, onDismissUpdate, onRefresh, onOpen, onEventOpen,
                 onMarkAllRead, onEdit = { editor = EditorTarget(view, focus = it) },
                 onOpenWorkItem = onOpenWorkItem ?: { onOpen(it.url) },
+                onOpenPullRequest = onOpenPullRequest ?: { onOpen(it.url) },
             )
         }
 
@@ -170,6 +186,12 @@ fun DashboardScreen(
                 onDelete = { editor = null; onDeleteView(it) },
                 onDismiss = { editor = null },
             )
+        }
+        // The page first: the build and work item details it opens show over it
+        pullRequest?.let {
+            Box(Modifier.fillMaxSize().then(if (buildDetail != null || workItem != null) Modifier.clearAndSetSemantics {} else Modifier)) {
+                PullRequestScreen(it, now, prActions, initialVoteMenu = prVoteMenu, initialExpanded = prExpanded)
+            }
         }
         if (pipelines != null) {
             PipelinesModal(pipelines, buildDetail, now, pipelinesActions, pipelinesFolders, pipelinesOpen, pipelinesQuery)
@@ -195,6 +217,7 @@ private fun Panels(
     onMarkAllRead: () -> Unit,
     onEdit: (ViewPanel) -> Unit,
     onOpenWorkItem: (WorkItem) -> Unit,
+    onOpenPullRequest: (PullRequest) -> Unit,
 ) {
     val c = AdoTheme.colors
     val snapshot = state.snapshot
@@ -261,17 +284,17 @@ private fun Panels(
                 if (PrScope.TO_REVIEW in prScopes) {
                     item(key = "section-review") { SectionHeader(toReview, count = reviewPrs.size) }
                     if (reviewPrs.isEmpty()) empty(noReviews)
-                    items(reviewPrs, key = { "r${it.id}" }) { PrRow(it, me, reviewing = true, now, onClick = { onOpen(it.url) }, signals = signals[it.id]) }
+                    items(reviewPrs, key = { "r${it.id}" }) { PrRow(it, me, reviewing = true, now, onClick = { onOpenPullRequest(it) }, signals = signals[it.id]) }
                 }
                 if (PrScope.MINE in prScopes) {
                     item(key = "section-mine") { SectionHeader(mine, count = myPrs.size) }
                     if (myPrs.isEmpty()) empty(noMyPrs)
-                    items(myPrs, key = { "m${it.id}" }) { PrRow(it, me, reviewing = false, now, onClick = { onOpen(it.url) }, signals = signals[it.id]) }
+                    items(myPrs, key = { "m${it.id}" }) { PrRow(it, me, reviewing = false, now, onClick = { onOpenPullRequest(it) }, signals = signals[it.id]) }
                 }
                 if (PrScope.ALL in prScopes) {
                     item(key = "section-others") { SectionHeader(others, count = otherPrs.size) }
                     if (otherPrs.isEmpty()) empty(noOthers)
-                    items(otherPrs, key = { "o${it.id}" }) { PrRow(it, me, reviewing = false, now, onClick = { onOpen(it.url) }, signals = signals[it.id]) }
+                    items(otherPrs, key = { "o${it.id}" }) { PrRow(it, me, reviewing = false, now, onClick = { onOpenPullRequest(it) }, signals = signals[it.id]) }
                 }
                 if (prScopes.isEmpty()) empty(noOthers)
             }

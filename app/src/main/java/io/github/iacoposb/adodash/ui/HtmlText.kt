@@ -1,10 +1,16 @@
 package io.github.iacoposb.adodash.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,8 +46,11 @@ data class RichSpan(
     fun sameStyle(other: RichSpan) = copy(text = "") == other.copy(text = "")
 }
 
-/** A paragraph, a heading or a list item ([bullet] "•" or "1."), [indent] levels deep. */
-data class RichBlock(val spans: List<RichSpan>, val bullet: String? = null, val indent: Int = 0) {
+/**
+ * A paragraph, a heading or a list item ([bullet] "•" or "1."), [indent] levels deep; a
+ * [codeBlock] is shown as is, in a box.
+ */
+data class RichBlock(val spans: List<RichSpan>, val bullet: String? = null, val indent: Int = 0, val codeBlock: Boolean = false) {
     val text: String get() = spans.joinToString("") { it.text }
 }
 
@@ -216,7 +225,14 @@ fun RichText(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         blocks.forEach { block ->
             val text = remember(block, c) { block.annotated(c, onLink) }
-            if (block.bullet != null || block.indent > 0) {
+            if (block.codeBlock) {
+                Text(
+                    block.text,
+                    Modifier.fillMaxWidth().padding(start = (block.indent * 16).dp).clip(RoundedCornerShape(8.dp))
+                        .background(c.surfaceAlt).horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
+                    style = CodeStyle, color = color, softWrap = false,
+                )
+            } else if (block.bullet != null || block.indent > 0) {
                 Row(Modifier.padding(start = (block.indent * 16).dp)) {
                     Text(block.bullet.orEmpty(), Modifier.width(20.dp), style = style, color = c.textMuted)
                     Text(text, style = style, color = color)

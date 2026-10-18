@@ -48,6 +48,7 @@ class Notifier(private val context: Context) {
                     when {
                         event.buildId != null -> openBuild(event)
                         event.workItemComment != null -> openComment(event)
+                        event.pullRequest != null -> openPullRequest(event)
                         else -> openUrl(event)
                     },
                 )
@@ -125,6 +126,20 @@ class Notifier(private val context: Context) {
                 .putExtra(MainActivity.EXTRA_EVENT_KEY, event.key)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+    }
+
+    /** A pull request's event opens its page; a comment or a mention at its thread, ready to reply. */
+    private fun openPullRequest(event: Event): PendingIntent {
+        val ref = requireNotNull(event.pullRequest)
+        val intent = Intent(context, MainActivity::class.java)
+            .putExtra(MainActivity.EXTRA_PR_ID, ref.prId)
+            .putExtra(MainActivity.EXTRA_EVENT_KEY, event.key)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        ref.threadId?.let { intent.putExtra(MainActivity.EXTRA_PR_THREAD_ID, it) }
+        ref.commentId?.let { intent.putExtra(MainActivity.EXTRA_COMMENT_ID, it) }
+        return PendingIntent.getActivity(
+            context, event.key.hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
     }
 

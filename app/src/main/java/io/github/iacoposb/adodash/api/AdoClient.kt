@@ -171,12 +171,98 @@ class AdoClient(
         val list: ValueList<ThreadDto> = get(
             url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "threads"),
         )
-        return list.value.filterNot { it.isDeleted }.map { thread ->
-            val comments = thread.comments
-                .filter { !it.isDeleted && it.commentType == "text" }
-                .map { PrComment(thread.id, it.id, it.author.toIdentity(), it.content.orEmpty(), Instant.parse(it.publishedDate)) }
-            PrThread(thread.id, thread.status, comments)
+        return list.value.filterNot { it.isDeleted }.map { it.toThread() }
+    }
+
+    override suspend fun pullRequest(id: Int): PullRequest =
+        get<PullRequestDto>(url("_apis", "git", "pullrequests", "$id")).toPullRequest()
+
+    override suspend fun pullRequestDetail(pr: PullRequest): PullRequestDetail {
+        val dto: PullRequestDto = get(
+            url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}") {
+                addQueryParameter("includeWorkItemRefs", "true")
+            },
+        )
+        return PullRequestDetail(
+            pr = dto.toPullRequest(),
+            description = dto.description.orEmpty(),
+            labels = dto.labels.filter { it.active }.map { it.name },
+            workItemIds = dto.workItemRefs.mapNotNull { it.id.toIntOrNull() }.distinct(),
+            status = dto.status,
+        )
+    }
+
+    override suspend fun votePullRequest(pr: PullRequest, reviewerId: String, vote: Int): Reviewer {
+        val body = buildJsonObject { put("vote", vote) }
+        val dto: ReviewerDto = call(
+            Request.Builder()
+                .url(url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "reviewers", reviewerId))
+                .put(body.toString().toRequestBody(JSON)),
+        )
+        return dto.toReviewer()
+    }
+
+    override suspend fun addPullRequestComment(pr: PullRequest, threadId: Int, parentId: Int, content: String): PrComment {
+        val body = buildJsonObject {
+            put("content", content)
+            put("parentCommentId", parentId)
+            put("commentType", 1)
         }
+        val dto: ThreadCommentDto = post(
+            url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "threads", "$threadId", "comments"),
+            body,
+        )
+        return dto.toComment(threadId)
+    }
+
+    override suspend fun createPullRequestThread(pr: PullRequest, content: String): PrThread {
+        val body = buildJsonObject {
+            putJsonArray("comments") {
+                add(
+                    buildJsonObject {
+                        put("parentCommentId", 0)
+                        put("content", content)
+                        put("commentType", 1)
+                    },
+                )
+            }
+            put("status", ThreadStatus.ACTIVE)
+        }
+        val dto: ThreadDto = post(url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "threads"), body)
+        return dto.toThread()
+    }
+
+    override suspend fun setPullRequestThreadStatus(pr: PullRequest, threadId: Int, status: String): PrThread {
+        val body = buildJsonObject { put("status", status) }
+        val dto: ThreadDto = call(
+            Request.Builder()
+                .url(url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "threads", "$threadId"))
+                .patch(body.toString().toRequestBody(JSON)),
+        )
+        return dto.toThread()
+    }
+
+    /**
+     * Identities live in the organization's identity service: vssps.dev.azure.com on Azure DevOps
+     * Services, the collection itself on Azure DevOps Server.
+     */
+    override suspend fun identityNames(ids: Collection<String>): Map<String, String> {
+        if (ids.isEmpty()) return emptyMap()
+        val host = baseUrl.host
+        val base = when {
+            host.equals("dev.azure.com", ignoreCase = true) -> baseUrl.newBuilder().host("vssps.dev.azure.com").build()
+            host.endsWith(".visualstudio.com", ignoreCase = true) && !host.contains(".vssps.") ->
+                baseUrl.newBuilder().host(host.substringBefore('.') + ".vssps.visualstudio.com").build()
+            else -> baseUrl
+        }
+        val target = base.newBuilder().addPathSegment("_apis").addPathSegment("identities")
+            .addQueryParameter("identityIds", ids.joinToString(","))
+            .addQueryParameter("api-version", API_VERSION).build()
+        val list: ValueList<IdentityRecordDto> = get(target)
+        return list.value.mapNotNull { i ->
+            val name = i.customDisplayName?.takeIf { it.isNotBlank() } ?: i.providerDisplayName?.takeIf { it.isNotBlank() }
+            name?.let { i.id to it }
+        }.toMap()
     }
 
     override suspend fun policyEvaluations(pr: PullRequest): List<PolicyEvaluation> {
@@ -188,6 +274,7 @@ class AdoClient(
         )
         return list.value.map {
             val context = it.context
+            val settings = it.configuration.settings
             PolicyEvaluation(
                 typeId = it.configuration.type.id,
                 typeName = it.configuration.type.displayName,
@@ -196,6 +283,10 @@ class AdoClient(
                 status = it.status,
                 buildId = (context?.get("buildId") as? JsonPrimitive)?.intOrNull,
                 expired = (context?.get("isExpired") as? JsonPrimitive)?.booleanOrNull == true,
+                displayName = ((settings?.get("displayName") as? JsonPrimitive)?.contentOrNull
+                    ?: (context?.get("buildDefinitionName") as? JsonPrimitive)?.contentOrNull)?.takeIf { n -> n.isNotBlank() },
+                minApprovers = (settings?.get("minimumApproverCount") as? JsonPrimitive)?.intOrNull,
+                completedAt = it.completedDate?.let(::instantOrNull),
             )
         }
     }
@@ -548,7 +639,7 @@ class AdoClient(
         sourceBranch = sourceRefName.removePrefix("refs/heads/"),
         targetBranch = targetRefName.removePrefix("refs/heads/"),
         draft = isDraft,
-        reviewers = reviewers.map { Reviewer(it.id, it.displayName, it.vote, it.isRequired) },
+        reviewers = reviewers.map { it.toReviewer() },
         createdAt = Instant.parse(creationDate),
         url = baseUrl.newBuilder().addPathSegment(repository.project.name).addPathSegment("_git")
             .addPathSegment(repository.name).addPathSegment("pullrequest").addPathSegment("$pullRequestId")
@@ -727,13 +818,25 @@ private fun CommentDto.toComment(): Comment {
     val mergeStatus: String? = null,
     val lastMergeSourceCommit: CommitRefDto? = null,
     val status: String = "active",
+    val description: String? = null,
+    val labels: List<LabelDto> = emptyList(),
+    val workItemRefs: List<ResourceRefDto> = emptyList(),
+)
+@Serializable private data class LabelDto(val name: String = "", val active: Boolean = true)
+@Serializable private data class ResourceRefDto(val id: String = "")
+@Serializable private data class IdentityRecordDto(
+    val id: String = "",
+    val providerDisplayName: String? = null,
+    val customDisplayName: String? = null,
 )
 @Serializable private data class ReviewerDto(
     val id: String,
     val displayName: String = "",
     val vote: Int = 0,
     val isRequired: Boolean = false,
+    val isContainer: Boolean = false,
 )
+private fun ReviewerDto.toReviewer() = Reviewer(id, displayName, vote, isRequired, group = isContainer)
 @Serializable private data class RepositoryDto(val id: String, val name: String, val project: ProjectRefDto)
 @Serializable private data class ProjectRefDto(val id: String = "", val name: String)
 @Serializable private data class CommitRefDto(val commitId: String = "")
@@ -743,26 +846,46 @@ private fun CommentDto.toComment(): Comment {
     val status: String? = null,
     val isDeleted: Boolean = false,
     val comments: List<ThreadCommentDto> = emptyList(),
+    val threadContext: ThreadContextDto? = null,
+)
+@Serializable private data class FilePositionDto(val line: Int = 0)
+@Serializable private data class ThreadContextDto(
+    val filePath: String? = null,
+    val rightFileStart: FilePositionDto? = null,
+    val leftFileStart: FilePositionDto? = null,
 )
 @Serializable private data class ThreadCommentDto(
     val id: Int,
+    val parentCommentId: Int = 0,
     val author: IdentityDto = IdentityDto(),
     val content: String? = null,
     val commentType: String = "text",
     val publishedDate: String,
     val isDeleted: Boolean = false,
 )
+private fun ThreadCommentDto.toComment(threadId: Int) =
+    PrComment(threadId, id, author.toIdentity(), content.orEmpty(), Instant.parse(publishedDate), parentCommentId)
+
+/** System comments (votes, pushes) left out; a thread on a file at the line it starts on. */
+private fun ThreadDto.toThread(): PrThread {
+    val comments = comments.filter { !it.isDeleted && it.commentType == "text" }.map { it.toComment(id) }
+    val context = threadContext
+    val line = (context?.rightFileStart ?: context?.leftFileStart)?.line?.takeIf { it > 0 }
+    return PrThread(id, status, comments, filePath = context?.filePath?.takeIf { it.isNotBlank() }, line = line)
+}
 
 @Serializable private data class PolicyTypeDto(val id: String = "", val displayName: String = "")
 @Serializable private data class PolicyConfigurationDto(
     val isEnabled: Boolean = true,
     val isBlocking: Boolean = false,
     val type: PolicyTypeDto = PolicyTypeDto(),
+    val settings: JsonObject? = null,
 )
 @Serializable private data class PolicyEvaluationDto(
     val configuration: PolicyConfigurationDto = PolicyConfigurationDto(),
     val status: String = "",
     val context: JsonObject? = null,
+    val completedDate: String? = null,
 )
 
 @Serializable private data class NamedRefDto(val id: Int = 0, val name: String = "")

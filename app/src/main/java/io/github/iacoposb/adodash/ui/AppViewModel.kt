@@ -10,7 +10,9 @@ import io.github.iacoposb.adodash.api.AdoException
 import io.github.iacoposb.adodash.api.Build
 import io.github.iacoposb.adodash.api.BuildState
 import io.github.iacoposb.adodash.api.Person
+import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.WorkItem
+import io.github.iacoposb.adodash.data.PrCommentRef
 import io.github.iacoposb.adodash.sync.BuildSteps
 import io.github.iacoposb.adodash.data.AuthMethod
 import io.github.iacoposb.adodash.data.BoardRef
@@ -183,6 +185,47 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         onLoadEarlierComments = workItems::loadEarlierComments,
         onRetryComments = workItems::retryComments,
         onTargetShown = workItems::targetShown,
+    )
+
+    /** The pull request page, over the dashboard. */
+    private val pullRequests = PullRequestController(
+        viewModelScope,
+        api = { app.api(app.settings.current()) },
+        me = { settings.value?.takeIf { it.meId.isNotEmpty() }?.let { Person(it.meId, it.meName, "") } },
+        errorText = app::errorText,
+        onVoted = { pr, vote -> app.sync.applyOwnVote(pr.id, vote) },
+        onCommented = { pr, thread -> app.sync.applyOwnPrComments(pr, thread) },
+    )
+    val pullRequest = pullRequests.state
+
+    /** A pull request row tapped: its page, with the row's data shown at once. */
+    fun openPullRequest(pr: PullRequest) = pullRequests.open(pr.id, pr)
+
+    /**
+     * From an event or a notification: the pull request's page, at the thread of the comment
+     * when there is one, with the reply to its author ready.
+     */
+    fun openPullRequest(ref: PrCommentRef) {
+        val known = app.sync.state.value.snapshot?.pullRequest(ref.prId)
+        val target = ref.threadId?.let { PrCommentTarget(it, ref.commentId) }
+        pullRequests.open(ref.prId, known, target)
+    }
+
+    fun prActions(openUrl: (String) -> Unit) = PrActions(
+        onBack = pullRequests::close,
+        onOpenUrl = openUrl,
+        onVote = pullRequests::vote,
+        onDismissVoteError = pullRequests::dismissVoteError,
+        onSelectTab = pullRequests::selectTab,
+        onSelectFilter = pullRequests::selectFilter,
+        onDraftChange = pullRequests::editDraft,
+        onSend = pullRequests::send,
+        onSetStatus = pullRequests::setStatus,
+        onSearchMentions = pullRequests::searchMentions,
+        onRetry = pullRequests::retry,
+        onOpenBuild = { project, id -> openBuild(project, id) },
+        onOpenWorkItem = ::openWorkItem,
+        onTargetShown = pullRequests::targetShown,
     )
 
     fun closeBuild() {

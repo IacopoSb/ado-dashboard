@@ -105,16 +105,34 @@ data class PolicyEvaluation(
     val buildId: Int? = null,
     /** A build policy whose build is outdated (the target branch moved on). */
     val expired: Boolean = false,
+    /** The name the policy was given (a build policy's "backend-ci"); null when it has none. */
+    val displayName: String? = null,
+    /** Approvals a "Minimum number of reviewers" policy wants. */
+    val minApprovers: Int? = null,
+    /** When it was last evaluated, for "4 min ago". */
+    val completedAt: Instant? = null,
 ) {
     val isBuild get() = typeId.equals(BUILD_POLICY, ignoreCase = true)
 
     companion object {
         const val BUILD_POLICY = "0609b952-1397-4640-95ec-e00a01b2c241"
+        const val MIN_REVIEWERS_POLICY = "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd"
+        const val COMMENTS_POLICY = "c6a1889d-b943-4856-b76f-9e46bb6b0df2"
+        const val WORK_ITEMS_POLICY = "40e92b44-2fe1-4dd6-b3d8-74a9c21d0c6e"
     }
 }
 
-/** A comment thread of a pull request; [status] is null for system threads. */
-data class PrThread(val id: Int, val status: String?, val comments: List<PrComment>) {
+/**
+ * A comment thread of a pull request; [status] is null for system threads. [filePath] and [line]
+ * place a thread on a file ("/src/Gateway.kt", line 88); null for the pull request as a whole.
+ */
+data class PrThread(
+    val id: Int,
+    val status: String?,
+    val comments: List<PrComment>,
+    val filePath: String? = null,
+    val line: Int? = null,
+) {
     /** Still to be resolved: what Azure DevOps counts as an active comment. */
     val active get() = (status == "active" || status == "pending") && comments.isNotEmpty()
 }

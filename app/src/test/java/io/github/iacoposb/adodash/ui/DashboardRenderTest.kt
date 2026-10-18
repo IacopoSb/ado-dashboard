@@ -962,4 +962,137 @@ class DashboardRenderTest {
     /** Just switched view: the panels wait for the sync of the new one. */
     @Test fun dashboardViewLoading() =
         viewsDashboard("dashboard-view-loading", views = designViews("bugs"), state = SyncState(snapshot.copy(shown = Shown("old", emptyList(), emptyList(), emptyList())), syncing = true))
+
+    // --- Pull request page ---
+
+    /** The design's pull request: !311 by Anna, Marco approved, Luca waiting, me still to vote. */
+    private fun designPr(vote: Int = Vote.NONE) = Fakes.pr(
+        311, anna,
+        if (italian) "Gestione retry sulle chiamate al gateway pagamenti" else "Retry handling for payment gateway calls",
+        listOf(
+            Reviewer(me.id, me.name, vote, required = true),
+            Reviewer(marco.id, marco.name, Vote.APPROVED, required = false),
+            Reviewer(luca.id, luca.name, Vote.WAITING, required = false),
+        ),
+    ).copy(projectId = "p-1", mergeStatus = "succeeded")
+
+    private fun designPrScreen(
+        vote: Int = Vote.NONE,
+        tab: PrTab = PrTab.OVERVIEW,
+        filter: ThreadFilter = ThreadFilter.ACTIVE,
+        voteState: VoteState? = null,
+    ): PrScreen {
+        val it = italian
+        val pr = designPr(vote)
+        val mention = "@<${me.id}>"
+        fun c(thread: Int, id: Int, who: io.github.iacoposb.adodash.api.Identity, text: String, ago: Long) =
+            io.github.iacoposb.adodash.api.PrComment(thread, id, who, text, now.minusSeconds(ago), parentId = if (id == 1) 0 else 1)
+        val threads = listOf(
+            io.github.iacoposb.adodash.api.PrThread(
+                5, "active",
+                listOf(
+                    c(5, 1, anna, if (it) "$mention va bene il backoff esponenziale o preferisci un numero fisso di tentativi?" else "$mention is exponential backoff fine here, or would you rather have a fixed number of attempts?", 240),
+                    c(5, 2, me, if (it) "Il backoff va bene, ma con un **tetto** di 30 s." else "Backoff is fine, but with a **cap** of 30 s.", 200),
+                    c(5, 3, anna, if (it) "Ok, aggiungo `maxDelay` in `RetryPolicy`." else "Ok, I'll add `maxDelay` to `RetryPolicy`.", 120),
+                ),
+                filePath = "/src/payments/Gateway.kt", line = 88,
+            ),
+            io.github.iacoposb.adodash.api.PrThread(
+                6, "active",
+                listOf(c(6, 1, marco, if (it) "Il timeout massimo andrebbe letto dalla configurazione." else "The maximum timeout should come from the configuration.", 240)),
+                filePath = "/src/payments/RetryPolicy.kt", line = 12,
+            ),
+            io.github.iacoposb.adodash.api.PrThread(
+                7, "fixed",
+                listOf(
+                    c(7, 1, luca, if (it) "Manca il test per il caso senza tentativi rimasti." else "The case with no attempts left has no test.", 7000),
+                    c(7, 2, anna, if (it) "Aggiunto, grazie." else "Added, thanks.", 6000),
+                ),
+            ),
+        )
+        val policies = listOf(
+            io.github.iacoposb.adodash.api.PolicyEvaluation(
+                io.github.iacoposb.adodash.api.PolicyEvaluation.BUILD_POLICY, "Build", blocking = true, enabled = true,
+                status = "approved", buildId = 981, displayName = "backend-ci", completedAt = now.minusSeconds(240),
+            ),
+            io.github.iacoposb.adodash.api.PolicyEvaluation(
+                io.github.iacoposb.adodash.api.PolicyEvaluation.MIN_REVIEWERS_POLICY, "Minimum number of reviewers",
+                blocking = true, enabled = true, status = "queued", minApprovers = 2,
+            ),
+            io.github.iacoposb.adodash.api.PolicyEvaluation(
+                io.github.iacoposb.adodash.api.PolicyEvaluation.COMMENTS_POLICY, "Comment requirements", blocking = true, enabled = true, status = "rejected",
+            ),
+            io.github.iacoposb.adodash.api.PolicyEvaluation(
+                io.github.iacoposb.adodash.api.PolicyEvaluation.WORK_ITEMS_POLICY, "Work item linking", blocking = false, enabled = true, status = "approved",
+            ),
+        )
+        val description = if (it) {
+            "Aggiunge retry con **backoff esponenziale** sulle chiamate al gateway. Il numero massimo di tentativi arriva da `RetryPolicy`.\n\n- Retry solo sugli errori 5xx\n- Log di ogni tentativo\n\nChiude #4812."
+        } else {
+            "Adds retry with **exponential backoff** to the gateway calls. The maximum number of attempts comes from `RetryPolicy`.\n\n- Retries only on 5xx errors\n- Each attempt is logged\n\nCloses #4812."
+        }
+        return PrScreen(
+            id = 311,
+            pr = pr,
+            detail = io.github.iacoposb.adodash.api.PullRequestDetail(pr, description, labels = listOf("payments"), workItemIds = listOf(4812)),
+            policies = policies,
+            workItems = listOf(
+                Fakes.workItem(4812, "Bug", if (it) "Il login con SSO fallisce dopo il rinnovo del token" else "SSO sign-in fails after the token is renewed", "Active", 1),
+            ),
+            threads = PrThreadsState(loaded = true, items = threads),
+            vote = voteState ?: VoteState(vote),
+            names = mapOf(me.id.lowercase() to me.name, anna.id.lowercase() to anna.name),
+            tab = tab,
+            filter = filter,
+            me = Person(me.id, me.name, ""),
+        )
+    }
+
+    private fun prPage(name: String, screen: PrScreen, dark: Boolean = false, voteMenu: Boolean = false, expanded: Set<Int> = emptySet()) {
+        compose.setContent {
+            AdoTheme(dark = dark, dynamic = false) {
+                DashboardScreen(
+                    "contoso", SyncState(snapshot), events(), {}, {}, {}, {}, {}, now = now,
+                    pullRequest = screen, prVoteMenu = voteMenu, prExpanded = expanded,
+                )
+            }
+        }
+        // The vote menu is a popup: the whole screen, its windows included
+        if (voteMenu) captureScreenRoboImage("$name.png") else compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    @Test fun prOverview() = prPage("pr-overview", designPrScreen())
+
+    @Config(qualifiers = "+it")
+    @Test fun prOverviewItalian() = prPage("pr-overview-it", designPrScreen())
+
+    @Test fun prOverviewDark() = prPage("pr-overview-dark", designPrScreen(), dark = true)
+
+    /** A thread opened in the overview: its replies and the reply composer. */
+    @Test fun prOverviewExpanded() = prPage("pr-overview-expanded", designPrScreen(), expanded = setOf(5))
+
+    @Test fun prThreads() = prPage("pr-threads", designPrScreen(tab = PrTab.THREADS, filter = ThreadFilter.ALL))
+
+    @Config(qualifiers = "+it")
+    @Test fun prThreadsItalian() = prPage("pr-threads-it", designPrScreen(tab = PrTab.THREADS, filter = ThreadFilter.ALL))
+
+    /** Approved: the button filled in green, the overflow with "Reset vote". */
+    @Test fun prVoteMenu() = prPage("pr-vote-menu", designPrScreen(vote = Vote.APPROVED), voteMenu = true)
+
+    /** Refused: my vote before again, with the permission hint. */
+    @Test fun prVoteError() = prPage(
+        "pr-vote-error",
+        designPrScreen(voteState = VoteState(Vote.NONE, error = CommentError(SaveProblem.DENIED, "HTTP 403"))),
+    )
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun prPhone() = prPage("pr-phone", designPrScreen())
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun prPhoneThreads() = prPage("pr-phone-threads", designPrScreen(vote = Vote.WAITING, tab = PrTab.THREADS))
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun prPhoneVoteMenu() = prPage("pr-phone-vote-menu", designPrScreen(vote = Vote.WAITING), voteMenu = true)
+
+    @Test fun prLoading() = prPage("pr-loading", PrScreen(311, designPr(), me = Person(me.id, me.name, "")))
 }

@@ -5,6 +5,7 @@ import io.github.iacoposb.adodash.api.HtmlEntities
 import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.api.PrComment
+import io.github.iacoposb.adodash.api.PrThread
 import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.Vote
 import io.github.iacoposb.adodash.data.Event
@@ -119,6 +120,14 @@ object Events {
     )
 
     /**
+     * A thread I just commented in from the app, every comment of it stored as read and hidden:
+     * neither my own comment nor those before it (which my reply makes relevant to me, see
+     * [relevantComments]) come back as notifications.
+     */
+    fun ownPrThread(pr: PullRequest, thread: PrThread, me: Identity, texts: SyncTexts): List<Event> =
+        thread.comments.map { prCommentEvent(pr, it, me, texts).copy(read = true, hidden = true) }
+
+    /**
      * Splits [found] into history, stored as read and never shown, and news. On the first
      * sync everything is history. After the filters changed ([filtersChangedAt] later than
      * [lastSyncAt]) so is whatever happened before the last sync: what was already shown is
@@ -146,7 +155,7 @@ object Events {
     private fun prCommentEvent(pr: PullRequest, c: PrComment, me: Identity, texts: SyncTexts): Event {
         val mention = mentions(c.text, me)
         return Event(
-            key = "pr:${pr.id}:t${c.threadId}:c${c.id}",
+            key = Event.prCommentKey(pr.id, c.threadId, c.id),
             kind = if (mention) EventKind.MENTION else EventKind.PR_COMMENT,
             title = if (mention) texts.prMention(c.author.name, pr.id) else texts.prComment(c.author.name, pr.id),
             body = "${pr.title}\n${plainText(c.text, me)}",
