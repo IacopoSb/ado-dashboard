@@ -1,5 +1,6 @@
 package io.github.iacoposb.adodash
 
+import androidx.room.withTransaction
 import android.app.Application
 import androidx.room.Room
 import io.github.iacoposb.adodash.api.AdoApi
@@ -50,6 +51,7 @@ class AdoApp : Application() {
         SyncRepository(
             settings, database.events(), { events, s -> notifier.notify(events, s.notifications) }, ResourceSyncTexts(this),
             apiFor = { AdoClient(it.organization, authorization(it)) },
+            transaction = { writes -> database.withTransaction { writes() } },
             onSynced = { s, snapshot ->
                 // Only conveniences for the filters and the widgets: never a reason for the sync to fail
                 try {

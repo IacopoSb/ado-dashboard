@@ -28,6 +28,11 @@ data class Settings(
     /** First successful sync: what happened before it is never notified. */
     val baselineAt: Long = 0,
     val lastSyncAt: Long = 0,
+    /**
+     * Version of the way events are kept ([EVENTS_VERSION]). Older stores may have forgotten
+     * events they had seen: the first sync after an upgrade takes everything as history.
+     */
+    val eventsVersion: Int = 0,
     /** Entra app registration, set from the app only in the configurable (public) build. */
     val entraClientId: String = "",
     val entraTenantId: String = "",
@@ -61,6 +66,7 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
         val meName = stringPreferencesKey("me_name")
         val baseline = longPreferencesKey("baseline_at")
         val lastSync = longPreferencesKey("last_sync_at")
+        val eventsVersion = intPreferencesKey("events_version")
         val entraClient = stringPreferencesKey("entra_client_id")
         val entraTenant = stringPreferencesKey("entra_tenant_id")
         val filters = stringPreferencesKey("filters")
@@ -84,6 +90,7 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
         meName = this[K.meName].orEmpty(),
         baselineAt = this[K.baseline] ?: 0,
         lastSyncAt = this[K.lastSync] ?: 0,
+        eventsVersion = this[K.eventsVersion] ?: 0,
         entraClientId = this[K.entraClient].orEmpty(),
         entraTenantId = this[K.entraTenant].orEmpty(),
         filters = Filters.decode(this[K.filters]),
@@ -187,6 +194,13 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
         dataStore.edit {
             if ((it[K.baseline] ?: 0) == 0L) it[K.baseline] = at
             it[K.lastSync] = at
+            it[K.eventsVersion] = EVENTS_VERSION
         }
     }
 }
+
+/**
+ * 1: events pruned by their Azure DevOps date, so old ones could be forgotten and notified again.
+ * 2: pruned by when they were stored (0.1.0).
+ */
+const val EVENTS_VERSION = 2

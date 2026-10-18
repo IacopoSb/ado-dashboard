@@ -8,6 +8,7 @@ import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.TeamArea
 import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.api.WorkItemDetail
+import io.github.iacoposb.adodash.data.EVENTS_VERSION
 import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.EventDao
@@ -49,6 +50,8 @@ class SyncRepository(
     /** A sync refused for the credentials (expired session, PAT refused), with its settings. */
     private val onSignInRequired: suspend (Settings) -> Unit = {},
     private val log: (String) -> Unit = { android.util.Log.i("AdoSync", it) },
+    /** Runs the event writes of one sync together, so the Activity list changes once per sync. */
+    private val transaction: suspend (suspend () -> Unit) -> Unit = { it() },
     /** The saved filters' catalog of the account, to tell the areas that no longer exist. */
     private val catalog: suspend (Settings) -> FilterCatalog? = { null },
     private val clock: () -> Instant = Instant::now,
@@ -109,17 +112,23 @@ class SyncRepository(
                 // What is shown; the events below come from my own items only, whatever the view
                 view = s.views.current,
             )
-            val firstSync = s.baselineAt == 0L
-            val found = Events.from(fetched, if (firstSync) now else Instant.ofEpochMilli(s.baselineAt), texts)
+            // An upgrade from a store that may have forgotten events: one sync as a new baseline,
+            // or everything it forgot would be notified as new
+            val firstSync = s.baselineAt == 0L || s.eventsVersion < EVENTS_VERSION
+            val found = Events.from(fetched, if (s.baselineAt == 0L) now else Instant.ofEpochMilli(s.baselineAt), texts)
             val (history, news) = Events.splitHistory(found, firstSync, s.lastSyncAt, s.filtersChangedAt)
             val stamp = now.toEpochMilli()
-            if (history.isNotEmpty()) events.insertNew(history.map { it.copy(read = true, hidden = true, storedAt = stamp) })
-            if (!firstSync) notify(store(news, now), s)
-            // What this sync found again stays known, however long ago it happened: forgotten,
-            // it would be stored and notified again at the next sync
-            found.map { it.key }.distinct().chunked(KEYS_PER_QUERY).forEach { events.touch(it, stamp) }
-            if (!firstSync) retireLeft(fetched, found, s.filters, stamp)
-            events.prune(before = now.minus(RETENTION).toEpochMilli())
+            var fresh: List<Event>? = null
+            transaction {
+                if (history.isNotEmpty()) events.insertNew(history.map { it.copy(read = true, hidden = true, storedAt = stamp) })
+                if (!firstSync) fresh = store(news, now)
+                // What this sync found again stays known, however long ago it happened: forgotten,
+                // it would be stored and notified again at the next sync
+                found.map { it.key }.distinct().chunked(KEYS_PER_QUERY).forEach { events.touch(it, stamp) }
+                if (!firstSync) retireLeft(fetched, found, s.filters, stamp)
+                events.prune(before = now.minus(RETENTION).toEpochMilli())
+            }
+            fresh?.let { notify(it, s) }
             if (fetched.snapshot.buildsDenied != buildsDenied) {
                 buildsDenied = fetched.snapshot.buildsDenied
                 if (buildsDenied) log("Builds cannot be read with these credentials (Build (read) missing): no pipelines")

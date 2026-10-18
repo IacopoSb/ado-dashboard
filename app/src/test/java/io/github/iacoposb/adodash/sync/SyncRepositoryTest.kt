@@ -2,6 +2,7 @@ package io.github.iacoposb.adodash.sync
 
 import android.content.Context
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.edit
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.github.iacoposb.adodash.Fakes
@@ -76,6 +77,7 @@ class SyncRepositoryTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var db: AppDatabase
     private lateinit var settings: SettingsStore
+    private lateinit var dataStore: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>
     private val api = FakeApi()
     private val notified = mutableListOf<List<Event>>()
     /** The organization of each sync, as it read the settings. */
@@ -88,7 +90,8 @@ class SyncRepositoryTest {
 
     @Before fun setUp() {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
-        settings = SettingsStore(PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") })
+        dataStore = PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") }
+        settings = SettingsStore(dataStore)
         repo = SyncRepository(
             settings, db.events(), { events, _ -> notified += events }, Fakes.Texts, apiFor = { synced += it.organization; api },
             log = {}, clock = { now }, onRead = { cancelled += it },
@@ -127,6 +130,26 @@ class SyncRepositoryTest {
         sync()
         assertEquals(listOf("wi:2:assigned"), notifiedKeys())
         assertEquals(listOf(false), runBlocking { db.events().recentOnce() }.filter { it.key == "wi:2:assigned" }.map { it.read })
+    }
+
+    @Test fun `after upgrading from a store that forgot old events, they are not notified as new`() {
+        api.items = listOf(Fakes.workItem(1).copy(changedAt = now.minus(Duration.ofDays(60))))
+        sync()
+        // Before 0.1.0 the event above was pruned by its date right after being stored
+        runBlocking {
+            db.clearAllTables()
+            dataStore.edit { it[androidx.datastore.preferences.core.intPreferencesKey("events_version")] = 1 }
+        }
+        later()
+        sync()
+        assertTrue("forgotten history is not news: ${notifiedKeys()}", notifiedKeys().isEmpty())
+        assertTrue(runBlocking { db.events().recentOnce() }.filter { it.key == "wi:1:assigned" }.all { it.read })
+
+        // After the upgrade sync, real news are notified again
+        api.items += Fakes.workItem(2)
+        later()
+        sync()
+        assertEquals(listOf("wi:2:assigned"), notifiedKeys())
     }
 
     @Test fun `what a sync still finds is kept past the retention, the rest goes`() {
