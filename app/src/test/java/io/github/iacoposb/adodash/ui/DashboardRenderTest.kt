@@ -891,29 +891,37 @@ class DashboardRenderTest {
 
     /**
      * The design's sprint: Sprint 42 of Contoso › Backend, 12 to 23 October (6 working days
-     * left on Friday 16), stories, bugs, a chore and a doc, a closed bug hidden by default.
+     * left on Friday 16), stories, bugs, a chore and a doc, a closed bug and a resolved story
+     * hidden by default. With [hours] the team tracks remaining work; without, it uses the
+     * long states of a real process ("To be tested", one that wraps on two lines).
      */
-    private fun designSprint(): Sprint {
+    private fun designSprint(hours: Boolean = true): Sprint {
         val it = italian
         val categories = mapOf(
             "New" to SprintItem.PROPOSED, "Active" to SprintItem.IN_PROGRESS, "Blocked" to SprintItem.IN_PROGRESS,
+            "To be tested" to SprintItem.IN_PROGRESS, "To be Integrated" to SprintItem.IN_PROGRESS,
+            "Waiting for customer feedback" to SprintItem.IN_PROGRESS,
             "Resolved" to SprintItem.RESOLVED, "Closed" to SprintItem.COMPLETED,
         )
         var rank = 0.0
         fun item(
-            id: Int, type: String, title: String, state: String, who: io.github.iacoposb.adodash.api.Identity?, hours: Double? = null,
-        ) = SprintItem(
-            Fakes.workItem(id, type, title, state).copy(assignedTo = who?.name), who?.id, hours, ++rank, categories[state],
-        )
+            id: Int, type: String, title: String, state: String, who: io.github.iacoposb.adodash.api.Identity?, left: Double? = null,
+            realState: String = state,
+        ): SprintItem {
+            val shown = if (hours) state else realState
+            return SprintItem(
+                Fakes.workItem(id, type, title, shown).copy(assignedTo = who?.name), who?.id, left.takeIf { hours }, ++rank, categories[shown],
+            )
+        }
         fun group(parent: SprintItem, vararg children: SprintItem) = SprintGroup(parent, children.toList())
         val groups = listOf(
             group(
                 item(4790, "User Story", if (it) "Esportazione CSV dei report mensili" else "CSV export of the monthly reports", "Active", me),
                 item(4791, "Task", if (it) "Endpoint di esportazione" else "Export endpoint", "Closed", me),
-                item(4792, "Task", if (it) "Formato CSV con separatore configurabile" else "CSV format with a configurable separator", "Active", me, 5.0),
+                item(4792, "Task", if (it) "Formato CSV con separatore configurabile" else "CSV format with a configurable separator", "Active", me, 5.0, "To be tested"),
                 item(4793, "Task", if (it) "Test di integrazione" else "Integration tests", "New", marco, 3.0),
             ),
-            group(item(4812, "Bug", if (it) "Il login con SSO fallisce dopo il rinnovo del token" else "SSO sign-in fails after the token is renewed", "Active", me, 3.0)),
+            group(item(4812, "Bug", if (it) "Il login con SSO fallisce dopo il rinnovo del token" else "SSO sign-in fails after the token is renewed", "Active", me, 3.0, "To be Integrated")),
             group(
                 item(4777, "User Story", if (it) "Filtro per area path nella dashboard" else "Filter by area path in the dashboard", "Active", anna),
                 item(4778, "Task", if (it) "Albero delle aree" else "Area tree", "Closed", anna),
@@ -926,7 +934,7 @@ class DashboardRenderTest {
                 item(4756, "Task", "Gradle 9", "New", me, 1.0),
                 item(4757, "Task", "AGP 9", "New", anna, 1.0),
             ),
-            group(item(4770, "Documentation", if (it) "Guida alla registrazione dell'app in Entra" else "Guide to registering the app in Entra", "Active", luca, 4.0)),
+            group(item(4770, "Documentation", if (it) "Guida alla registrazione dell'app in Entra" else "Guide to registering the app in Entra", "Active", luca, 4.0, "Waiting for customer feedback")),
             group(
                 item(4769, "User Story", if (it) "Aggiornamento SDK pagamenti a 4.2" else "Payments SDK update to 4.2", "Resolved", marco),
                 item(4771, "Task", "SDK 4.2", "Closed", marco),
@@ -949,11 +957,12 @@ class DashboardRenderTest {
         filter: BacklogFilter = BacklogFilter(),
         expanded: Set<Int> = setOf(4790),
         dark: Boolean = false,
+        hours: Boolean = false,
     ) {
         val views = designViews().openBoard(BoardRef("Contoso", "Backend"))
         val shown = Shown(
             views.current.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs, pipeline = pipeline, pipelineProject = "Contoso",
-            sprint = designSprint(),
+            sprint = designSprint(hours),
         )
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
@@ -966,7 +975,11 @@ class DashboardRenderTest {
         compose.onRoot().captureRoboImage("$name.png")
     }
 
+    /** A team that does not track hours, with long states: no "Remaining" column, states in full. */
     @Test fun sprintBacklog() = backlog("sprint-backlog")
+
+    /** A team that tracks hours: the "Remaining" column and the hours in the footer. */
+    @Test fun sprintBacklogWithHours() = backlog("sprint-backlog-with-hours", hours = true)
 
     @Config(qualifiers = "+it")
     @Test fun sprintBacklogItalian() = backlog("sprint-backlog-it")
@@ -974,7 +987,7 @@ class DashboardRenderTest {
     @Test fun sprintBacklogDark() = backlog("sprint-backlog-dark", dark = true)
 
     /** Mine: my items with all their children, the others with only mine. */
-    @Test fun sprintBacklogMine() = backlog("sprint-backlog-mine", BacklogFilter(mine = true), expanded = setOf(4790, 4777, 4755))
+    @Test fun sprintBacklogMine() = backlog("sprint-backlog-mine", BacklogFilter(mine = true), expanded = setOf(4790, 4777, 4755), hours = true)
 
     @Test fun sprintBacklogCollapsed() = backlog("sprint-backlog-collapsed", expanded = emptySet())
 

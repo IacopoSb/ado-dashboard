@@ -184,6 +184,14 @@ object Backlog {
         }
     }
 
+    /**
+     * Whether the team tracks hours in this sprint: some item, top-level or child, has remaining
+     * work. Teams that do not never fill it in, and a column of dashes says nothing. The whole
+     * sprint counts, not the rows shown, so that the column does not come and go with the filters.
+     */
+    fun tracksHours(groups: List<SprintGroup>): Boolean =
+        groups.any { g -> g.parent.remainingWork != null || g.children.any { it.remainingWork != null } }
+
     fun totals(rows: List<BacklogGroup>) = BacklogTotals(
         items = rows.size,
         children = rows.sumOf { it.children.size },

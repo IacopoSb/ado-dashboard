@@ -103,6 +103,15 @@ class SprintTest {
         assertEquals("only my child's hours", BacklogTotals(1, 1, 5.0), Backlog.totals(mine))
     }
 
+    @Test fun `hours are tracked when any item has remaining work, a child's included`() {
+        assertEquals(true, Backlog.tracksHours(groups))
+        val noHours = all.map { it.copy(remainingWork = null) }
+        assertEquals(false, Backlog.tracksHours(Backlog.build(noHours, parents)))
+        val oneChild = noHours.map { if (it.id == 14) it.copy(remainingWork = 0.0) else it }
+        assertEquals("a child with 0 h left still tracks hours", true, Backlog.tracksHours(Backlog.build(oneChild, parents)))
+        assertEquals(false, Backlog.tracksHours(emptyList()))
+    }
+
     private fun day(d: String) = Instant.parse("${d}T00:00:00Z")
     private fun sprint(start: String?, finish: String?, daysOff: List<DayRange> = emptyList(), workingDays: Set<DayOfWeek> = Sprint.DEFAULT_WORKING_DAYS) =
         Sprint(

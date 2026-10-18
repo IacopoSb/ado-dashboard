@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
@@ -25,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.api.Vote
 import io.github.iacoposb.adodash.ui.AdoColors
@@ -48,14 +50,19 @@ fun Tone.colors(): Pair<Color, Color> = AdoTheme.colors.run {
 
 /** A work item state, "Draft" and the like. [filled] = false drops the background (selected rows). */
 @Composable
-fun StatusChip(text: String, modifier: Modifier = Modifier, tone: Tone = Tone.Neutral, filled: Boolean = true) {
+fun StatusChip(text: String, modifier: Modifier = Modifier, tone: Tone = Tone.Neutral, filled: Boolean = true, maxLines: Int = 1) {
     val (bg, fg) = tone.colors()
     Box(
-        modifier.height(22.dp).clip(RoundedCornerShape(6.dp))
-            .background(if (filled) bg else Color.Transparent).padding(horizontal = 8.dp),
+        // Taller only when the text wraps: one line keeps the design's 22 dp
+        modifier.then(if (maxLines > 1) Modifier.heightIn(min = 22.dp) else Modifier.height(22.dp)).clip(RoundedCornerShape(6.dp))
+            .background(if (filled) bg else Color.Transparent)
+            .padding(horizontal = 8.dp, vertical = if (maxLines > 1) 3.dp else 0.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = MaterialTheme.typography.labelMedium, color = fg, maxLines = 1)
+        Text(
+            text, style = MaterialTheme.typography.labelMedium, color = fg, maxLines = maxLines,
+            overflow = if (maxLines > 1) TextOverflow.Ellipsis else TextOverflow.Clip,
+        )
     }
 }
 

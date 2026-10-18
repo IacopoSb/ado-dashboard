@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -52,6 +53,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -242,16 +245,48 @@ private object Col {
     val type = 112.dp
     val id = 48.dp
     val children = 76.dp
-    val state = 96.dp
     val who = 52.dp
     val remaining = 52.dp
     /** A child's type and title start this much further in. */
     val indent = 12.dp
 }
 
+/**
+ * The columns that depend on the sprint: the state's width, fitted to the longest state, and
+ * whether the hours are shown at all (see [Backlog.tracksHours]).
+ */
+internal data class BacklogColumns(val state: Dp, val remaining: Boolean) {
+    companion object {
+        /** "STATE" in the header still fits. */
+        val STATE_MIN = 72.dp
+        /** Beyond this a state wraps on two lines in its chip, so that the title keeps its room. */
+        val STATE_MAX = 170.dp
+        /** The cell's start padding and the chip's own (8 dp a side), plus 1 dp against rounding. */
+        private val STATE_EXTRA = 12.dp + 16.dp + 1.dp
+
+        /** The state column for a sprint whose longest state is [longest] wide as chip text. */
+        fun stateWidth(longest: Dp): Dp = (longest + STATE_EXTRA).coerceIn(STATE_MIN, STATE_MAX)
+    }
+}
+
+/** The columns for [sprint]: its states measured as the chips show them. */
+@Composable
+private fun backlogColumns(sprint: Sprint): BacklogColumns {
+    val measurer = rememberTextMeasurer()
+    val style = MaterialTheme.typography.labelMedium
+    val density = LocalDensity.current
+    val states = sprint.items.map { it.item.state }.distinct()
+    val longest = remember(states, style, density) {
+        val px = states.maxOfOrNull { measurer.measure(it, style, softWrap = false, maxLines = 1, density = density).size.width } ?: 0
+        with(density) { px.toDp() }
+    }
+    return BacklogColumns(BacklogColumns.stateWidth(longest), Backlog.tracksHours(sprint.groups))
+}
+
 @Composable
 private fun WideBacklog(sprint: Sprint, title: String, now: Instant, syncing: Boolean, actions: BacklogActions, state: BacklogState) {
     val c = AdoTheme.colors
+    val cols = backlogColumns(sprint)
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(start = 4.dp, end = 12.dp, top = 4.dp),
@@ -298,38 +333,38 @@ private fun WideBacklog(sprint: Sprint, title: String, now: Instant, syncing: Bo
                 Spacer(Modifier.width(12.dp))
                 TextAction(stringResource(if (state.allExpanded) R.string.backlog_collapse_all else R.string.backlog_expand_all), state.onToggleAll)
             }
-            HeaderRow()
+            HeaderRow(cols)
             LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                 if (state.rows.isEmpty()) empty()
                 state.rows.forEach { row ->
                     val open = row.parent.id in state.expanded && row.children.isNotEmpty()
                     item(key = row.parent.id) {
-                        WideRow(row.parent, child = false, row = row, open = open, onToggle = { state.onToggle(row.parent.id) }, onOpen = actions.onOpen)
+                        WideRow(row.parent, child = false, row = row, open = open, cols = cols, onToggle = { state.onToggle(row.parent.id) }, onOpen = actions.onOpen)
                     }
                     if (open) {
                         items(row.children, key = { "${row.parent.id}/${it.id}" }) {
-                            WideRow(it, child = true, row = null, open = false, onToggle = {}, onOpen = actions.onOpen)
+                            WideRow(it, child = true, row = null, open = false, cols = cols, onToggle = {}, onOpen = actions.onOpen)
                         }
                     }
                 }
             }
             HorizontalDivider(color = c.outline)
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(totalsText(state.rows), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
+                Text(totalsText(state.rows, cols.remaining), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
                 Text(stringResource(R.string.backlog_hint), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
             }
         }
     }
 }
 
-/** "8 items · 12 children · 37 h remaining". */
+/** "8 items · 12 children · 37 h remaining", without the hours for a team that does not track them. */
 @Composable
-private fun totalsText(rows: List<BacklogGroup>): String {
+private fun totalsText(rows: List<BacklogGroup>, withHours: Boolean): String {
     val totals = Backlog.totals(rows)
-    return listOf(
+    return listOfNotNull(
         pluralStringResource(R.plurals.backlog_items, totals.items, totals.items),
         pluralStringResource(R.plurals.backlog_children, totals.children, totals.children),
-        stringResource(R.string.backlog_remaining, hours(totals.remainingWork)),
+        if (withHours) stringResource(R.string.backlog_remaining, hours(totals.remainingWork)) else null,
     ).joinToString(" · ")
 }
 
@@ -356,7 +391,7 @@ private fun ScopeToggle(mine: Boolean, onChange: (Boolean) -> Unit) {
 }
 
 @Composable
-private fun HeaderRow() {
+private fun HeaderRow(cols: BacklogColumns) {
     val c = AdoTheme.colors
     Row(
         Modifier.fillMaxWidth().height(28.dp).background(c.surfaceAlt).padding(horizontal = 12.dp),
@@ -370,9 +405,9 @@ private fun HeaderRow() {
             style = MaterialTheme.typography.labelSmall, color = c.textMuted, maxLines = 1,
         )
         HeaderCell(stringResource(R.string.backlog_col_children), Col.children, TextAlign.End)
-        HeaderCell(stringResource(R.string.backlog_col_state), Col.state, TextAlign.Start, Modifier.padding(start = 12.dp))
+        HeaderCell(stringResource(R.string.backlog_col_state), cols.state, TextAlign.Start, Modifier.padding(start = 12.dp))
         HeaderCell(stringResource(R.string.backlog_col_who), Col.who, TextAlign.Center)
-        HeaderCell(stringResource(R.string.backlog_col_remaining), Col.remaining, TextAlign.End)
+        if (cols.remaining) HeaderCell(stringResource(R.string.backlog_col_remaining), Col.remaining, TextAlign.End)
     }
 }
 
@@ -386,8 +421,8 @@ private fun RowScope.HeaderCell(text: String, width: Dp, align: TextAlign, modif
 
 /**
  * A row of the table: chevron (for a parent with children), type bar and name, id, title on one
- * line, children done/total, state, assignee and hours left. [row] is the parent's group, null
- * for a child.
+ * line, children done/total, state (on two lines if it is that long), assignee and hours left
+ * (only for a team that tracks them). [row] is the parent's group, null for a child.
  */
 @Composable
 private fun WideRow(
@@ -395,6 +430,7 @@ private fun WideRow(
     child: Boolean,
     row: BacklogGroup?,
     open: Boolean,
+    cols: BacklogColumns,
     onToggle: () -> Unit,
     onOpen: (WorkItem) -> Unit,
 ) {
@@ -427,18 +463,20 @@ private fun WideRow(
                 Modifier.width(Col.children), style = MaterialTheme.typography.bodySmall, color = c.textMuted,
                 maxLines = 1, textAlign = TextAlign.End,
             )
-            Box(Modifier.width(Col.state).padding(start = 12.dp), contentAlignment = Alignment.CenterEnd) {
-                StatusChip(wi.state, tone = stateTone(wi.state))
+            Box(Modifier.width(cols.state).padding(start = 12.dp), contentAlignment = Alignment.CenterStart) {
+                StatusChip(wi.state, tone = stateTone(wi.state), maxLines = 2)
             }
             Box(Modifier.width(Col.who), contentAlignment = Alignment.Center) {
                 val who = wi.assignedTo
                 if (who != null) Avatar(who, description = who) else Text("—", style = MaterialTheme.typography.bodySmall, color = c.textFaint)
             }
-            val remaining = if (row != null) row.remainingWork else item.remainingWork.takeUnless { item.closed }
-            Text(
-                remaining?.let { hours(it) } ?: "—", Modifier.width(Col.remaining), style = MaterialTheme.typography.bodySmall,
-                color = c.textMuted, maxLines = 1, textAlign = TextAlign.End,
-            )
+            if (cols.remaining) {
+                val remaining = if (row != null) row.remainingWork else item.remainingWork.takeUnless { item.closed }
+                Text(
+                    remaining?.let { hours(it) } ?: "—", Modifier.width(Col.remaining), style = MaterialTheme.typography.bodySmall,
+                    color = c.textMuted, maxLines = 1, textAlign = TextAlign.End,
+                )
+            }
         }
         HorizontalDivider(color = c.outline)
     }
@@ -489,8 +527,9 @@ private fun NarrowBacklog(sprint: Sprint, title: String, now: Instant, syncing: 
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 val totals = Backlog.totals(state.rows)
+                val left = if (Backlog.tracksHours(sprint.groups)) hours(totals.remainingWork) else null
                 Text(
-                    listOfNotNull(daysLeftShort(sprint, now), hours(totals.remainingWork)).joinToString(" · "),
+                    listOfNotNull(daysLeftShort(sprint, now), left).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -584,7 +623,7 @@ private fun NarrowRow(item: SprintItem, row: BacklogGroup?, open: Boolean, onTog
                 )
             }
             Spacer(Modifier.width(8.dp))
-            StatusChip(wi.state, tone = stateTone(wi.state))
+            StatusChip(wi.state, Modifier.widthIn(max = BacklogColumns.STATE_MAX), tone = stateTone(wi.state), maxLines = 2)
         }
         HorizontalDivider(color = c.outline)
     }
