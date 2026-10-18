@@ -85,6 +85,14 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
+/** The design's phone, 412 × 915 dp, upright and on its side. */
+private const val PHONE = "en-w412dp-h915dp-port-xxhdpi"
+private const val PHONE_IT = "it-w412dp-h915dp-port-xxhdpi"
+private const val PHONE_LANDSCAPE = "en-w915dp-h412dp-land-xxhdpi"
+
+/** A tablet held upright: narrower than the two-column layouts. */
+private const val PORTRAIT = "en-w800dp-h1280dp-port-mdpi"
+
 /**
  * The screens with fake data as PNGs in app/build/outputs/roborazzi: in
  * English, plus `-it` variants in Italian (`+it` adds the locale to the
@@ -325,7 +333,7 @@ class DashboardRenderTest {
         },
     )
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun workItemPhoneComments() = dashboard("work-item-phone-comments", dark = false, workItem = designWorkItem(), scrollWorkItem = true)
 
     @Test fun workItemModal() = dashboard("work-item-modal", dark = false, workItem = designWorkItem())
@@ -384,11 +392,11 @@ class DashboardRenderTest {
         workItem = WorkItemModal(listOf(WorkItemPage(4812, snapshot.workItems.first()))),
     )
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun workItemPhone() = dashboard("work-item-phone", dark = false, workItem = designWorkItem())
 
     /** A path too long for the field: the nodes before the last left out from the start. */
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun workItemPhoneLongPath() = dashboard(
         "work-item-phone-long-path", dark = false,
         workItem = designWorkItem().let { m ->
@@ -398,7 +406,7 @@ class DashboardRenderTest {
         },
     )
 
-    @Config(qualifiers = "it-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE_IT)
     @Test fun workItemPhoneItalian() = dashboard("work-item-phone-it", dark = false, workItem = designWorkItem())
 
     /** The build of the design's modal: stages, two failed tests, rerun offered. */
@@ -469,7 +477,7 @@ class DashboardRenderTest {
     /** Opened from an event: the build is being read. */
     @Test fun buildModalLoading() = dashboard("build-modal-loading", dark = false, build = BuildDetail("Contoso", 981))
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun buildModalPhone() = dashboard("build-modal-phone", dark = false, build = buildDetail())
 
     /**
@@ -597,7 +605,7 @@ class DashboardRenderTest {
 
     @Test fun tabletUpdate() = dashboard("dashboard-tablet-update", dark = false, update = "0.2.0")
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun phone() = dashboard("dashboard-phone", dark = false)
 
     /** First launch: the Entra registration is entered in the app. */
@@ -609,10 +617,10 @@ class DashboardRenderTest {
     @Test fun settingsDark() = signIn("settings-dark", dark = true)
 
     /** Narrow: the sections as a list first. */
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun settingsPhone() = signedIn("settings-phone", section = null)
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun settingsPhoneAccount() = signIn("settings-phone-account")
 
     @Test fun settingsSignedIn() = signedIn("settings-account-signed-in", section = SettingsSection.ACCOUNT)
@@ -650,7 +658,7 @@ class DashboardRenderTest {
     /** Signed in with a PAT: the switch on, the token field to replace it. */
     @Test fun settingsSignedInPat() = signedIn("settings-account-signed-in-pat", section = SettingsSection.ACCOUNT, pat = true)
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun settingsPhoneSignedInAccount() = signedIn("settings-phone-account-signed-in", section = SettingsSection.ACCOUNT)
 
     /** A PAT without Build (read): the hint under the account. */
@@ -702,7 +710,7 @@ class DashboardRenderTest {
     /** Android 13+ without the permission: the banner to allow them. */
     @Test fun settingsNotificationsPermission() = notifications("settings-notifications-permission", allowed = false)
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun settingsNotificationsPhone() = notifications("settings-notifications-phone")
 
     /** As in the design: Contoso partly selected, Resolved hidden for the Epics. */
@@ -773,7 +781,7 @@ class DashboardRenderTest {
     @Test fun settingsFiltersError() =
         filters("settings-filters-error", catalog = CatalogState(error = context.getString(R.string.error_credentials)))
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun settingsFiltersPhone() = filters("settings-filters-phone")
 
     private fun signedIn(
@@ -927,7 +935,7 @@ class DashboardRenderTest {
     @Config(qualifiers = "+it")
     @Test fun viewsPickerItalian() = picker("views-picker-it")
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun viewsPickerPhone() = picker("views-picker-phone")
 
     /** The boards being read for the first time: the card keeps its size, the recent ones are there. */
@@ -993,7 +1001,7 @@ class DashboardRenderTest {
         "views-editor-pull-requests", editor = EditorTarget(designViews().find("bugs")!!, focus = ViewPanel.PULL_REQUESTS),
     )
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun viewsEditorPhone() = viewsDashboard("views-editor-phone", editor = EditorTarget(DashboardView.global))
 
     @Test fun dashboardBoardView() {
@@ -1115,7 +1123,7 @@ class DashboardRenderTest {
 
     @Test fun sprintBacklogCollapsed() = backlog("sprint-backlog-collapsed", expanded = emptySet())
 
-    @Config(qualifiers = "it-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE_IT)
     @Test fun sprintPhone() = backlog("sprint-phone")
 
     /** A view of reviews only: the work items panel is off, the others share the width. */
@@ -1198,7 +1206,7 @@ class DashboardRenderTest {
     /** A PAT without Build (read). */
     @Test fun pipelinesModalDenied() = pipelines("pipelines-modal-denied", state = PipelinesState("Contoso", denied = true))
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun pipelinesPhone() = pipelines("pipelines-phone")
 
     /** Just switched view: the panels wait for the sync of the new one. */
@@ -1339,13 +1347,13 @@ class DashboardRenderTest {
         designPrScreen(voteState = VoteState(Vote.NONE, error = CommentError(SaveProblem.DENIED, "HTTP 403"))),
     )
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun prPhone() = prPage("pr-phone", designPrScreen())
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun prPhoneThreads() = prPage("pr-phone-threads", designPrScreen(vote = Vote.WAITING, tab = PrTab.THREADS))
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun prPhoneVoteMenu() = prPage("pr-phone-vote-menu", designPrScreen(vote = Vote.WAITING), voteMenu = true)
 
     /** A long comment collapsed with "Show all", and a reply with a code block wider than the card. */
@@ -1503,8 +1511,185 @@ class DashboardRenderTest {
     @Config(qualifiers = "+it")
     @Test fun prCommitsItalian() = prPage("pr-commits-it", designFilesScreen(tab = PrTab.COMMITS))
 
-    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Config(qualifiers = PHONE)
     @Test fun prPhoneFiles() = prFiles("pr-phone-files", designFilesScreen())
 
     @Test fun prLoading() = prPage("pr-loading", PrScreen(311, designPr(), me = Person(me.id, me.name, "")))
+
+    // --- Phones and tablets held upright ---
+
+    /** The dashboard with one of its tabs chosen, on a narrow screen. */
+    private fun dashboardTab(name: String, tab: String) {
+        compose.setContent {
+            AdoTheme(dark = false, dynamic = false) {
+                DashboardScreen("contoso", SyncState(snapshot), events(), {}, {}, {}, {}, {}, now = now)
+            }
+        }
+        compose.onNodeWithText(tab).performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    private val prTab get() = context.getString(R.string.tab_pull_requests, 4)
+    private val activityTab get() = context.getString(R.string.tab_activity_unread, 3)
+
+    /** Contoso › Backend with its sprint and its builds. */
+    private fun boardView(name: String) {
+        val views = designViews().openBoard(BoardRef("Contoso", "Backend"))
+        val state = SyncState(
+            snapshot.copy(
+                shown = Shown(
+                    views.current.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs, pipeline = pipeline,
+                    pipelineProject = "Contoso", sprint = designSprint(),
+                ),
+            ),
+        )
+        viewsDashboard(name, views = views, state = state)
+    }
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun dashboardPhoneLandscape() = dashboard("dashboard-phone-landscape", dark = false)
+
+    @Config(qualifiers = PORTRAIT)
+    @Test fun dashboardPortrait() = dashboard("dashboard-portrait", dark = false)
+
+    @Config(qualifiers = PHONE)
+    @Test fun dashboardPrsPhone() = dashboardTab("dashboard-prs-phone", prTab)
+
+    @Config(qualifiers = PHONE_IT)
+    @Test fun dashboardPrsPhoneItalian() = dashboardTab("dashboard-prs-phone-it", prTab)
+
+    @Config(qualifiers = PHONE)
+    @Test fun dashboardActivityPhone() = dashboardTab("dashboard-activity-phone", activityTab)
+
+    @Config(qualifiers = PHONE)
+    @Test fun dashboardBoardViewPhone() = boardView("dashboard-board-view-phone")
+
+    @Config(qualifiers = PHONE_IT)
+    @Test fun dashboardBoardViewPhoneItalian() = boardView("dashboard-board-view-phone-it")
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun dashboardBoardViewPhoneLandscape() = boardView("dashboard-board-view-phone-landscape")
+
+    @Config(qualifiers = PORTRAIT)
+    @Test fun dashboardBoardViewPortrait() = boardView("dashboard-board-view-portrait")
+
+    @Config(qualifiers = PHONE)
+    @Test fun dashboardEmptyPhone() = dashboard("dashboard-empty-phone", dark = false, SyncState(emptySnapshot), events = emptyList())
+
+    @Config(qualifiers = PHONE)
+    @Test fun dashboardLoadingPhone() =
+        dashboard("dashboard-loading-phone", dark = false, SyncState(syncing = true), events = emptyList())
+
+    @Config(qualifiers = PHONE)
+    @Test fun dashboardOfflinePhone() = dashboard("dashboard-offline-phone", dark = false, SyncState(snapshot), online = false)
+
+    @Config(qualifiers = PHONE_IT)
+    @Test fun dashboardOfflineNoDataPhoneItalian() =
+        dashboard("dashboard-offline-no-data-phone-it", dark = false, SyncState(), events = emptyList(), online = false)
+
+    @Config(qualifiers = PHONE)
+    @Test fun dashboardSessionExpiredPhone() = dashboard(
+        "dashboard-session-expired-phone", dark = false,
+        SyncState(snapshot, error = context.getString(R.string.error_sign_in_required), failure = SyncFailure.AUTH),
+    )
+
+    /** The update banner over a sync error: both readable, their actions within reach. */
+    @Config(qualifiers = PHONE_IT)
+    @Test fun dashboardUpdatePhoneItalian() = dashboard(
+        "dashboard-update-phone-it", dark = false, SyncState(snapshot, error = context.getString(R.string.error_credentials)), update = "0.2.0",
+    )
+
+    @Config(qualifiers = PHONE)
+    @Test fun viewsSwitcherPhone() = switcher("views-switcher-phone")
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun viewsSwitcherPhoneLandscape() = switcher("views-switcher-phone-landscape")
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun viewsEditorPhoneLandscape() = viewsDashboard("views-editor-phone-landscape", editor = EditorTarget(DashboardView.global))
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun viewsPickerPhoneLandscape() = picker("views-picker-phone-landscape")
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun workItemPhoneLandscape() = dashboard("work-item-phone-landscape", dark = false, workItem = designWorkItem())
+
+    @Config(qualifiers = PHONE)
+    @Test fun workItemPhoneStateMenu() =
+        dashboard("work-item-phone-state-menu", dark = false, workItem = designWorkItem(), workItemMenu = WiFields.STATE)
+
+    @Config(qualifiers = PHONE)
+    @Test fun workItemPhoneIterationPicker() =
+        dashboard("work-item-phone-iteration-picker", dark = false, workItem = designWorkItem(), workItemMenu = WiFields.ITERATION)
+
+    @Config(qualifiers = PHONE)
+    @Test fun workItemPhoneMentions() = dashboard(
+        "work-item-phone-mentions", dark = false,
+        workItem = withComments { it.copy(composer = ComposerState(Draft("Thanks, @an"), 1)) }.copy(
+            mentions = PeopleSearch(
+                "an",
+                results = listOf(Person(anna.id, anna.name, "anna.verdi@contoso.com"), Person("eeee", "Annabel Neri", "annabel.neri@contoso.com")),
+            ),
+        ),
+    )
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun buildModalPhoneLandscape() = dashboard("build-modal-phone-landscape", dark = false, build = buildDetail())
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun pipelinesPhoneLandscape() = pipelines("pipelines-phone-landscape")
+
+    @Config(qualifiers = PHONE)
+    @Test fun sprintPhoneEnglish() = backlog("sprint-phone-en", hours = true)
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun sprintPhoneLandscape() = backlog("sprint-phone-landscape")
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun prPhoneLandscape() = prPage("pr-phone-landscape", designPrScreen())
+
+    @Config(qualifiers = PORTRAIT)
+    @Test fun prPortrait() = prPage("pr-portrait", designPrScreen())
+
+    @Config(qualifiers = PORTRAIT)
+    @Test fun prFilesPortrait() = prFiles("pr-files-portrait", designFilesScreen())
+
+    @Config(qualifiers = PHONE_IT)
+    @Test fun prPhoneItalian() = prPage("pr-phone-it", designPrScreen())
+
+    @Config(qualifiers = PHONE)
+    @Test fun prPhoneNewThread() = prFiles(
+        "pr-phone-new-thread", designFilesScreen(newThread = io.github.iacoposb.adodash.api.FileAnchor("/src/payments/Gateway.kt", 89)),
+    )
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun prPhoneFilesLandscape() = prFiles("pr-phone-files-landscape", designFilesScreen())
+
+    @Config(qualifiers = PHONE)
+    @Test fun prPhoneCommits() = prPage("pr-phone-commits", designFilesScreen(tab = PrTab.COMMITS))
+
+    @Config(qualifiers = PHONE)
+    @Test fun prPhoneVoteError() = prPage(
+        "pr-phone-vote-error",
+        designPrScreen(voteState = VoteState(Vote.NONE, error = CommentError(SaveProblem.DENIED, "HTTP 403"))),
+    )
+
+    @Config(qualifiers = PHONE)
+    @Test fun prPhoneLoading() = prPage("pr-phone-loading", PrScreen(311, designPr(), me = Person(me.id, me.name, "")))
+
+    @Config(qualifiers = PHONE)
+    @Test fun settingsScreenPhone() = signedIn("settings-screen-phone", section = SettingsSection.SCREEN)
+
+    @Config(qualifiers = PHONE)
+    @Test fun settingsAboutPhone() = settingsUpdate("settings-about-phone", UpdateState.Available(release))
+
+    @Config(qualifiers = PHONE)
+    @Test fun settingsFiltersSearchPhone() = filters("settings-filters-search-phone", query = "pag")
+
+    @Config(qualifiers = PHONE_IT)
+    @Test fun settingsNotificationsPhoneItalian() = notifications("settings-notifications-phone-it")
+
+    @Config(qualifiers = PHONE_LANDSCAPE)
+    @Test fun settingsPhoneLandscape() = signedIn("settings-phone-landscape", section = SettingsSection.ACCOUNT)
 }
