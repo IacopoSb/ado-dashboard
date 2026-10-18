@@ -29,8 +29,11 @@ data class SprintItem(
     /** Done for the counts: Resolved or Completed. */
     val done get() = category == RESOLVED || category == COMPLETED
 
-    /** What "Hide closed" hides: Completed or Removed. */
-    val closed get() = category == COMPLETED || category == REMOVED
+    /**
+     * Closed: what "Hide closed" hides at the top level, greyed and without hours left as a
+     * child. Resolved counts: the processes in use treat it as done, like Completed; Removed too.
+     */
+    val closed get() = category == RESOLVED || category == COMPLETED || category == REMOVED
 
     val removed get() = category == REMOVED
 

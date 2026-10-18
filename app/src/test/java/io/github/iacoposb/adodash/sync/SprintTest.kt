@@ -30,14 +30,15 @@ class SprintTest {
     private val taskMine = item(12, rank = 1.0, remaining = 5.0)
     private val taskRemoved = item(13, state = "Removed", category = SprintItem.REMOVED, rank = 3.0, mine = false)
     private val taskOther = item(14, state = "New", category = SprintItem.PROPOSED, remaining = 2.0, mine = false)
-    private val all = listOf(chore, taskOther, story, taskDone, bug, taskMine, taskRemoved)
-    private val parents = mapOf(11 to 1, 12 to 1, 13 to 1, 14 to 1)
+    private val taskResolved = item(15, state = "Resolved", category = SprintItem.RESOLVED, rank = 4.0, remaining = 4.0, mine = false)
+    private val all = listOf(chore, taskOther, story, taskDone, bug, taskMine, taskRemoved, taskResolved)
+    private val parents = mapOf(11 to 1, 12 to 1, 13 to 1, 14 to 1, 15 to 1)
 
     private val groups = Backlog.build(all, parents)
 
     @Test fun `top-level items in backlog order, children in theirs, unranked last`() {
         assertEquals(listOf(2, 1, 3), groups.map { it.parent.id })
-        assertEquals(listOf(12, 11, 13, 14), groups[1].children.map { it.id })
+        assertEquals(listOf(12, 11, 13, 15, 14), groups[1].children.map { it.id })
         assertEquals(emptyList<SprintItem>(), groups[0].children)
     }
 
@@ -56,15 +57,34 @@ class SprintTest {
 
     @Test fun `children done of total leave the removed out`() {
         val g = groups[1]
-        assertEquals(1, g.childrenDone)
-        assertEquals(3, g.childrenTotal)
+        assertEquals("closed and resolved", 2, g.childrenDone)
+        assertEquals(4, g.childrenTotal)
     }
 
     @Test fun `hide closed hides closed top-level items but lists every child`() {
         val shown = Backlog.filter(groups, BacklogFilter(hideClosed = true), me)
         assertEquals(listOf(2, 1), shown.map { it.parent.id })
-        assertEquals(4, shown[1].children.size)
+        assertEquals(5, shown[1].children.size)
         assertEquals(listOf(2, 1, 3), Backlog.filter(groups, BacklogFilter(hideClosed = false), me).map { it.parent.id })
+    }
+
+    @Test fun `hide closed hides resolved top-level items too, their children greyed under open parents`() {
+        val resolvedStory = item(20, "User Story", state = "Resolved", category = SprintItem.RESOLVED, rank = 0.5)
+        val removedBug = item(21, "Bug", state = "Removed", category = SprintItem.REMOVED, rank = 0.6)
+        val built = Backlog.build(all + resolvedStory + removedBug, parents)
+        assertEquals(listOf(2, 1), Backlog.filter(built, BacklogFilter(hideClosed = true), me).map { it.parent.id })
+        assertEquals(listOf(20, 21, 2, 1, 3), Backlog.filter(built, BacklogFilter(hideClosed = false), me).map { it.parent.id })
+        // Listed under the open story, and greyed as closed
+        val story = Backlog.filter(built, BacklogFilter(hideClosed = true), me)[1]
+        assertEquals(true, story.children.single { it.id == 15 }.closed)
+        assertEquals(false, story.children.single { it.id == 14 }.closed)
+    }
+
+    @Test fun `resolved items count as done in the tile`() {
+        val s = sprint("2026-10-12", "2026-10-23")
+        val resolvedMine = item(30, state = "Resolved", category = SprintItem.RESOLVED)
+        val withResolved = s.copy(groups = s.groups + SprintGroup(resolvedMine))
+        assertEquals(s.mine(me).done + 1, withResolved.mine(me).done)
     }
 
     @Test fun `mine shows my items with all their children and others with only my children`() {
@@ -73,7 +93,7 @@ class SprintTest {
         val filter = BacklogFilter(mine = true, hideClosed = false)
         val mine = Backlog.filter(withMine, filter, me)
         assertEquals(listOf(1, 3), mine.map { it.parent.id })
-        assertEquals("my story: all its children", 4, mine[0].children.size)
+        assertEquals("my story: all its children", 5, mine[0].children.size)
 
         val others = Backlog.filter(groups, filter, me)
         assertEquals("the bug has no child of mine", listOf(1, 3), others.map { it.parent.id })
@@ -97,8 +117,8 @@ class SprintTest {
     @Test fun `remaining rolls up the open children shown, totals add the rows`() {
         val shown = Backlog.filter(groups, BacklogFilter(), me)
         assertEquals("the bug's own", 3.0, shown[0].remainingWork)
-        assertEquals("open children only: 5 + 2", 7.0, shown[1].remainingWork)
-        assertEquals(BacklogTotals(items = 2, children = 4, remainingWork = 10.0), Backlog.totals(shown))
+        assertEquals("open children only, the resolved one left out: 5 + 2", 7.0, shown[1].remainingWork)
+        assertEquals(BacklogTotals(items = 2, children = 5, remainingWork = 10.0), Backlog.totals(shown))
         val mine = Backlog.filter(groups, BacklogFilter(mine = true), me)
         assertEquals("only my child's hours", BacklogTotals(1, 1, 5.0), Backlog.totals(mine))
     }
@@ -142,7 +162,7 @@ class SprintTest {
         assertEquals(MineCounts(toDo = 0, inProgress = 1, done = 1), s.mine(me))
         val unknown = s.replacing(12) { it.copy(category = null) }
         assertEquals("an unknown category counts as to do", MineCounts(1, 0, 1), unknown.mine(me))
-        assertEquals(MineCounts(1, 2, 1), s.mine(anna))
+        assertEquals("the resolved task is done", MineCounts(1, 2, 2), s.mine(anna))
     }
 
     @Test fun `a change from the app reaches the sprint row`() {
