@@ -76,6 +76,8 @@ class SyncRepositoryTest {
     private val notified = mutableListOf<List<Event>>()
     /** The organization of each sync, as it read the settings. */
     private val synced = mutableListOf<String>()
+    /** Notifications cancelled, by event key. */
+    private val cancelled = mutableListOf<String>()
     private var now = Instant.now()
 
     private lateinit var repo: SyncRepository
@@ -85,7 +87,7 @@ class SyncRepositoryTest {
         settings = SettingsStore(PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") })
         repo = SyncRepository(
             settings, db.events(), { events, _ -> notified += events }, Fakes.Texts, apiFor = { synced += it.organization; api },
-            log = {}, clock = { now },
+            log = {}, clock = { now }, onRead = { cancelled += it },
         )
         runBlocking { settings.saveAccount("org", AuthMethod.ENTRA, "", Fakes.me.id, Fakes.me.name) }
     }
@@ -162,5 +164,17 @@ class SyncRepositoryTest {
         // What the old account's syncs stored is gone; the new one's first sync is history
         assertEquals(listOf("wi:1:assigned"), db.events().keys())
         assertEquals(Fakes.anna.id, settings.current().meId)
+    }
+
+    @Test fun `what is read in the app leaves the notification shade`() {
+        api.items = listOf(Fakes.workItem(1))
+        sync()
+        later()
+        api.items += listOf(Fakes.workItem(2), Fakes.workItem(3))
+        sync()
+        runBlocking { repo.markRead("wi:2:assigned") }
+        assertEquals(listOf("wi:2:assigned"), cancelled)
+        runBlocking { repo.markAllRead() }
+        assertEquals(listOf("wi:2:assigned", "wi:3:assigned"), cancelled)
     }
 }

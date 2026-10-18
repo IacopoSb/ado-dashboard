@@ -102,6 +102,7 @@ class MainActivity : ComponentActivity() {
             openBuildFrom(intent)
             openCommentFrom(intent)
             openPullRequestFrom(intent)
+            openUrlFrom(intent)
         }
         if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
 
@@ -327,6 +328,15 @@ class MainActivity : ComponentActivity() {
         openBuildFrom(intent)
         openCommentFrom(intent)
         openPullRequestFrom(intent)
+        openUrlFrom(intent)
+    }
+
+    /** From an event that opens in the browser (an assignment): read, then its page. */
+    private fun openUrlFrom(intent: Intent) {
+        val url = intent.getStringExtra(EXTRA_URL) ?: return
+        intent.getStringExtra(EXTRA_EVENT_KEY)?.let { vm.markRead(it) }
+        openUrl(url)
+        intent.removeExtra(EXTRA_URL)
     }
 
     /**
@@ -382,5 +392,6 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_COMMENT_ID = "comment_id"
         const val EXTRA_PR_ID = "pr_id"
         const val EXTRA_PR_THREAD_ID = "pr_thread_id"
+        const val EXTRA_URL = "url"
     }
 }

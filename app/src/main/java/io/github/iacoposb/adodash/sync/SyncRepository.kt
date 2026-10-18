@@ -51,6 +51,8 @@ class SyncRepository(
     /** The saved filters' catalog of the account, to tell the areas that no longer exist. */
     private val catalog: suspend (Settings) -> FilterCatalog? = { null },
     private val clock: () -> Instant = Instant::now,
+    /** Events read in the app: their notifications go. */
+    private val onRead: (List<String>) -> Unit = {},
 ) {
     private val mutex = Mutex()
     private val stateCategories = mutableMapOf<String, Map<String, String>>()
@@ -244,9 +246,21 @@ class SyncRepository(
         if (found.isNotEmpty()) insertNow(found)
     }
 
-    suspend fun markRead(key: String) = events.markRead(key)
-    suspend fun markAllRead() = events.markAllRead()
-    suspend fun markRead(keys: List<String>) = keys.chunked(500).forEach { events.markRead(it) }
+    suspend fun markRead(key: String) {
+        events.markRead(key)
+        onRead(listOf(key))
+    }
+
+    suspend fun markAllRead() {
+        val unread = events.unreadKeys()
+        events.markAllRead()
+        onRead(unread)
+    }
+
+    suspend fun markRead(keys: List<String>) {
+        keys.chunked(KEYS_PER_QUERY).forEach { events.markRead(it) }
+        onRead(keys)
+    }
 
     /**
      * Another account, or signed out: [save] stores the new settings while no sync runs, after

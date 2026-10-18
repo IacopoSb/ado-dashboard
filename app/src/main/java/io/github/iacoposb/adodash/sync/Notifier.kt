@@ -153,6 +153,9 @@ class Notifier(private val context: Context) {
     /** Signed in again, or a sync worked: the notification goes. */
     fun cancelSignIn() = manager.cancel(SIGN_IN_ID)
 
+    /** The notifications of events read in the app: nothing left to see there. */
+    fun cancel(keys: List<String>) = keys.forEach { manager.cancel(it.hashCode()) }
+
     private fun canNotify() = manager.areNotificationsEnabled() && (
         Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED

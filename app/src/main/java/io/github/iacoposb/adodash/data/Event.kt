@@ -111,6 +111,9 @@ interface EventDao {
     @Query("UPDATE events SET read = 1")
     suspend fun markAllRead()
 
+    @Query("SELECT `key` FROM events WHERE read = 0")
+    suspend fun unreadKeys(): List<String>
+
     @Query("DELETE FROM events")
     suspend fun clear()
 

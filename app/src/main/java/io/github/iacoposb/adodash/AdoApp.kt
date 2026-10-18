@@ -79,6 +79,7 @@ class AdoApp : Application() {
                 }
             },
             catalog = { s -> catalogCache.load(s.organization)?.catalog },
+            onRead = { notifier.cancel(it) },
         )
     }
 
