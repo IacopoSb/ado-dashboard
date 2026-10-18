@@ -32,6 +32,7 @@ import io.github.iacoposb.adodash.ui.AdoTheme
 import io.github.iacoposb.adodash.ui.AppViewModel
 import io.github.iacoposb.adodash.ui.DashboardScreen
 import io.github.iacoposb.adodash.ui.EditorTarget
+import io.github.iacoposb.adodash.ui.editorTargetSaver
 import io.github.iacoposb.adodash.ui.NotificationActions
 import io.github.iacoposb.adodash.data.SoundTarget
 import io.github.iacoposb.adodash.ui.SettingsScreen
@@ -185,7 +186,7 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 } else if (!launchChoiceMade && !settings.views.alwaysOpen) {
-                    var newView by remember { mutableStateOf<EditorTarget?>(null) }
+                    var newView by rememberSaveable(stateSaver = editorTargetSaver) { mutableStateOf<EditorTarget?>(null) }
                     ViewPickerScreen(
                         choices,
                         onOpen = vm::chooseAtLaunch,

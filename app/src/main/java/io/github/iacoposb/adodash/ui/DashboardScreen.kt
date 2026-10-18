@@ -45,7 +45,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -157,11 +156,12 @@ fun DashboardScreen(
     val c = AdoTheme.colors
     val view = choices.views.current
     val status = DashboardStatus.of(state, online, view)
-    var switcher by remember { mutableStateOf(initialSwitcher) }
-    var editor by remember { mutableStateOf(initialEditor) }
+    // Kept across a rotation, as what is open over the dashboard
+    var switcher by rememberSaveable { mutableStateOf(initialSwitcher) }
+    var editor by rememberSaveable(stateSaver = editorTargetSaver) { mutableStateOf(initialEditor) }
     LaunchedEffect(switcher) { if (switcher) onLoadBoards() }
     // The backlog of the board's sprint: only while the board shows one
-    var backlog by remember(view.id) { mutableStateOf(initialBacklog) }
+    var backlog by rememberSaveable(view.id) { mutableStateOf(initialBacklog) }
     val sprint = state.snapshot?.shownFor(view)?.sprint?.takeIf { view.board != null }
     val backlogShown = backlog && sprint != null
 

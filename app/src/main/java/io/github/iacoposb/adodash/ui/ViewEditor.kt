@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -72,6 +73,25 @@ enum class ViewPanel { WORK_ITEMS, PULL_REQUESTS, ACTIVITY }
 /** The editor open on a view: [isNew] for one still to be saved, [focus] the panel to scroll to. */
 data class EditorTarget(val view: DashboardView, val isNew: Boolean = false, val focus: ViewPanel? = null)
 
+/** A view as its JSON, so that what is being edited survives a rotation. */
+internal val viewSaver: Saver<DashboardView, String> = Saver(
+    save = { DashboardView.json.encodeToString(DashboardView.serializer(), it) },
+    restore = { runCatching { DashboardView.json.decodeFromString(DashboardView.serializer(), it) }.getOrNull() },
+)
+
+/** The editor open, if any, across a rotation: the view as JSON, whether new, the panel in focus. */
+internal val editorTargetSaver: Saver<EditorTarget?, Any> = Saver(
+    save = { target ->
+        target?.let { arrayListOf(with(viewSaver) { save(it.view) }, it.isNew, it.focus?.name.orEmpty()) }
+    },
+    restore = { saved ->
+        val (view, isNew, focus) = saved as List<*>
+        viewSaver.restore(view as String)?.let { v ->
+            EditorTarget(v, isNew as Boolean, ViewPanel.entries.firstOrNull { it.name == focus })
+        }
+    },
+)
+
 /**
  * "Edit view": the name, then one section per panel with its switch and its conditions.
  * Nothing changes until "Save". The global view can be edited but not deleted; a board keeps
@@ -87,7 +107,7 @@ fun ViewEditor(
 ) {
     val view = target.view
     val defaultName = viewTitle(view)
-    var draft by remember(view.id) { mutableStateOf(view) }
+    var draft by rememberSaveable(view.id, stateSaver = viewSaver) { mutableStateOf(view) }
     var name by rememberSaveable(view.id) { mutableStateOf(if (target.isNew) "" else defaultName) }
     val title = stringResource(if (target.isNew) R.string.editor_title_new else R.string.editor_title_edit)
     val canSave = draft.showsSomething && (view.board != null || view.isGlobal || name.isNotBlank())
