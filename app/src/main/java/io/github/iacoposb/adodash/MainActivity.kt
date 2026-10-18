@@ -38,6 +38,7 @@ import io.github.iacoposb.adodash.ui.SettingsScreen
 import io.github.iacoposb.adodash.ui.ViewEditor
 import io.github.iacoposb.adodash.ui.ViewPickerScreen
 import io.github.iacoposb.adodash.ui.viewChoices
+import io.github.iacoposb.adodash.data.AuthMethod
 import io.github.iacoposb.adodash.data.DashboardView
 import io.github.iacoposb.adodash.data.PrCommentRef
 import androidx.compose.runtime.remember
@@ -88,11 +89,15 @@ class MainActivity : ComponentActivity() {
     /** Settings scrolled to the update, from the notification or the dashboard banner. */
     private var showUpdate by mutableStateOf(false)
 
+    /** From the "sign in again" notification: the sign-in once the settings are read. */
+    private var signInRequested by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (savedInstanceState == null) {
             showUpdate = intent.getBooleanExtra(EXTRA_SHOW_UPDATE, false)
+            signInRequested = intent.getBooleanExtra(EXTRA_SIGN_IN, false)
             openBuildFrom(intent)
             openCommentFrom(intent)
             openPullRequestFrom(intent)
@@ -116,11 +121,27 @@ class MainActivity : ComponentActivity() {
                 val workItem by vm.workItem.collectAsStateWithLifecycle()
                 val workItemsReadOnly by vm.workItemsReadOnly.collectAsStateWithLifecycle()
                 val pullRequest by vm.pullRequest.collectAsStateWithLifecycle()
+                val online by vm.online.collectAsStateWithLifecycle()
                 val choices = viewChoices(settings.views, catalog, settings.filters, sync.snapshot)
                 var editing by rememberSaveable { mutableStateOf(false) }
                 val close = { editing = false; showUpdate = false }
 
                 LaunchedEffect(showUpdate) { if (showUpdate) editing = true }
+
+                // Microsoft's sign-in directly; a PAT is changed in the account settings
+                val signIn = {
+                    if (settings.configured && settings.authMethod == AuthMethod.ENTRA) {
+                        vm.signInAgain(this) { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
+                    } else {
+                        editing = true
+                    }
+                }
+                LaunchedEffect(signInRequested) {
+                    if (signInRequested) {
+                        signInRequested = false
+                        signIn()
+                    }
+                }
 
                 LaunchedEffect(settings.keepScreenOn) {
                     if (settings.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -225,6 +246,8 @@ class MainActivity : ComponentActivity() {
                         onOpenPullRequest = vm::openPullRequest,
                         pullRequest = pullRequest,
                         prActions = remember(vm) { vm.prActions(::openUrl) },
+                        online = online,
+                        onSignIn = signIn,
                     )
                 }
             }
@@ -298,6 +321,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.getBooleanExtra(EXTRA_SHOW_UPDATE, false)) showUpdate = true
+        if (intent.getBooleanExtra(EXTRA_SIGN_IN, false)) signInRequested = true
         openBuildFrom(intent)
         openCommentFrom(intent)
         openPullRequestFrom(intent)
@@ -348,6 +372,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_SHOW_UPDATE = "show_update"
+        const val EXTRA_SIGN_IN = "sign_in"
         const val EXTRA_BUILD_ID = "build_id"
         const val EXTRA_BUILD_PROJECT = "build_project"
         const val EXTRA_EVENT_KEY = "event_key"

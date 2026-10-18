@@ -24,9 +24,13 @@ import java.time.Duration
 import java.time.Instant
 
 data class SyncState(
+    /** The last sync's, or until it ends the one saved by an earlier run ([SnapshotStore]). */
     val snapshot: Snapshot? = null,
     val syncing: Boolean = false,
+    /** The last sync's failure as the user reads it; null after a successful one. */
     val error: String? = null,
+    /** Why the last sync failed; null after a successful one. */
+    val failure: SyncFailure? = null,
 )
 
 /** One sync at a time, shared by the dashboard and the background worker. */
@@ -39,6 +43,10 @@ class SyncRepository(
     private val apiFor: (Settings) -> AdoApi,
     /** After each successful sync, with what it read. */
     private val onSynced: suspend (Settings, Snapshot) -> Unit = { _, _ -> },
+    /** The last snapshot of each view, shown at once at the next start; null keeps none. */
+    private val snapshots: SnapshotStore? = null,
+    /** A sync refused for the credentials (expired session, PAT refused), with its settings. */
+    private val onSignInRequired: suspend (Settings) -> Unit = {},
     private val log: (String) -> Unit = { android.util.Log.i("AdoSync", it) },
 ) {
     private val mutex = Mutex()
@@ -50,9 +58,39 @@ class SyncRepository(
     private val _state = MutableStateFlow(SyncState())
     val state: StateFlow<SyncState> = _state.asStateFlow()
 
-    suspend fun sync() = mutex.withLock {
+    /**
+     * Reads everything again. With [restore], what an earlier run saved for the current view is
+     * shown first, at once, while this sync runs (the dashboard; the background worker has no
+     * use for it).
+     */
+    suspend fun sync(restore: Boolean = true) {
+        if (restore) restoreSaved()
+        mutex.withLock { syncLocked() }
+    }
+
+    /**
+     * The saved snapshot of the current view, when nothing read for it is shown yet: at start,
+     * and when another view opens. Never over what a sync read for this view.
+     */
+    suspend fun restoreSaved() {
+        val store = snapshots ?: return
         val s = settings.current()
-        if (!s.configured) return@withLock
+        if (!s.configured) return
+        val view = s.views.current
+        if (_state.value.snapshot?.shownFor(view) != null) return
+        val saved = try {
+            store.load(s.organization, s.meId, view.queryKey)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } ?: return
+        _state.update { if (it.snapshot?.shownFor(view) == null) it.copy(snapshot = saved) else it }
+    }
+
+    private suspend fun syncLocked() {
+        val s = settings.current()
+        if (!s.configured) return
         _state.update { it.copy(syncing = true) }
         try {
             val now = Instant.now()
@@ -75,6 +113,7 @@ class SyncRepository(
             }
             settings.markSynced(now.toEpochMilli())
             _state.update { SyncState(snapshot = fetched.snapshot) }
+            save(s, fetched.snapshot)
             onSynced(s, fetched.snapshot)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) {
@@ -82,7 +121,22 @@ class SyncRepository(
                 _state.update { it.copy(syncing = false) }
                 throw e
             }
-            _state.update { it.copy(syncing = false, error = texts.error(e)) }
+            val failure = SyncFailure.of(e)
+            log("Sync failed ($failure): ${e.javaClass.simpleName}")
+            _state.update { it.copy(syncing = false, error = texts.error(e), failure = failure) }
+            if (failure == SyncFailure.AUTH) onSignInRequired(s)
+        }
+    }
+
+    /** For the next start; never a reason for the sync to fail. */
+    private suspend fun save(s: Settings, snapshot: Snapshot) {
+        val store = snapshots ?: return
+        try {
+            store.save(s.organization, s.meId, s.views.current.queryKey, snapshot)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("Snapshot not saved: ${e.javaClass.simpleName}")
         }
     }
 
@@ -176,6 +230,7 @@ class SyncRepository(
         teamAreas.clear()
         signalCache.clear()
         buildsDenied = false
+        snapshots?.clear()
         _state.value = SyncState()
     }
 

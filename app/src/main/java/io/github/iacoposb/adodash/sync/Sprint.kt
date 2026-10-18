@@ -1,5 +1,10 @@
+@file:UseSerializers(DayOfWeekSerializer::class)
+
 package io.github.iacoposb.adodash.sync
 
+import io.github.iacoposb.adodash.data.DayOfWeekSerializer
+import kotlinx.serialization.UseSerializers
+import kotlinx.serialization.Serializable
 import io.github.iacoposb.adodash.api.DayRange
 import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.api.TeamIteration
@@ -10,6 +15,7 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 
 /** A work item of the sprint with its state's category (Proposed, InProgress, …), null when unknown. */
+@Serializable
 data class SprintItem(
     val item: WorkItem,
     val assigneeId: String? = null,
@@ -47,6 +53,7 @@ data class SprintItem(
 }
 
 /** An item of the backlog's top level with its children, both in backlog order. */
+@Serializable
 data class SprintGroup(val parent: SprintItem, val children: List<SprintItem> = emptyList()) {
     /** Children counted in "done/total": the removed ones are not. */
     val childrenTotal get() = children.count { !it.removed }
@@ -61,6 +68,7 @@ data class MineCounts(val toDo: Int = 0, val inProgress: Int = 0, val done: Int 
  * like, and anything else without a parent in the sprint) with their children, and what tells
  * the days left: the team's working days and days off.
  */
+@Serializable
 data class Sprint(
     val board: BoardRef,
     val iteration: TeamIteration,

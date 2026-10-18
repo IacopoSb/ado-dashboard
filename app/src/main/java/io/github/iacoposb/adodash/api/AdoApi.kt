@@ -1,5 +1,9 @@
+@file:UseSerializers(InstantSerializer::class)
+
 package io.github.iacoposb.adodash.api
 
+import io.github.iacoposb.adodash.data.InstantSerializer
+import kotlinx.serialization.UseSerializers
 import kotlinx.serialization.Serializable
 import java.time.Instant
 
@@ -193,8 +197,10 @@ data class TeamArea(val path: String, val includeChildren: Boolean)
 /** [message] is English; a 401 is shown to the user translated (see errorText). */
 class AdoException(val code: Int, message: String) : Exception(message)
 
+@Serializable
 data class Identity(val id: String, val name: String)
 
+@Serializable
 data class WorkItem(
     val id: Int,
     val project: String,
@@ -250,6 +256,7 @@ sealed interface PrFilter {
     data object All : PrFilter
 }
 
+@Serializable
 data class Reviewer(
     val id: String,
     val name: String,
@@ -261,6 +268,7 @@ data class Reviewer(
     val votedFor: List<String> = emptyList(),
 )
 
+@Serializable
 data class PullRequest(
     val id: Int,
     val project: String,

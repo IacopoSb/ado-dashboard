@@ -28,7 +28,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val sync = app.sync
         val now = inputData.getBoolean(KEY_NOW, false)
         try {
-            sync.sync()
+            sync.sync(restore = false)
         } finally {
             when {
                 now -> app.widgets.refreshEnded()
@@ -39,7 +39,9 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         if (now) return Result.success()
         // Daily at most, for apps left open on the dashboard for days
         app.updater.checkIfDue()
-        return if (sync.state.value.error == null) Result.success() else Result.retry()
+        // Credentials refused: retrying sooner than the next period cannot help
+        val failure = sync.state.value.failure
+        return if (failure == null || failure == SyncFailure.AUTH) Result.success() else Result.retry()
     }
 
     /** Before Android 12 expedited work runs as a foreground service, with this notification. */

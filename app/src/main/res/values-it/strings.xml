@@ -643,4 +643,20 @@
     <string name="widget_preview_build_failed">build fallita</string>
     <string name="widget_preview_mention_context">PR !311 · va bene il backoff esponenziale?</string>
     <string name="widget_preview_mention_context_2">#4812 · riesci a riprodurlo con guest01?</string>
+    <!-- Stati: offline, sessione scaduta, pannelli vuoti -->
+    <string name="banner_offline">Sei offline. Dati aggiornati alle %1$s.</string>
+    <string name="banner_offline_no_data">Sei offline. I dati compariranno appena torni online.</string>
+    <string name="banner_session_expired">Sessione scaduta: accedi di nuovo per aggiornare i dati.</string>
+    <string name="action_sign_in">Accedi</string>
+    <string name="notification_sign_in_title">Accedi di nuovo a ADO Dashboard</string>
+    <string name="notification_sign_in_text">La sessione è scaduta: dashboard e notifiche sono ferme finché non accedi.</string>
+    <string name="empty_work_items_text">Quando ti assegnano qualcosa lo vedi qui.</string>
+    <string name="empty_view_work_items_title">Nessun work item</string>
+    <string name="empty_view_text">Niente corrisponde alle condizioni di questa vista.</string>
+    <string name="empty_pull_requests_title">Nessuna revisione in attesa</string>
+    <string name="empty_pull_requests_text">Le PR in cui sei revisore e le tue compariranno qui.</string>
+    <string name="empty_activity_title">Nessuna novità</string>
+    <string name="empty_activity_text">Menzioni, assegnazioni e voti compariranno qui.</string>
+    <string name="empty_no_data_title">Ancora nessun dato</string>
+    <string name="empty_no_data_text">I dati compariranno dopo il primo aggiornamento riuscito.</string>
 </resources>

@@ -1,9 +1,15 @@
+@file:UseSerializers(InstantSerializer::class)
+
 package io.github.iacoposb.adodash.api
 
+import io.github.iacoposb.adodash.data.InstantSerializer
+import kotlinx.serialization.UseSerializers
+import kotlinx.serialization.Serializable
 import java.time.Duration
 import java.time.Instant
 
 /** Where a build or a pipeline step stands, from Azure DevOps' status and result. */
+@Serializable
 enum class BuildState {
     SUCCEEDED,
     /** Succeeded with issues: some steps failed but were allowed to. */
@@ -19,6 +25,7 @@ enum class BuildState {
 }
 
 /** A pipeline run. [prId] is set for pull request validation builds. */
+@Serializable
 data class Build(
     val id: Int,
     val number: String,

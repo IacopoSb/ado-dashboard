@@ -69,6 +69,7 @@ import io.github.iacoposb.adodash.errorText
 import io.github.iacoposb.adodash.sync.CatalogState
 import io.github.iacoposb.adodash.sync.ResourceSyncTexts
 import io.github.iacoposb.adodash.sync.Snapshot
+import io.github.iacoposb.adodash.sync.SyncFailure
 import io.github.iacoposb.adodash.sync.SyncState
 import io.github.iacoposb.adodash.ui.components.PrRow
 import io.github.iacoposb.adodash.update.Release
@@ -165,12 +166,13 @@ class DashboardRenderTest {
         workItemMenuQuery: String = "",
         /** The work item page scrolled to its end: the comments. */
         scrollWorkItem: Boolean = false,
+        online: Boolean = true,
     ) {
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
                 DashboardScreen(
                     "contoso", state, events, {}, {}, {}, {}, {}, now = now, updateVersion = update, buildDetail = build,
-                    workItem = workItem, workItemMenu = workItemMenu, workItemMenuQuery = workItemMenuQuery,
+                    workItem = workItem, workItemMenu = workItemMenu, workItemMenuQuery = workItemMenuQuery, online = online,
                 )
             }
         }
@@ -546,6 +548,49 @@ class DashboardRenderTest {
 
     @Config(qualifiers = "+it")
     @Test fun tabletLightItalian() = dashboard("dashboard-tablet-light-it", dark = false)
+
+    /** Nothing assigned, nothing to review, no news: an empty state per panel, not placeholders. */
+    private val emptySnapshot = Snapshot(me, emptyList(), emptyList(), emptyList(), syncedAt = now)
+        .let { it.copy(shown = Shown(DashboardView.global.queryKey, emptyList(), emptyList(), emptyList())) }
+
+    @Test fun dashboardEmpty() = dashboard("dashboard-empty", dark = false, SyncState(emptySnapshot), events = emptyList())
+
+    @Config(qualifiers = "+it")
+    @Test fun dashboardEmptyItalian() = dashboard("dashboard-empty-it", dark = false, SyncState(emptySnapshot), events = emptyList())
+
+    @Test fun dashboardEmptyDark() = dashboard("dashboard-empty-dark", dark = true, SyncState(emptySnapshot), events = emptyList())
+
+    /** No network: the data saved at 12:00, with Retry. */
+    @Test fun dashboardOffline() = dashboard("dashboard-offline", dark = false, SyncState(snapshot), online = false)
+
+    @Config(qualifiers = "+it")
+    @Test fun dashboardOfflineItalian() = dashboard("dashboard-offline-it", dark = false, SyncState(snapshot), online = false)
+
+    /** Offline at the first start: no endless placeholders. */
+    @Test fun dashboardOfflineNoData() =
+        dashboard("dashboard-offline-no-data", dark = false, SyncState(), events = emptyList(), online = false)
+
+    /** The Microsoft session expired: the data dimmed but readable, "Sign in". */
+    @Test fun dashboardSessionExpired() = dashboard(
+        "dashboard-session-expired", dark = false,
+        SyncState(snapshot, error = context.getString(R.string.error_sign_in_required), failure = SyncFailure.AUTH),
+    )
+
+    @Config(qualifiers = "+it")
+    @Test fun dashboardSessionExpiredItalian() = dashboard(
+        "dashboard-session-expired-it", dark = false,
+        SyncState(snapshot, error = context.getString(R.string.error_sign_in_required), failure = SyncFailure.AUTH),
+    )
+
+    @Test fun dashboardSessionExpiredDark() = dashboard(
+        "dashboard-session-expired-dark", dark = true,
+        SyncState(snapshot, error = context.getString(R.string.error_sign_in_required), failure = SyncFailure.AUTH),
+    )
+
+    /** Opening the app: the last data saved (two hours ago), the new sync running. */
+    @Test fun dashboardCachedSyncing() = dashboard(
+        "dashboard-cached-syncing", dark = false, SyncState(snapshot.copy(syncedAt = now.minusSeconds(7200)), syncing = true),
+    )
 
     @Test fun tabletUpdate() = dashboard("dashboard-tablet-update", dark = false, update = "0.2.0")
 

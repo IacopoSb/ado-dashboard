@@ -37,6 +37,8 @@ data class Settings(
     val views: ViewSet = ViewSet(),
     /** What to notify, quiet hours and sounds: the device's, kept across accounts. */
     val notifications: NotificationPrefs = NotificationPrefs(),
+    /** "Sign in again" was notified for the current refusal: once, until a sync works again. */
+    val signInNotified: Boolean = false,
 ) {
     val configured get() = organization.isNotBlank() && meId.isNotBlank() &&
         (authMethod == AuthMethod.ENTRA || pat.isNotBlank())
@@ -61,6 +63,7 @@ class SettingsStore(private val context: Context) {
         val filtersChanged = longPreferencesKey("filters_changed_at")
         val views = stringPreferencesKey("views")
         val notifications = stringPreferencesKey("notifications")
+        val signInNotified = booleanPreferencesKey("sign_in_notified")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { it.toSettings() }
@@ -83,6 +86,7 @@ class SettingsStore(private val context: Context) {
         filtersChangedAt = this[K.filtersChanged] ?: 0,
         views = ViewSet.decode(this[K.views]),
         notifications = NotificationPrefs.decode(this[K.notifications]),
+        signInNotified = this[K.signInNotified] ?: false,
     )
 
     /** Saving a different account restarts the baseline. */
@@ -102,6 +106,7 @@ class SettingsStore(private val context: Context) {
             if (method == AuthMethod.PAT) it[K.pat] = TokenCipher.encrypt(pat) else it.remove(K.pat)
             it[K.meId] = meId
             it[K.meName] = meName
+            it.remove(K.signInNotified)
         }
     }
 
@@ -145,6 +150,27 @@ class SettingsStore(private val context: Context) {
             it.remove(K.meName)
             it[K.baseline] = 0
             it[K.lastSync] = 0
+            it.remove(K.signInNotified)
+        }
+    }
+
+    suspend fun setSignInNotified(notified: Boolean) {
+        context.dataStore.edit { if (notified) it[K.signInNotified] = true else it.remove(K.signInNotified) }
+    }
+
+    /**
+     * Another organization, from the account settings once signed out: its filters and views
+     * start from the defaults, as [saveAccount] does for a new account.
+     */
+    suspend fun changeOrganization(organization: String) {
+        context.dataStore.edit {
+            if (!it[K.org].equals(organization, ignoreCase = true)) {
+                it.remove(K.filters)
+                it.remove(K.views)
+                it[K.baseline] = 0
+                it[K.lastSync] = 0
+            }
+            it[K.org] = organization
         }
     }
 

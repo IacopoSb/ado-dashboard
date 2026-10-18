@@ -644,4 +644,20 @@
     <string name="widget_preview_build_failed">build failed</string>
     <string name="widget_preview_mention_context">PR !311 · is the exponential backoff OK?</string>
     <string name="widget_preview_mention_context_2">#4812 · can you reproduce it with guest01?</string>
+    <!-- States: offline, expired session, empty panels -->
+    <string name="banner_offline">You\'re offline. Data updated at %1$s.</string>
+    <string name="banner_offline_no_data">You\'re offline. The data will appear once you\'re back online.</string>
+    <string name="banner_session_expired">Session expired: sign in again to update the data.</string>
+    <string name="action_sign_in">Sign in</string>
+    <string name="notification_sign_in_title">Sign in to ADO Dashboard again</string>
+    <string name="notification_sign_in_text">The session expired: the dashboard and the notifications are on hold until you sign in.</string>
+    <string name="empty_work_items_text">When something is assigned to you, you\'ll see it here.</string>
+    <string name="empty_view_work_items_title">No work items</string>
+    <string name="empty_view_text">Nothing matches this view\'s conditions.</string>
+    <string name="empty_pull_requests_title">No reviews waiting</string>
+    <string name="empty_pull_requests_text">Pull requests where you\'re a reviewer, and yours, will appear here.</string>
+    <string name="empty_activity_title">No news</string>
+    <string name="empty_activity_text">Mentions, assignments and votes will appear here.</string>
+    <string name="empty_no_data_title">No data yet</string>
+    <string name="empty_no_data_text">The data will appear after the first successful update.</string>
 </resources>

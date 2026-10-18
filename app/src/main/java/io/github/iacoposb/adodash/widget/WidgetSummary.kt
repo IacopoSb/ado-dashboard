@@ -25,8 +25,8 @@ data class WidgetMention(
 }
 
 /**
- * What the widgets show, saved after each sync so they have it after a restart too: the
- * snapshot itself lives only in memory.
+ * What the widgets show, saved after each sync so they have it after a restart, without reading
+ * the dashboard's larger saved snapshots ([io.github.iacoposb.adodash.sync.SnapshotStore]).
  */
 @Serializable
 data class WidgetSummary(

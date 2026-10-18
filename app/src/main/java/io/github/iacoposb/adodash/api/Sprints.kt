@@ -1,9 +1,16 @@
+@file:UseSerializers(InstantSerializer::class, LocalDateSerializer::class)
+
 package io.github.iacoposb.adodash.api
 
+import io.github.iacoposb.adodash.data.LocalDateSerializer
+import io.github.iacoposb.adodash.data.InstantSerializer
+import kotlinx.serialization.UseSerializers
+import kotlinx.serialization.Serializable
 import java.time.Instant
 import java.time.LocalDate
 
 /** A team's sprint: [path] as in [WorkItemDetail.iterationPath], the days at midnight UTC. */
+@Serializable
 data class TeamIteration(
     val id: String,
     val name: String,
@@ -29,6 +36,7 @@ data class BacklogItem(
 )
 
 /** Days from [start] to [end], both included. */
+@Serializable
 data class DayRange(val start: LocalDate, val end: LocalDate) {
     operator fun contains(day: LocalDate) = !day.isBefore(start) && !day.isAfter(end)
 }

@@ -1,5 +1,10 @@
+@file:UseSerializers(InstantSerializer::class)
+
 package io.github.iacoposb.adodash.sync
 
+import io.github.iacoposb.adodash.data.InstantSerializer
+import kotlinx.serialization.UseSerializers
+import kotlinx.serialization.Serializable
 import io.github.iacoposb.adodash.api.AdoApi
 import io.github.iacoposb.adodash.api.AdoException
 import io.github.iacoposb.adodash.api.Build
@@ -28,12 +33,14 @@ import java.time.Duration
 import java.time.Instant
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * What a sync read. [workItems], [reviewPrs] and [myPrs] are always mine, whatever the view:
  * the events and notifications come from them. What the current view shows is [shown].
  */
+@Serializable
 data class Snapshot(
     val me: Identity,
     /** My open work items. */
@@ -93,6 +100,7 @@ data class Snapshot(
  * What the current view shows. Views change only what is on screen: the notifications stay
  * those of my own work items and pull requests (see [Snapshot]).
  */
+@Serializable
 data class Shown(
     /** The [DashboardView.queryKey] these were read for. */
     val viewKey: String,
@@ -183,17 +191,23 @@ class SyncEngine(
         }
 
         val projects = api.projects().filter(filters::includesProject)
+        val firstFailure = AtomicReference<Throwable?>(null)
         val prs = projects.map { project ->
             async {
                 limit.withPermit {
                     runCatching {
                         api.activePullRequests(project, PrFilter.Reviewer(me.id)) to
                             api.activePullRequests(project, PrFilter.Creator(me.id))
-                    }.onFailure { warnings += texts.projectWarning(project, texts.error(it)) }.getOrNull()
+                    }.onFailure {
+                        if (it is CancellationException) throw it
+                        firstFailure.compareAndSet(null, it)
+                        warnings += texts.projectWarning(project, texts.error(it))
+                    }.getOrNull()
                 }
             }
         }.awaitAll().filterNotNull()
-        if (projects.isNotEmpty() && prs.isEmpty()) error(warnings.firstOrNull() ?: texts.noReadableProject())
+        // Why, for the dashboard: no connection or credentials refused are not a project's fault
+        if (projects.isNotEmpty() && prs.isEmpty()) throw SyncException(warnings.firstOrNull() ?: texts.noReadableProject(), firstFailure.get())
         val allPrs = if (!needs.allPullRequests) emptyList() else projects.filter { p -> scope == null || p.equals(scope.project, ignoreCase = true) }.map { project ->
             async {
                 limit.withPermit {

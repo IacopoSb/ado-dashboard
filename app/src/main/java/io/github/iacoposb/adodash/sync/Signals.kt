@@ -1,5 +1,6 @@
 package io.github.iacoposb.adodash.sync
 
+import kotlinx.serialization.Serializable
 import io.github.iacoposb.adodash.api.Build
 import io.github.iacoposb.adodash.api.BuildState
 import io.github.iacoposb.adodash.api.PolicyEvaluation
@@ -8,9 +9,11 @@ import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.Vote
 
 /** The build of a pull request as its row shows it. */
+@Serializable
 enum class BuildSignal { SUCCEEDED, FAILED, RUNNING, NONE }
 
 /** What a pull request's row says besides its title: build, threads, conflicts, ready. */
+@Serializable
 data class PrSignals(
     val build: BuildSignal = BuildSignal.NONE,
     /** Null when the threads could not be read. */

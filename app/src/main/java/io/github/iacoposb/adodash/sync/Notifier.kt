@@ -121,6 +121,38 @@ class Notifier(private val context: Context) {
         send(UPDATE_ID, notification)
     }
 
+    /**
+     * The credentials are refused: one notification until a sync works again (the caller keeps
+     * track). Tapping it opens the sign-in: Microsoft's directly, the account settings for a PAT.
+     * Silent during quiet hours, like the activity.
+     */
+    fun notifySignIn(prefs: NotificationPrefs, now: LocalDateTime = LocalDateTime.now()) {
+        if (!canNotify()) return
+        val system = context.getSystemService(NotificationManager::class.java)
+        if (NotificationChannels.current(prefs).any { system.getNotificationChannel(it) == null }) createChannels(prefs)
+        val quiet = NotificationRules.isQuiet(now, prefs.quiet)
+        val open = PendingIntent.getActivity(
+            context,
+            SIGN_IN_ID,
+            Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_SIGN_IN, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(context, if (quiet) NotificationChannels.SILENT else NotificationChannels.activity(prefs))
+            .setSilent(quiet)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.notification_sign_in_title))
+            .setContentText(context.getString(R.string.notification_sign_in_text))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(context.getString(R.string.notification_sign_in_text)))
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .build()
+        send(SIGN_IN_ID, notification)
+    }
+
+    /** Signed in again, or a sync worked: the notification goes. */
+    fun cancelSignIn() = manager.cancel(SIGN_IN_ID)
+
     private fun canNotify() = manager.areNotificationsEnabled() && (
         Build.VERSION.SDK_INT < 33 ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
@@ -141,5 +173,7 @@ class Notifier(private val context: Context) {
         private const val GROUP = "ado"
         private const val SUMMARY_ID = 1
         private const val UPDATE_ID = 2
+        /** 3 is the worker's foreground notification. */
+        private const val SIGN_IN_ID = 4
     }
 }

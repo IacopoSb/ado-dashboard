@@ -11,7 +11,9 @@ import io.github.iacoposb.adodash.data.CatalogCache
 import io.github.iacoposb.adodash.data.Settings
 import io.github.iacoposb.adodash.data.SettingsStore
 import io.github.iacoposb.adodash.sync.CatalogRepository
+import io.github.iacoposb.adodash.sync.NetworkMonitor
 import io.github.iacoposb.adodash.sync.Notifier
+import io.github.iacoposb.adodash.sync.SnapshotStore
 import io.github.iacoposb.adodash.sync.ResourceSyncTexts
 import io.github.iacoposb.adodash.sync.SyncRepository
 import io.github.iacoposb.adodash.sync.SyncWorker
@@ -39,6 +41,8 @@ class AdoApp : Application() {
             .build() }
     val settings by lazy { SettingsStore(this) }
     private val notifier by lazy { Notifier(this) }
+    /** Online or not, for the dashboard's offline banner and its sync when the network is back. */
+    val network by lazy { NetworkMonitor(this) }
     val entra by lazy { EntraAuth(this, settings) }
     val catalog by lazy {
         CatalogRepository(CatalogCache(File(filesDir, "filter-catalog.json")), scope, ::errorText)
@@ -60,6 +64,19 @@ class AdoApp : Application() {
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
+                }
+                // Signed in again: the "sign in" notification goes, and comes back at the next refusal
+                if (s.signInNotified) {
+                    notifier.cancelSignIn()
+                    settings.setSignInNotified(false)
+                }
+            },
+            snapshots = SnapshotStore(File(filesDir, "snapshots")),
+            onSignInRequired = { s ->
+                // Once, not at every sync of the worker
+                if (!s.signInNotified) {
+                    notifier.notifySignIn(s.notifications)
+                    settings.setSignInNotified(true)
                 }
             },
         )

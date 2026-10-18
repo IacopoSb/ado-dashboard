@@ -34,6 +34,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -43,6 +45,20 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     /** Null until read from disk. */
     val settings: StateFlow<Settings?> = app.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     val sync = app.sync.state
+    /** For the offline banner. */
+    val online: StateFlow<Boolean> = app.network.online
+
+    init {
+        // What an earlier run saved, on screen at once while the first sync runs
+        viewModelScope.launch { app.sync.restoreSaved() }
+        // Back online: the data again, without waiting for the next poll
+        viewModelScope.launch {
+            app.network.online.drop(1).filter { it }.collect {
+                if (app.settings.current().configured) app.sync.sync()
+            }
+        }
+    }
+
     /**
      * Only what the filters include, also for what was stored before they changed, and of that
      * what the current view shows. Notifications are not filtered by the view.
@@ -280,10 +296,13 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         viewModelScope.launch { app.sync.sync() }
     }
 
-    /** Syncs every [Settings.pollSeconds] for as long as the caller is active. */
+    /**
+     * Syncs every [Settings.pollSeconds] for as long as the caller is active; offline only what
+     * was saved is shown, and the sync runs as soon as the network is back (see init).
+     */
     suspend fun poll() {
         while (true) {
-            app.sync.sync()
+            if (app.network.online.value) app.sync.sync() else app.sync.restoreSaved()
             delay((settings.value?.pollSeconds ?: 60) * 1000L)
         }
     }
@@ -376,10 +395,20 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     }
 
     /** Interactive Microsoft sign-in, then checks the token against the organization. */
-    fun signInWithMicrosoft(activity: Activity, form: SettingsForm, onDone: () -> Unit) = connect(form, onDone) {
+    fun signInWithMicrosoft(activity: Activity, form: SettingsForm, onDone: () -> Unit, onError: (String) -> Unit = {}) = connect(form, onDone, onError) {
         app.settings.saveEntraConfig(form.entraClientId, form.entraTenantId)
         app.entra.signIn(activity)
         AuthMethod.ENTRA to ""
+    }
+
+    /**
+     * "Sign in" from the expired session's banner or notification: Microsoft's sign-in again with
+     * the saved organization and registration; [onError] with what went wrong.
+     */
+    fun signInAgain(activity: Activity, onError: (String) -> Unit) {
+        val s = settings.value ?: return
+        val form = SettingsForm(s.organization, s.pollSeconds, s.keepScreenOn, s.entraClientId, s.entraTenantId)
+        signInWithMicrosoft(activity, form, onDone = {}, onError = onError)
     }
 
     fun signInWithPat(form: SettingsForm, pat: String, onDone: () -> Unit) = connect(form, onDone) {
@@ -403,7 +432,12 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         }
     }
 
-    private fun connect(form: SettingsForm, onDone: () -> Unit, credentials: suspend () -> Pair<AuthMethod, String>) {
+    private fun connect(
+        form: SettingsForm,
+        onDone: () -> Unit,
+        onError: (String) -> Unit = {},
+        credentials: suspend () -> Pair<AuthMethod, String>,
+    ) {
         val current = settings.value ?: return
         _save.value = SaveState(busy = true)
         viewModelScope.launch {
@@ -414,6 +448,7 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 _save.value = SaveState(message = app.getString(R.string.error_sign_in_failed, app.errorText(e)))
+                onError(_save.value.message.orEmpty())
                 return@launch
             }
             val candidate = current.copy(organization = form.organization, authMethod = method, pat = pat)
@@ -421,6 +456,7 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
                 AdoClient(form.organization, app.authorization(candidate)).me()
             } catch (e: Exception) {
                 _save.value = SaveState(message = app.getString(R.string.error_connection_failed, form.organization, app.errorText(e)))
+                onError(_save.value.message.orEmpty())
                 return@launch
             }
             if (form.organization != current.organization || me.id != current.meId) app.sync.reset()

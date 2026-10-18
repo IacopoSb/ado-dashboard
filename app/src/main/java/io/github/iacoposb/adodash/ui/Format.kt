@@ -40,6 +40,19 @@ fun dateTime(at: Instant): String =
     DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale())
         .format(at.atZone(ZoneId.systemDefault()))
 
+/**
+ * When the data was read: the time today, the date and time before (data saved by an earlier
+ * run can be days old).
+ */
+@Composable
+@ReadOnlyComposable
+fun updatedAt(at: Instant, now: Instant = Instant.now()): String {
+    val zone = ZoneId.systemDefault()
+    val sameDay = at.atZone(zone).toLocalDate() == now.atZone(zone).toLocalDate()
+    val style = if (sameDay) DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT) else DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)
+    return style.withLocale(locale()).format(at.atZone(zone))
+}
+
 /** Short time in the device's locale: "14:05", "2:05 PM". */
 @Composable
 @ReadOnlyComposable
