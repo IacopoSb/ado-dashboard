@@ -394,6 +394,8 @@
     <string name="wi_comments_earlier">Load earlier comments</string>
     <string name="wi_comment_sending">Sending…</string>
     <string name="wi_comment_edited">edited</string>
+    <string name="comment_show_all">Show all</string>
+    <string name="comment_show_less">Show less</string>
     <string name="wi_comment_mentioned_you">mentioned you</string>
     <string name="wi_comment_send">Send</string>
     <string name="wi_comment_denied">You don\'t have permission to comment on this work item (a PAT needs Work Items, Read &amp; write)</string>

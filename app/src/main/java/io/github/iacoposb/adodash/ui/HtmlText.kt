@@ -3,11 +3,13 @@ package io.github.iacoposb.adodash.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
@@ -15,7 +17,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -212,6 +216,9 @@ object HtmlText {
     }
 }
 
+/** A code block, for the screenshots to scroll it sideways. */
+const val CODE_BLOCK_TAG = "code-block"
+
 /** [blocks] as text: links open with [onLink]; [color] for the text (muted while it is sent). */
 @Composable
 fun RichText(
@@ -226,12 +233,16 @@ fun RichText(
         blocks.forEach { block ->
             val text = remember(block, c) { block.annotated(c, onLink) }
             if (block.codeBlock) {
-                Text(
-                    block.text,
+                // As wide as the card, long lines scrolled sideways rather than wrapped or cut
+                Box(
                     Modifier.fillMaxWidth().padding(start = (block.indent * 16).dp).clip(RoundedCornerShape(8.dp))
-                        .background(c.surfaceAlt).horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
-                    style = CodeStyle, color = color, softWrap = false,
-                )
+                        .background(c.surfaceAlt).horizontalScroll(rememberScrollState()).testTag(CODE_BLOCK_TAG),
+                ) {
+                    Text(
+                        block.text, Modifier.wrapContentWidth(Alignment.Start, unbounded = true).padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = CodeStyle, color = color, softWrap = false, maxLines = Int.MAX_VALUE,
+                    )
+                }
             } else if (block.bullet != null || block.indent > 0) {
                 Row(Modifier.padding(start = (block.indent * 16).dp)) {
                     Text(block.bullet.orEmpty(), Modifier.width(20.dp), style = style, color = c.textMuted)

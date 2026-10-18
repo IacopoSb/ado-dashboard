@@ -130,7 +130,10 @@ internal fun ThreadCard(
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
-        CommentText(first, screen, actions, Modifier.padding(top = 8.dp), muted = !open || sending)
+        CommentText(
+            first, screen, actions, Modifier.padding(top = 8.dp), muted = !open || sending,
+            background = if (highlighted) c.primaryContainer else c.surface,
+        )
         if (sending) {
             // Nothing more until it is posted
         } else if (!expanded) {
@@ -244,11 +247,21 @@ private fun Reply(comment: PrComment, screen: PrScreen, now: Instant, actions: P
 
 /** A comment's markdown, mentions as names. */
 @Composable
-internal fun CommentText(comment: PrComment, screen: PrScreen, actions: PrActions, modifier: Modifier, muted: Boolean) {
+internal fun CommentText(
+    comment: PrComment,
+    screen: PrScreen,
+    actions: PrActions,
+    modifier: Modifier,
+    muted: Boolean,
+    /** Behind the text: what a long comment fades into. */
+    background: Color = AdoTheme.colors.surface,
+) {
     val c = AdoTheme.colors
     val unknown = stringResource(R.string.pr_someone)
     val blocks = remember(comment.text, screen.names, unknown) { Markdown.parse(comment.text, screen.names, unknown) }
-    RichText(blocks, actions.onOpenUrl, modifier, color = if (muted) c.textMuted else c.text)
+    CollapsibleText("pr:${screen.id}:${comment.threadId}:${comment.id}", modifier, background) {
+        RichText(blocks, actions.onOpenUrl, color = if (muted) c.textMuted else c.text)
+    }
 }
 
 /** The new thread's composer at the bottom of the threads. */

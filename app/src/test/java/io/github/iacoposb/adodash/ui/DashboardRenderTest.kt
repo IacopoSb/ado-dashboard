@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
@@ -1093,6 +1095,28 @@ class DashboardRenderTest {
 
     @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
     @Test fun prPhoneVoteMenu() = prPage("pr-phone-vote-menu", designPrScreen(vote = Vote.WAITING), voteMenu = true)
+
+    /** A long comment collapsed with "Show all", and a reply with a code block wider than the card. */
+    private fun longCommentScreen(): PrScreen {
+        val base = designPrScreen(tab = PrTab.THREADS, filter = ThreadFilter.ALL)
+        val long = (1..20).joinToString("\n\n") { "Point $it: the retry loop should log the attempt number and the delay before sleeping." }
+        val code = "Something like this:\n\n```kotlin\nval delay = policy.backoff(attempt).coerceAtMost(policy.maxDelay).also { log.info(\"attempt ${'$'}attempt waits ${'$'}it ms before calling the gateway again\") }\nreturn client.post(req)\n```"
+        val thread = io.github.iacoposb.adodash.api.PrThread(
+            9, "active",
+            listOf(
+                io.github.iacoposb.adodash.api.PrComment(9, 1, marco, long, now.minusSeconds(600)),
+                io.github.iacoposb.adodash.api.PrComment(9, 2, anna, code, now.minusSeconds(300), parentId = 1),
+            ),
+        )
+        return base.copy(threads = base.threads.copy(items = listOf(thread)))
+    }
+
+    @Test fun prThreadsLongComment() {
+        prPage("pr-threads-long-comment", longCommentScreen())
+        compose.onAllNodesWithTag(CODE_BLOCK_TAG, useUnmergedTree = true)[0].performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("pr-threads-long-comment-scrolled.png")
+    }
 
     @Test fun prLoading() = prPage("pr-loading", PrScreen(311, designPr(), me = Person(me.id, me.name, "")))
 }

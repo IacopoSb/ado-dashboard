@@ -392,6 +392,8 @@
     <string name="wi_comments_earlier">Carica i commenti precedenti</string>
     <string name="wi_comment_sending">Invio…</string>
     <string name="wi_comment_edited">modificato</string>
+    <string name="comment_show_all">Mostra tutto</string>
+    <string name="comment_show_less">Mostra meno</string>
     <string name="wi_comment_mentioned_you">ti ha menzionato</string>
     <string name="wi_comment_send">Invia</string>
     <string name="wi_comment_denied">Non hai i permessi per commentare questo work item (al PAT serve Work Items, Read &amp; write)</string>

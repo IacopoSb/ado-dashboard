@@ -147,13 +147,14 @@ internal fun CommentsSection(
                     highlighted = highlighted == comment.id,
                     sending = false,
                     onLink = actions.onOpenUrl,
+                    collapseKey = "wi:${page.id}:${comment.id}",
                     modifier = Modifier.bringIntoViewRequester(requester),
                 )
             }
             comments.sending.forEach { s ->
                 CommentCard(
                     author = me?.name.orEmpty(), html = s.html, mentionsMe = false, edited = false, at = s.at, now = now,
-                    highlighted = false, sending = true, onLink = actions.onOpenUrl,
+                    highlighted = false, sending = true, onLink = actions.onOpenUrl, collapseKey = "wi:${page.id}:sending:${s.localId}",
                 )
             }
             if (comments.error != null && comments.items.isNotEmpty()) {
@@ -178,6 +179,8 @@ private fun CommentCard(
     highlighted: Boolean,
     sending: Boolean,
     onLink: (String) -> Unit,
+    /** Names the comment for "Show all", kept for the session. */
+    collapseKey: String,
     modifier: Modifier = Modifier,
 ) {
     val c = AdoTheme.colors
@@ -221,7 +224,9 @@ private fun CommentCard(
                 style = MaterialTheme.typography.bodySmall, color = c.primary,
             )
         }
-        RichText(blocks, onLink, Modifier.padding(top = 8.dp), color = if (sending) c.textMuted else c.text)
+        CollapsibleText(collapseKey, Modifier.padding(top = 8.dp), if (highlighted) c.primaryContainer else c.surface) {
+            RichText(blocks, onLink, color = if (sending) c.textMuted else c.text)
+        }
     }
 }
 
