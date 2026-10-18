@@ -23,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
@@ -32,6 +33,9 @@ import io.github.iacoposb.adodash.ui.AdoTheme
 
 /** Below this width a modal takes the whole screen. */
 val FullScreenModalWidth = 840.dp
+
+/** Lower than this (a phone on its side) a modal takes the whole screen too: a card would leave little room. */
+val FullScreenModalHeight = 480.dp
 
 /**
  * A modal drawn over the screen it belongs to, with a scrim that closes it: a centered card up
@@ -59,7 +63,7 @@ fun ModalOverlay(
             .background(if (scrim) Color.Black.copy(alpha = 0.32f) else c.bg)
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onDismiss),
     ) {
-        val fullScreen = this.maxWidth < FullScreenModalWidth
+        val fullScreen = this.maxWidth < FullScreenModalWidth || shortScreen()
         val card = if (fullScreen) {
             Modifier.fillMaxSize().background(c.surface).windowInsetsPadding(WindowInsets.safeDrawing)
         } else {
@@ -78,6 +82,13 @@ fun ModalOverlay(
         ) { content(fullScreen) }
     }
 }
+
+/**
+ * A phone on its side: lower than [FullScreenModalHeight]. The screen's height, not the room
+ * left above the keyboard, so that typing does not switch a screen to another layout.
+ */
+@Composable
+fun shortScreen(): Boolean = LocalConfiguration.current.screenHeightDp.dp < FullScreenModalHeight
 
 /** Fills the rest of a [Box] with nothing: for the scrim of a popover menu. */
 @Composable

@@ -8,11 +8,14 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,12 +54,14 @@ import io.github.iacoposb.adodash.ui.components.DismissLayer
 import io.github.iacoposb.adodash.ui.components.SearchField
 import io.github.iacoposb.adodash.ui.components.highlight
 import io.github.iacoposb.adodash.ui.components.scrollbar
+import io.github.iacoposb.adodash.ui.components.shortScreen
 
 /**
  * The menu under the app bar's title: the saved views, the boards, and "Edit view" (the one
  * open) or "New view". Drawn over the dashboard, below the title it belongs to. The views,
  * the boards' search and the actions stay in place; only the boards scroll: the recent ones,
- * then each project, open only for the board shown until tapped.
+ * then each project, open only for the board shown until tapped. On a phone on its side the
+ * views and the search scroll with the boards.
  */
 @Composable
 fun ViewSwitcher(
@@ -79,15 +84,14 @@ fun ViewSwitcher(
     val open = { ref: BoardRef -> if (settled()) onOpenBoard(ref) }
     Box {
         DismissLayer(onDismiss)
-        BoxWithConstraints(Modifier.padding(start = 8.dp, top = 64.dp, end = 8.dp, bottom = 8.dp)) {
+        // Below the app bar, wherever the status bar and the keyboard leave room
+        BoxWithConstraints(
+            Modifier.windowInsetsPadding(WindowInsets.safeDrawing).padding(start = 8.dp, top = 64.dp, end = 8.dp, bottom = 8.dp),
+        ) {
             val title = stringResource(R.string.action_choose_view)
-            Column(
-                Modifier.width(400.dp.coerceAtMost(maxWidth)).heightIn(max = maxHeight.coerceAtMost(MENU_MAX_HEIGHT))
-                    .shadow(8.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(c.surface)
-                    // Taps between the rows stay in the menu
-                    .clickable(remember { MutableInteractionSource() }, indication = null) {}
-                    .semantics { paneTitle = title },
-            ) {
+            // A phone on its side: the views scroll with the boards, or the boards would have no room
+            val short = shortScreen()
+            val viewsAndSearch: @Composable () -> Unit = {
                 Column(Modifier.padding(top = 8.dp)) {
                     MenuLabel(stringResource(R.string.switcher_views))
                     choices.views.saved.forEach { v ->
@@ -100,11 +104,21 @@ fun ViewSwitcher(
                     query, { query = it }, stringResource(R.string.boards_search),
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 )
+            }
+            Column(
+                Modifier.width(400.dp.coerceAtMost(maxWidth)).heightIn(max = maxHeight.coerceAtMost(MENU_MAX_HEIGHT))
+                    .shadow(8.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp)).background(c.surface)
+                    // Taps between the rows stay in the menu
+                    .clickable(remember { MutableInteractionSource() }, indication = null) {}
+                    .semantics { paneTitle = title },
+            ) {
+                if (!short) viewsAndSearch()
                 val scroll = rememberScrollState()
                 Column(
                     Modifier.weight(1f, fill = false).scrollbar(scroll, c.outline, gap = (-6).dp).verticalScroll(scroll)
                         .padding(vertical = 4.dp),
                 ) {
+                    if (short) viewsAndSearch()
                     if (menu.recent.isNotEmpty()) {
                         SubLabel(stringResource(R.string.boards_recent))
                         menu.recent.forEach { ref ->
@@ -175,7 +189,7 @@ private fun MenuRow(
 ) {
     val c = AdoTheme.colors
     Row(
-        Modifier.fillMaxWidth().padding(start = 8.dp + indent, end = 8.dp).heightIn(min = 44.dp).clip(RoundedCornerShape(10.dp))
+        Modifier.fillMaxWidth().padding(start = 8.dp + indent, end = 8.dp).heightIn(min = 48.dp).clip(RoundedCornerShape(10.dp))
             .then(if (selected) Modifier.background(c.primaryContainer) else Modifier)
             .selectable(selected, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = 12.dp),

@@ -63,6 +63,7 @@ import io.github.iacoposb.adodash.ui.components.Banner
 import io.github.iacoposb.adodash.ui.components.BannerTone
 import io.github.iacoposb.adodash.ui.components.SectionCard
 import io.github.iacoposb.adodash.ui.components.SwitchRow
+import io.github.iacoposb.adodash.ui.components.shortScreen
 import io.github.iacoposb.adodash.sync.CatalogState
 import io.github.iacoposb.adodash.update.Release
 import io.github.iacoposb.adodash.update.UpdateState
@@ -213,7 +214,8 @@ fun SettingsScreen(
     BoxWithConstraints(
         Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
-        val wide = maxWidth >= 840.dp
+        // A phone on its side: the list of sections, then one section, as upright
+        val wide = maxWidth >= 840.dp && !shortScreen()
         val inSection = !wide && sectionOpen
         BackHandler(enabled = inSection) { sectionOpen = false }
         val filtersShown = section == SettingsSection.FILTERS && (wide || inSection) && initial.configured

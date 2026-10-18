@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -281,14 +282,15 @@ fun ColumnScope.BuildDetailsContent(
     val allBuilds: @Composable () -> Unit = {
         if (build != null) TextAction(stringResource(R.string.action_all_builds), { onOpen(build.definitionUrl) })
     }
-    // Narrow screens: "All builds" above, so the two buttons keep their labels
-    if (fullScreen) Row(Modifier.padding(start = 12.dp, top = 4.dp)) { allBuilds() }
+    // Phones: "All builds" above, so the two buttons keep their labels; on their side all in a row
+    val stacked = fullScreen && LocalConfiguration.current.screenWidthDp < 600
+    if (stacked) Row(Modifier.padding(start = 12.dp, top = 4.dp)) { allBuilds() }
     Row(
         Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
     ) {
-        if (!fullScreen) {
+        if (!stacked) {
             allBuilds()
             Spacer(Modifier.weight(1f))
         }

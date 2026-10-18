@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -63,6 +64,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -87,6 +89,7 @@ import io.github.iacoposb.adodash.ui.components.Banner
 import io.github.iacoposb.adodash.ui.components.BannerTone
 import io.github.iacoposb.adodash.ui.components.DropdownOption
 import io.github.iacoposb.adodash.ui.components.FullScreenModalWidth
+import io.github.iacoposb.adodash.ui.components.shortScreen
 import io.github.iacoposb.adodash.ui.components.ReviewerAvatar
 import io.github.iacoposb.adodash.ui.components.StatusChip
 import io.github.iacoposb.adodash.ui.components.TextAction
@@ -173,7 +176,8 @@ fun PullRequestScreen(
             .clickable(remember { MutableInteractionSource() }, indication = null) {}
             .windowInsetsPadding(WindowInsets.safeDrawing).imePadding(),
     ) {
-        val wide = maxWidth >= FullScreenModalWidth
+        // Phones on their side too: the single column, the vote fixed at the bottom
+        val wide = maxWidth >= FullScreenModalWidth && !shortScreen()
         Column(Modifier.fillMaxSize()) {
             PrAppBar(screen, now, actions, wide, initialVoteMenu && wide)
             screen.vote.error?.let { error ->
@@ -204,7 +208,8 @@ fun PullRequestScreen(
                             else -> NarrowOverview(screen, pr, now, actions)
                         }
                     }
-                    if (!wide && screen.canVote) PhoneVoteBar(screen, actions, initialVoteMenu)
+                    // Typing a comment: the keyboard leaves little room, the votes come back after
+                    if (!wide && screen.canVote && WindowInsets.ime.getBottom(LocalDensity.current) == 0) PhoneVoteBar(screen, actions, initialVoteMenu)
                 }
             }
         }
@@ -711,7 +716,7 @@ private fun CheckLine(row: CheckRow, now: Instant, onClick: (() -> Unit)?) {
         CheckState.WARNING -> Icons.Filled.Warning to c.warning
     }
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 32.dp).clip(RoundedCornerShape(8.dp))
+        Modifier.fillMaxWidth().heightIn(min = if (onClick != null) 48.dp else 32.dp).clip(RoundedCornerShape(8.dp))
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -812,7 +817,7 @@ private fun Reviewers(screen: PrScreen, pr: PullRequest) {
 private fun LinkedWorkItem(item: WorkItem, onClick: () -> Unit) {
     val c = AdoTheme.colors
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).background(c.surfaceAlt)
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp)).background(c.surfaceAlt)
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
