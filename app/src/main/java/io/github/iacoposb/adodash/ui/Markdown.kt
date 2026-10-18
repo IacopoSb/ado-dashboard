@@ -9,7 +9,8 @@ object Markdown {
     /** How Azure DevOps writes a mention in a pull request: the identity's id in angle brackets. */
     val MENTION = Regex("@<([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})>")
     private val FENCE = Regex("^\\s{0,3}(```+|~~~+)(.*)$")
-    private val HEADING = Regex("^\\s{0,3}#{1,6}\\s+(.*?)\\s*#*\\s*$")
+    /** A closing run of # counts only after a space: "## Migrate to C#" keeps its "#". */
+    private val HEADING = Regex("^\\s{0,3}#{1,6}\\s+(.*?)(?:\\s+#+)?\\s*$")
     private val LIST_ITEM = Regex("^(\\s*)([-*+]|\\d{1,9}[.)])\\s+(.*)$")
     private val QUOTE = Regex("^\\s{0,3}>\\s?(.*)$")
     private val RULE = Regex("^\\s{0,3}([-*_])(\\s*\\1){2,}\\s*$")

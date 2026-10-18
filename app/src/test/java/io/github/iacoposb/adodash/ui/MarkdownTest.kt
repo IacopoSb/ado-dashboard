@@ -76,6 +76,12 @@ class MarkdownTest {
         assertEquals("screenshot", blocks[2].text)
     }
 
+    @Test fun `a heading keeps a trailing # that is part of it, not a closing run`() {
+        assertEquals("Migrate to C#", Markdown.parse("## Migrate to C#").single().text)
+        assertEquals("Migrate to C#", Markdown.parse("## Migrate to C# ##").single().text)
+        assertEquals("Summary", Markdown.parse("### Summary ###  ").single().text)
+    }
+
     @Test fun `the ids mentioned`() {
         assertEquals(setOf(id), Markdown.mentionIds("@<${id.uppercase()}> hi @<$id>"))
     }
