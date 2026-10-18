@@ -21,7 +21,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -45,8 +50,13 @@ class SyncRepositoryTest {
     private class FakeApi : AdoApi {
         var items: List<WorkItem> = emptyList()
         var toReview: List<PullRequest> = emptyList()
+        /** Completed by the test to let a sync go on. */
+        var gate: CompletableDeferred<Unit>? = null
         override suspend fun me() = Fakes.me
-        override suspend fun projects() = listOf("Contoso")
+        override suspend fun projects(): List<String> {
+            gate?.await()
+            return listOf("Contoso")
+        }
         override suspend fun queryWorkItemIds(wiql: String, top: Int) = if ("@Me" in wiql) items.map { it.id } else emptyList()
         override suspend fun workItems(ids: List<Int>) = items.filter { it.id in ids }
         override suspend fun stateCategories(project: String, type: String) = mapOf("Active" to "InProgress", "New" to "Proposed")
@@ -64,6 +74,8 @@ class SyncRepositoryTest {
     private lateinit var settings: SettingsStore
     private val api = FakeApi()
     private val notified = mutableListOf<List<Event>>()
+    /** The organization of each sync, as it read the settings. */
+    private val synced = mutableListOf<String>()
     private var now = Instant.now()
 
     private lateinit var repo: SyncRepository
@@ -72,7 +84,7 @@ class SyncRepositoryTest {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         settings = SettingsStore(PreferenceDataStoreFactory.create(scope = scope) { File(folder.root, "settings.preferences_pb") })
         repo = SyncRepository(
-            settings, db.events(), { events, _ -> notified += events }, Fakes.Texts, apiFor = { api },
+            settings, db.events(), { events, _ -> notified += events }, Fakes.Texts, apiFor = { synced += it.organization; api },
             log = {}, clock = { now },
         )
         runBlocking { settings.saveAccount("org", AuthMethod.ENTRA, "", Fakes.me.id, Fakes.me.name) }
@@ -129,5 +141,26 @@ class SyncRepositoryTest {
         assertTrue("wi:1:assigned" in keys)
         assertTrue("wi:2:assigned" !in keys)
         assertEquals(listOf("wi:2:assigned"), notifiedKeys())
+    }
+
+    @Test fun `a sync waiting while the account changes runs with the new one, after the old data is cleared`() = runBlocking {
+        api.items = listOf(Fakes.workItem(1))
+        sync()
+        api.gate = CompletableDeferred()
+        val running = launch(Dispatchers.IO) { repo.sync(restore = false) }
+        while (synced.size < 2) yield()
+        val switching = launch(Dispatchers.IO) {
+            repo.switchAccount(clear = true) { settings.saveAccount("other", AuthMethod.ENTRA, "", Fakes.anna.id, Fakes.anna.name) }
+        }
+        // Waiting for the running sync before the next one is queued
+        delay(200)
+        val queued = launch(Dispatchers.IO) { repo.sync(restore = false) }
+        delay(200)
+        api.gate!!.complete(Unit)
+        joinAll(running, switching, queued)
+        assertEquals(listOf("org", "org", "other"), synced)
+        // What the old account's syncs stored is gone; the new one's first sync is history
+        assertEquals(listOf("wi:1:assigned"), db.events().keys())
+        assertEquals(Fakes.anna.id, settings.current().meId)
     }
 }

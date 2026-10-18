@@ -451,8 +451,7 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         runCatching { app.entra.signOut() }
         app.catalog.forget()
         pipelinesController.forget()
-        app.sync.reset()
-        app.settings.signOut()
+        app.sync.switchAccount(clear = true) { app.settings.signOut() }
     }
 
     private fun connect(
@@ -482,13 +481,17 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
                 onError(_save.value.message.orEmpty())
                 return@launch
             }
-            if (form.organization != current.organization || me.id != current.meId) app.sync.reset()
-            if (!form.organization.equals(current.organization, ignoreCase = true)) {
+            // The organization's name as Azure DevOps does: case aside
+            val sameOrganization = form.organization.equals(current.organization, ignoreCase = true)
+            if (!sameOrganization) {
                 app.catalog.forget()
                 pipelinesController.forget()
             }
-            app.settings.saveAccount(form.organization, method, pat, me.id, me.name)
-            app.settings.savePreferences(form.pollSeconds, form.keepScreenOn)
+            // Cleared and saved together: a sync waiting meanwhile never runs with the old account
+            app.sync.switchAccount(clear = !sameOrganization || !me.id.equals(current.meId, ignoreCase = true)) {
+                app.settings.saveAccount(form.organization, method, pat, me.id, me.name)
+                app.settings.savePreferences(form.pollSeconds, form.keepScreenOn)
+            }
             _save.value = SaveState()
             onDone()
             app.sync.sync()

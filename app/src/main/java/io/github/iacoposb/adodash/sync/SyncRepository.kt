@@ -248,8 +248,17 @@ class SyncRepository(
     suspend fun markAllRead() = events.markAllRead()
     suspend fun markRead(keys: List<String>) = keys.chunked(500).forEach { events.markRead(it) }
 
-    /** Forgets the previous account. */
-    suspend fun reset() = mutex.withLock {
+    /**
+     * Another account, or signed out: [save] stores the new settings while no sync runs, after
+     * forgetting the previous account's data when [clear]. A sync queued meanwhile runs after it,
+     * with the new settings, and never writes the old account's events after they were cleared.
+     */
+    suspend fun switchAccount(clear: Boolean, save: suspend () -> Unit) = mutex.withLock {
+        if (clear) clearLocked()
+        save()
+    }
+
+    private suspend fun clearLocked() {
         events.clear()
         stateCategories.clear()
         teamAreas.clear()
