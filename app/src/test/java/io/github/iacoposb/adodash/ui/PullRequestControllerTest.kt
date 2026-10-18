@@ -88,7 +88,11 @@ class PullRequestControllerTest {
             statusFail?.let { throw it }
             return PrThread(threadId, status, emptyList())
         }
-        override suspend fun searchPeople(query: String) = listOf(Person("x-1", "Annabel Neri", "annabel@contoso.com"))
+        override suspend fun searchPeople(query: String) = listOf(
+            Person("eeeeeeee-1111-2222-3333-444444444444", "Annabel Neri", "annabel@contoso.com"),
+            // Only an entity id: not offered for a mention
+            Person("aad.ZmFrZS1lbnRpdHk", "Anna Bianchi", "anna.bianchi@contoso.com"),
+        )
 
         override suspend fun me() = Identity("", "")
         override suspend fun projects() = emptyList<String>()

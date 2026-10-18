@@ -22,7 +22,18 @@ object WiFields {
 }
 
 /** Someone work can be assigned to; [uniqueName] (e-mail or domain\user) is what a change sends. */
-data class Person(val id: String, val name: String, val uniqueName: String)
+data class Person(val id: String, val name: String, val uniqueName: String) {
+    /**
+     * Mentions carry the identity's GUID: the directory's search may give only another kind of
+     * id (an "aad.…" entity id) for people never seen in the organization, which makes a broken
+     * mention, though it still serves to assign work by [uniqueName].
+     */
+    val mentionable: Boolean get() = GUID.matches(id)
+
+    private companion object {
+        val GUID = Regex("[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}")
+    }
+}
 
 /** How another work item or a pull request is linked to the one open. */
 enum class LinkKind { PARENT, CHILD, RELATED, PULL_REQUEST }

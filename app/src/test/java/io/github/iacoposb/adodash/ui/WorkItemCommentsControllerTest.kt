@@ -40,7 +40,7 @@ class WorkItemCommentsControllerTest {
         var postFail: AdoException? = null
         var gate: CompletableDeferred<Unit>? = null
         val posted = mutableListOf<String>()
-        var people = listOf(annaPerson, Person("x-1", "Annabel Neri", "annabel@contoso.com"))
+        var people = listOf(annaPerson, Person("eeeeeeee-1111-2222-3333-444444444444", "Annabel Neri", "annabel@contoso.com"))
 
         override suspend fun workItemDetail(id: Int) = WorkItemDetail(item, rev = 7, commentCount = 2)
         override suspend fun workItemCommentPage(project: String, id: Int, continuation: String?) =
@@ -188,7 +188,11 @@ class WorkItemCommentsControllerTest {
 
     @Test fun `mention suggestions show the comments' authors first, then the search`() = runTest {
         val api = Api()
-        api.people = listOf(annaPerson, Person("x-1", "Annabel Neri", "annabel@contoso.com"), Person(Fakes.me.id, Fakes.me.name, ""))
+        // Anna Bianchi has only an entity id: no mention can be made of her
+        api.people = listOf(
+            annaPerson, Person("eeeeeeee-1111-2222-3333-444444444444", "Annabel Neri", "annabel@contoso.com"), Person(Fakes.me.id, Fakes.me.name, ""),
+            Person("aad.ZmFrZS1lbnRpdHk", "Anna Bianchi", "anna.bianchi@contoso.com"),
+        )
         api.pages[null] = CommentPage(listOf(comment(1, anna), comment(2, Fakes.me)), null)
         val c = controller(api)
         c.open(item.id, item)
@@ -198,7 +202,7 @@ class WorkItemCommentsControllerTest {
         assertEquals(listOf(anna.id), c.state.value!!.mentions.results.map { it.id })
         assertTrue(c.state.value!!.mentions.loading)
         advanceUntilIdle()
-        assertEquals(listOf(anna.id, "x-1"), c.state.value!!.mentions.results.map { it.id })
+        assertEquals(listOf(anna.id, "eeeeeeee-1111-2222-3333-444444444444"), c.state.value!!.mentions.results.map { it.id })
         c.searchMentions("")
         assertTrue(c.state.value!!.mentions.results.isEmpty())
     }

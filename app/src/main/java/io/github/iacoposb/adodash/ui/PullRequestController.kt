@@ -706,7 +706,7 @@ class PullRequestController(
         mentionSearch = scope.launch {
             delay(SEARCH_DELAY_MS)
             val found = runCatchingNotCancelled { api().searchPeople(q) }.orEmpty()
-            val all = (recent + found.filter { it.id.isNotBlank() }).distinctBy { it.id.lowercase() }
+            val all = (recent + found.filter { it.mentionable }).distinctBy { it.id.lowercase() }
             _state.update { it?.copy(mentions = PeopleSearch(q, loading = false, results = all.take(MAX_SUGGESTIONS))) }
         }
     }

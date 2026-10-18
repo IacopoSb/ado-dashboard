@@ -593,7 +593,7 @@ class WorkItemController(
             val api = api()
             val found = runCatchingNotCancelled { api.searchPeople(q) }?.takeIf { it.isNotEmpty() }
                 ?: project?.let { p -> members(api, p).filter { matches(it, q) } }.orEmpty()
-            val all = (recent + found.filter { it.id.isNotBlank() }).distinctBy { it.id.lowercase() }
+            val all = (recent + found.filter { it.mentionable }).distinctBy { it.id.lowercase() }
             _state.update { it?.copy(mentions = PeopleSearch(q, loading = false, results = all.take(MAX_SUGGESTIONS))) }
         }
     }
