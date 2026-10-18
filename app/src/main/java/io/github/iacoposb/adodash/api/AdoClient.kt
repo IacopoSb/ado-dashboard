@@ -323,6 +323,8 @@ class AdoClient(
             addQueryParameter("versionDescriptor.version", commit)
             addQueryParameter("versionDescriptor.versionType", "commit")
             addQueryParameter("includeContent", "true")
+            // Without it the metadata may be missing: the NUL check below is then all there is
+            addQueryParameter("includeContentMetadata", "true")
         }
         val text = try {
             fetch(Request.Builder().url(target).get(), maxBytes = FileContent.MAX_BYTES).first

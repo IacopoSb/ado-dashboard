@@ -76,7 +76,7 @@ class AdoClientFilesTest {
         val content = client.fileContent(pr, "/src/A.kt", "abc123")
         assertEquals(
             "/org/Contoso/_apis/git/repositories/repo-1/items?path=%2Fsrc%2FA.kt&versionDescriptor.version=abc123" +
-                "&versionDescriptor.versionType=commit&includeContent=true&api-version=7.1",
+                "&versionDescriptor.versionType=commit&includeContent=true&includeContentMetadata=true&api-version=7.1",
             server.takeRequest().path,
         )
         assertEquals(FileContent.Text("fun a() {}\n"), content)
