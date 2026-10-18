@@ -84,7 +84,7 @@ private val pathSetSaver =listSaver<Set<String>, String>({ it.toList() }, { it.t
 fun FiltersSection(
     filters: Filters,
     catalog: CatalogState,
-    onChange: (Filters) -> Unit,
+    onChange: ((Filters) -> Filters) -> Unit,
     onRetry: () -> Unit,
     wide: Boolean,
     modifier: Modifier = Modifier,
@@ -132,7 +132,7 @@ fun FiltersSection(
 private fun AreasCard(
     filters: Filters,
     catalog: CatalogState,
-    onChange: (Filters) -> Unit,
+    onChange: ((Filters) -> Filters) -> Unit,
     fill: Boolean,
     initiallyExpanded: Set<String>?,
     initialQuery: String,
@@ -151,7 +151,8 @@ private fun AreasCard(
         }
     }
     val search = selection.search(query)
-    fun change(areas: Set<String>?) = onChange(filters.copy(areas = areas))
+    // On the areas as stored, which a quick second tap may find newer than those on screen
+    fun change(areas: (AreaSelection) -> Set<String>?) = onChange { f -> f.copy(areas = areas(AreaSelection(roots.orEmpty(), f.areas))) }
 
     SectionCard(
         stringResource(R.string.filters_areas_title), modifier,
@@ -160,11 +161,11 @@ private fun AreasCard(
         Text(stringResource(R.string.filters_areas_hint), style = MaterialTheme.typography.bodySmall, color = c.textMuted)
         val actions: @Composable () -> Unit = {
             if (search == null) {
-                TextAction(stringResource(R.string.action_select_all), { change(selection.all()) })
-                TextAction(stringResource(R.string.action_deselect_all), { change(selection.none()) })
+                TextAction(stringResource(R.string.action_select_all), { change { it.all() } })
+                TextAction(stringResource(R.string.action_deselect_all), { change { it.none() } })
             } else {
-                TextAction(stringResource(R.string.action_select_results), { change(selection.set(search.matches, true)) })
-                TextAction(stringResource(R.string.action_deselect_results), { change(selection.set(search.matches, false)) })
+                TextAction(stringResource(R.string.action_select_results), { change { it.set(search.matches, true) } })
+                TextAction(stringResource(R.string.action_deselect_results), { change { it.set(search.matches, false) } })
             }
         }
         if (fill) {
@@ -200,8 +201,8 @@ private fun AreasCard(
                         TreeNode(
                             root, root, 0, selection, search, expanded,
                             onExpand = { path -> expanded = if (path in expanded) expanded - path else expanded + path },
-                            onCheck = { change(selection.toggle(it)) },
-                            onOnly = { change(selection.only(it)) },
+                            onCheck = { node -> change { it.toggle(node) } },
+                            onOnly = { node -> change { it.only(node) } },
                         )
                     }
                 }
@@ -315,7 +316,7 @@ private fun TreeNode(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StatesCard(filters: Filters, catalog: CatalogState, onChange: (Filters) -> Unit) {
+private fun StatesCard(filters: Filters, catalog: CatalogState, onChange: ((Filters) -> Filters) -> Unit) {
     val c = AdoTheme.colors
     SectionCard(stringResource(R.string.filters_states_title)) {
         Text(stringResource(R.string.filters_states_hint), style = MaterialTheme.typography.bodySmall, color = c.textMuted)
@@ -351,7 +352,7 @@ private fun StatesCard(filters: Filters, catalog: CatalogState, onChange: (Filte
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TypeRow(type: TypeStates, filters: Filters, onChange: (Filters) -> Unit) {
+private fun TypeRow(type: TypeStates, filters: Filters, onChange: ((Filters) -> Filters) -> Unit) {
     val c = AdoTheme.colors
     // The name level with the first line of states, however many lines they take
     Row(Modifier.fillMaxWidth().heightIn(min = 40.dp), verticalAlignment = Alignment.Top) {
@@ -371,10 +372,16 @@ private fun TypeRow(type: TypeStates, filters: Filters, onChange: (Filters) -> U
             type.states.forEach { state ->
                 val hidden = filters.hides(type.name, state)
                 AdoFilterChip(state, hidden, {
-                    val key = filters.hiddenStates.keys.firstOrNull { it.equals(type.name, ignoreCase = true) } ?: type.name
-                    val current = filters.hiddenStates[key].orEmpty()
-                    val next = if (hidden) current.filterNot { it.equals(state, ignoreCase = true) }.toSet() else current + state
-                    onChange(filters.copy(hiddenStates = (filters.hiddenStates - key).let { if (next.isEmpty()) it else it + (key to next) }))
+                    onChange { f ->
+                        val key = f.hiddenStates.keys.firstOrNull { it.equals(type.name, ignoreCase = true) } ?: type.name
+                        val current = f.hiddenStates[key].orEmpty()
+                        val next = if (f.hides(type.name, state)) {
+                            current.filterNot { it.equals(state, ignoreCase = true) }.toSet()
+                        } else {
+                            current + state
+                        }
+                        f.copy(hiddenStates = (f.hiddenStates - key).let { if (next.isEmpty()) it else it + (key to next) })
+                    }
                 })
             }
         }
@@ -390,14 +397,14 @@ private fun typeColor(type: TypeStates): Color {
 }
 
 @Composable
-private fun PullRequestsCard(filters: Filters, onChange: (Filters) -> Unit) {
+private fun PullRequestsCard(filters: Filters, onChange: ((Filters) -> Filters) -> Unit) {
     SectionCard(stringResource(R.string.filters_prs_title)) {
         SwitchRow(
-            stringResource(R.string.filters_show_drafts), filters.draftsToReview, { onChange(filters.copy(draftsToReview = it)) },
+            stringResource(R.string.filters_show_drafts), filters.draftsToReview, { on -> onChange { it.copy(draftsToReview = on) } },
             subtitle = stringResource(R.string.filters_show_drafts_hint),
         )
         SwitchRow(
-            stringResource(R.string.filters_hide_approved), filters.hideApprovedByMe, { onChange(filters.copy(hideApprovedByMe = it)) },
+            stringResource(R.string.filters_hide_approved), filters.hideApprovedByMe, { on -> onChange { it.copy(hideApprovedByMe = on) } },
         )
     }
 }

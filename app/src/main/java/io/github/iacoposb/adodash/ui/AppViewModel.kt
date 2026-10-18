@@ -312,9 +312,12 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         if (s.configured) app.catalog.open(s.organization) { app.catalogApi(s) }
     }
 
-    /** Applied at once: saved now, synced once the taps stop. */
-    fun updateFilters(filters: Filters) {
-        viewModelScope.launch { app.settings.saveFilters(filters) }
+    /**
+     * Applied at once to the filters as stored (not as on screen, which a quick second tap may
+     * find not updated yet): saved now, synced once the taps stop.
+     */
+    fun updateFilters(change: (Filters) -> Filters) {
+        viewModelScope.launch { app.settings.editFilters(change = change) }
         filterSync?.cancel()
         filterSync = viewModelScope.launch {
             delay(FILTER_SYNC_DELAY_MS)
@@ -366,13 +369,13 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     }
 
     /**
-     * What to notify and quiet hours, from the settings; applied at once. The sounds and their
-     * channels stay as stored: only [setSound] changes them.
+     * What to notify and quiet hours, from the settings; applied at once to what is stored (see
+     * [updateFilters]). The sounds and their channels stay as stored: only [setSound] changes them.
      */
-    fun setNotifications(prefs: NotificationPrefs) {
+    fun setNotifications(change: (NotificationPrefs) -> NotificationPrefs) {
         viewModelScope.launch {
             app.settings.editNotifications { stored ->
-                prefs.copy(
+                change(stored).copy(
                     mentionsSound = stored.mentionsSound, othersSound = stored.othersSound,
                     mentionsChannel = stored.mentionsChannel, othersChannel = stored.othersChannel,
                 )

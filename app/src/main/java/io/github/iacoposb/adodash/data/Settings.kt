@@ -121,9 +121,10 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
         }
     }
 
-    suspend fun saveFilters(filters: Filters, at: Long = System.currentTimeMillis()) {
+    /** Changes the filters as they are stored now, so that two quick changes never undo each other. */
+    suspend fun editFilters(at: Long = System.currentTimeMillis(), change: (Filters) -> Filters) {
         dataStore.edit {
-            it[K.filters] = filters.encode()
+            it[K.filters] = change(Filters.decode(it[K.filters])).encode()
             it[K.filtersChanged] = at
         }
     }

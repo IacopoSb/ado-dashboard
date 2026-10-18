@@ -105,7 +105,8 @@ fun SettingsScreen(
     catalog: CatalogState = CatalogState(),
     /** The filters section opened: time to (re)read projects, areas and types. */
     onLoadCatalog: () -> Unit = {},
-    onFiltersChange: (Filters) -> Unit = {},
+    /** A change of the filters, applied to them as stored. */
+    onFiltersChange: ((Filters) -> Filters) -> Unit = {},
     /** For the screenshots: the filters' tree as in the design. */
     filtersExpanded: Set<String>? = null,
     filtersQuery: String = "",

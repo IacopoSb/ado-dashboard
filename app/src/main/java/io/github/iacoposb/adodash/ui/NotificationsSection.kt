@@ -65,7 +65,8 @@ import java.util.Locale
 
 /** What the notifications section does outside itself: the system's pickers and settings. */
 class NotificationActions(
-    val onChange: (NotificationPrefs) -> Unit = {},
+    /** A change, applied to the settings as stored (a quick second tap may find those on screen old). */
+    val onChange: ((NotificationPrefs) -> NotificationPrefs) -> Unit = {},
     /** Android 13+ permission, or the app's notifications turned off: ask, or open the settings. */
     val onAllow: () -> Unit = {},
     /** The system's sound picker for [SoundTarget]. */
@@ -106,7 +107,7 @@ internal fun NotificationsSection(prefs: NotificationPrefs, allowed: Boolean, ac
         wide,
         left = { WhatToNotifyCard(prefs, actions.onChange) },
         right = {
-            QuietHoursCard(prefs.quiet) { actions.onChange(prefs.copy(quiet = it)) }
+            QuietHoursCard(prefs.quiet) { change -> actions.onChange { it.copy(quiet = change(it.quiet)) } }
             SoundsCard(prefs, actions)
         },
         leftWeight = 1f,
@@ -114,7 +115,7 @@ internal fun NotificationsSection(prefs: NotificationPrefs, allowed: Boolean, ac
 }
 
 @Composable
-private fun WhatToNotifyCard(prefs: NotificationPrefs, onChange: (NotificationPrefs) -> Unit) {
+private fun WhatToNotifyCard(prefs: NotificationPrefs, onChange: ((NotificationPrefs) -> NotificationPrefs) -> Unit) {
     SectionCard(stringResource(R.string.notif_what)) {
         Text(stringResource(R.string.notif_what_hint), style = MaterialTheme.typography.bodySmall, color = AdoTheme.colors.textMuted)
         listOf(
@@ -127,7 +128,7 @@ private fun WhatToNotifyCard(prefs: NotificationPrefs, onChange: (NotificationPr
             Triple(NotifyKind.UPDATES, R.string.notif_updates, R.string.notif_updates_hint),
         ).forEach { (kind, title, hint) ->
             SwitchRow(
-                stringResource(title), prefs.isOn(kind), { onChange(prefs.switching(kind, it)) },
+                stringResource(title), prefs.isOn(kind), { on -> onChange { it.switching(kind, on) } },
                 subtitle = hint?.let { stringResource(it) },
             )
         }
@@ -136,7 +137,7 @@ private fun WhatToNotifyCard(prefs: NotificationPrefs, onChange: (NotificationPr
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun QuietHoursCard(quiet: QuietHours, onChange: (QuietHours) -> Unit) {
+private fun QuietHoursCard(quiet: QuietHours, onChange: ((QuietHours) -> QuietHours) -> Unit) {
     val c = AdoTheme.colors
     val locale = LocalConfiguration.current.locales[0]
     val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
@@ -144,7 +145,7 @@ private fun QuietHoursCard(quiet: QuietHours, onChange: (QuietHours) -> Unit) {
     val on = quiet.enabled
     SectionCard(stringResource(R.string.quiet_title)) {
         Text(stringResource(R.string.quiet_hint), style = MaterialTheme.typography.bodySmall, color = c.textMuted)
-        SwitchRow(stringResource(R.string.quiet_enable), on, { onChange(quiet.copy(enabled = it)) })
+        SwitchRow(stringResource(R.string.quiet_enable), on, { enabled -> onChange { it.copy(enabled = enabled) } })
         // Kept in view when off, dimmed, so that the hours are known before turning them on
         Column(Modifier.alpha(if (on) 1f else 0.5f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -161,12 +162,12 @@ private fun QuietHoursCard(quiet: QuietHours, onChange: (QuietHours) -> Unit) {
                     // A language alone ("it") has no first day of the week: its likely region ("it-IT") has
                     val regional = if (locale.country.isEmpty()) ULocale.addLikelySubtags(ULocale.forLocale(locale)).toLocale() else locale
                     weekdays(regional).forEach { day ->
-                        AdoFilterChip(dayLabel(day, locale), quiet.hasDay(day), { if (on) onChange(quiet.toggling(day)) })
+                        AdoFilterChip(dayLabel(day, locale), quiet.hasDay(day), { if (on) onChange { it.toggling(day) } })
                     }
                 }
             }
             SwitchRow(
-                stringResource(R.string.quiet_mentions), quiet.mentionsSound, { onChange(quiet.copy(mentionsSound = it)) },
+                stringResource(R.string.quiet_mentions), quiet.mentionsSound, { sound -> onChange { it.copy(mentionsSound = sound) } },
                 subtitle = stringResource(R.string.quiet_mentions_hint), enabled = on,
             )
         }
@@ -177,7 +178,7 @@ private fun QuietHoursCard(quiet: QuietHours, onChange: (QuietHours) -> Unit) {
             onDismiss = { editing = null },
             onPick = { minutes ->
                 editing = null
-                onChange(if (end == QuietEnd.FROM) quiet.copy(from = minutes) else quiet.copy(to = minutes))
+                onChange { if (end == QuietEnd.FROM) it.copy(from = minutes) else it.copy(to = minutes) }
             },
         )
     }
