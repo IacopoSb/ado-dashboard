@@ -93,15 +93,19 @@ class SettingsStore(private val dataStore: DataStore<Preferences>) {
         signInNotified = this[K.signInNotified] ?: false,
     )
 
-    /** Saving a different account restarts the baseline. */
+    /**
+     * Saving a different account restarts the baseline. Organization names are compared as Azure
+     * DevOps does, case aside (see [changeOrganization]): "Contoso" retyped as "contoso" is the same.
+     */
     suspend fun saveAccount(organization: String, method: AuthMethod, pat: String, meId: String, meName: String) {
         dataStore.edit {
-            if (it[K.org] != organization || it[K.meId] != meId) {
+            val sameOrganization = it[K.org].equals(organization, ignoreCase = true)
+            if (!sameOrganization || !it[K.meId].equals(meId, ignoreCase = true)) {
                 it[K.baseline] = 0
                 it[K.lastSync] = 0
             }
             // Another organization's projects and areas mean nothing here
-            if (it[K.org] != organization) {
+            if (!sameOrganization) {
                 it.remove(K.filters)
                 it.remove(K.views)
             }

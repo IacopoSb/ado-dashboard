@@ -49,4 +49,21 @@ class SettingsStoreTest {
         assertFalse(prefs.isOn(NotifyKind.VOTES))
         assertTrue(prefs.quiet.enabled)
     }
+
+    @Test fun `the same organization typed with other capitals keeps its views, filters and baseline`() = runBlocking {
+        store.saveAccount("Contoso", AuthMethod.ENTRA, "", "u1", "Iacopo")
+        store.editFilters { it.copy(draftsToReview = false) }
+        store.editViews { it.put(DashboardView.newSaved("Mine")) }
+        store.markSynced(1000)
+        store.saveAccount("contoso", AuthMethod.ENTRA, "", "U1", "Iacopo")
+        val s = store.current()
+        assertFalse(s.filters.draftsToReview)
+        assertTrue(s.views.saved.any { it.name == "Mine" })
+        assertEquals(1000L, s.baselineAt)
+        assertEquals("contoso", s.organization)
+
+        store.saveAccount("fabrikam", AuthMethod.ENTRA, "", "U1", "Iacopo")
+        assertEquals(Filters(), store.current().filters)
+        assertEquals(0L, store.current().baselineAt)
+    }
 }
