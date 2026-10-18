@@ -75,6 +75,11 @@ import io.github.iacoposb.adodash.sync.Snapshot
 import io.github.iacoposb.adodash.sync.SyncFailure
 import io.github.iacoposb.adodash.sync.SyncState
 import io.github.iacoposb.adodash.ui.components.PrRow
+import io.github.iacoposb.adodash.ui.components.Panel
+import io.github.iacoposb.adodash.ui.components.TextAction
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import io.github.iacoposb.adodash.update.Release
 import io.github.iacoposb.adodash.update.UpdateException
 import io.github.iacoposb.adodash.update.UpdateState
@@ -520,6 +525,22 @@ class DashboardRenderTest {
             }
         }
         compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    /** Panel headers: a long filter summary never hides the title; a short one sits at the end. */
+    @Test fun panelHeaders() {
+        compose.setContent {
+            AdoTheme(dark = false, dynamic = false) {
+                Column(Modifier.width(428.dp).padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Panel("Work items", Modifier.height(64.dp), count = 19, action = {
+                        TextAction("Mine · not closed · not Epic, Feature, Requisite, Requisites, Test, Issue", {})
+                    }) {}
+                    Panel("Pull requests", Modifier.height(64.dp), count = 6, action = { TextAction("Reviews and mine", {}) }) {}
+                    Panel("Activity", Modifier.height(64.dp)) {}
+                }
+            }
+        }
+        compose.onRoot().captureRoboImage("panel-headers.png")
     }
 
     @Test fun prRows() = prRows("pr-rows")

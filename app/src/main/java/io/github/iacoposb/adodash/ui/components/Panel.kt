@@ -38,8 +38,9 @@ fun Panel(
             Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp).heightIn(min = 48.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // The title and count keep their size; the action takes what is left, at the end
             Text(
-                title, Modifier.weight(1f, fill = false).semantics { heading() },
+                title, Modifier.semantics { heading() },
                 style = MaterialTheme.typography.titleMedium, color = AdoTheme.colors.text,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
@@ -47,8 +48,10 @@ fun Panel(
                 Spacer(Modifier.width(8.dp))
                 CountPill(count)
             }
-            Spacer(Modifier.weight(1f))
-            action()
+            Spacer(Modifier.width(8.dp))
+            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                action()
+            }
         }
         content()
     }

@@ -70,6 +70,6 @@ fun Banner(
 @Composable
 fun TextAction(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = AdoTheme.colors.primary) {
     TextButton(onClick = onClick, modifier = modifier) {
-        Text(text, style = MaterialTheme.typography.titleSmall, color = color, maxLines = 1)
+        Text(text, style = MaterialTheme.typography.titleSmall, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
