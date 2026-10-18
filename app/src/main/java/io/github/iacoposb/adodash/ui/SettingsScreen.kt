@@ -217,6 +217,9 @@ fun SettingsScreen(
         // A phone on its side: the list of sections, then one section, as upright
         val wide = maxWidth >= 840.dp && !shortScreen()
         val inSection = !wide && sectionOpen
+        // Back as the app bar's arrow: to the dashboard, or from a section to their list (the
+        // later handler goes first)
+        BackHandler(enabled = !inSection && onBack != null) { onBack?.invoke() }
         BackHandler(enabled = inSection) { sectionOpen = false }
         val filtersShown = section == SettingsSection.FILTERS && (wide || inSection) && initial.configured
         LaunchedEffect(filtersShown) { if (filtersShown) onLoadCatalog() }
