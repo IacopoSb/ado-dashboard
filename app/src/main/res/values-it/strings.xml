@@ -17,7 +17,6 @@
     <string name="empty_mine">Nessuna PR aperta</string>
     <string name="panel_activity">Attività</string>
     <string name="action_mark_all_read">Segna come lette</string>
-    <string name="empty_activity">Le novità compariranno qui</string>
     <string name="tab_work_items">Work item (%1$d)</string>
     <string name="tab_pull_requests">PR (%1$d)</string>
     <string name="tab_activity">Attività</string>
@@ -102,7 +101,7 @@
     <string name="settings_use_pat_hint">Al posto dell\'accesso con Microsoft</string>
     <string name="action_sign_in_microsoft">Accedi con Microsoft</string>
     <string name="settings_more_options">Altre opzioni</string>
-    <string name="settings_pat_hint">Permessi: Work Items (Read &amp; write), Code, Project and Team (Read)</string>
+    <string name="settings_pat_hint">Scope: Work Items (Read &amp; write), Code (Read &amp; write), Build (Read), Project and Team (Read)</string>
     <string name="action_sign_in_pat">Accedi con il PAT</string>
     <string name="settings_dashboard">Dashboard</string>
     <string name="settings_poll">Aggiornamento con l\'app aperta (secondi)</string>
@@ -659,4 +658,25 @@
     <string name="empty_activity_text">Menzioni, assegnazioni e voti compariranno qui.</string>
     <string name="empty_no_data_title">Ancora nessun dato</string>
     <string name="empty_no_data_text">I dati compariranno dopo il primo aggiornamento riuscito.</string>
+    <!-- Impostazioni › Account, con accesso -->
+    <string name="settings_entra_hint_signed_in">Servono solo per l\'accesso con Microsoft. Cambiarli richiede un nuovo accesso.</string>
+    <string name="settings_tenant_placeholder">contoso.onmicrosoft.com o GUID</string>
+    <string name="settings_guid_invalid">Non è un GUID valido: 8-4-4-4-12 cifre esadecimali</string>
+    <plurals name="settings_guid_missing">
+        <item quantity="one">(ne manca una)</item>
+        <item quantity="other">(ne mancano %d)</item>
+    </plurals>
+    <plurals name="settings_guid_extra">
+        <item quantity="one">(una di troppo)</item>
+        <item quantity="other">(%d di troppo)</item>
+    </plurals>
+    <string name="settings_tenant_invalid">Usa un GUID o un dominio come contoso.onmicrosoft.com, oppure lascialo vuoto.</string>
+    <string name="action_save_and_sign_in">Salva e accedi di nuovo</string>
+    <string name="settings_entra_permissions">Permessi API: Azure DevOps › user_impersonation (delegato).</string>
+    <string name="action_change_organization">Cambia organizzazione</string>
+    <string name="dialog_change_organization_title">Cambiare organizzazione?</string>
+    <string name="dialog_change_organization_text">Cambiare organizzazione ti fa uscire e cancella i dati locali: attività, dashboard salvata, filtri e viste di %1$s.</string>
+    <string name="action_change_and_sign_out">Cambia ed esci</string>
+    <string name="action_save_pat">Salva token</string>
+    <string name="settings_pat_saved">Salvato: inseriscine uno nuovo per sostituirlo</string>
 </resources>

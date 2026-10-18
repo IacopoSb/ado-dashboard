@@ -158,6 +158,7 @@ class MainActivity : ComponentActivity() {
                         onPatSignIn = { form, pat -> vm.signInWithPat(form, pat, close) },
                         onSavePreferences = { vm.savePreferences(it, close) },
                         onSignOut = vm::signOut,
+                        onChangeOrganization = vm::changeOrganization,
                         onBack = if (settings.configured) close else null,
                         version = vm.version,
                         update = update,

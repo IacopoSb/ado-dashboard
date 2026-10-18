@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,7 +30,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,20 +38,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
@@ -66,16 +61,12 @@ import io.github.iacoposb.adodash.ui.components.AdoTextField
 import io.github.iacoposb.adodash.ui.components.Avatar
 import io.github.iacoposb.adodash.ui.components.Banner
 import io.github.iacoposb.adodash.ui.components.BannerTone
-import io.github.iacoposb.adodash.ui.components.ButtonStyle
-import io.github.iacoposb.adodash.ui.components.CopyField
 import io.github.iacoposb.adodash.ui.components.SectionCard
 import io.github.iacoposb.adodash.ui.components.SwitchRow
-import io.github.iacoposb.adodash.ui.components.TextAction
 import io.github.iacoposb.adodash.sync.CatalogState
 import io.github.iacoposb.adodash.update.Release
 import io.github.iacoposb.adodash.update.UpdateState
 import java.io.File
-import java.net.URLDecoder
 
 data class SettingsForm(
     val organization: String,
@@ -127,16 +118,22 @@ fun SettingsScreen(
     /** The app may post notifications: Android 13+ permission granted and notifications on. */
     notificationsAllowed: Boolean = true,
     notificationActions: NotificationActions = NotificationActions(),
+    /** Confirmed in the account section: signed out, local data cleared, [String] kept as the organization. */
+    onChangeOrganization: (String) -> Unit = {},
+    /** For the screenshots: the client ID as typed, instead of the saved one. */
+    initialClientId: String? = null,
 ) {
     var organization by rememberSaveable { mutableStateOf(initial.organization) }
     var pat by rememberSaveable { mutableStateOf("") }
     var poll by rememberSaveable { mutableStateOf(initial.pollSeconds.toString()) }
     var keepOn by rememberSaveable { mutableStateOf(initial.keepScreenOn) }
-    var clientId by rememberSaveable { mutableStateOf(initial.entraClientId) }
+    var clientId by rememberSaveable { mutableStateOf(initialClientId ?: initial.entraClientId) }
     var tenantId by rememberSaveable { mutableStateOf(initial.entraTenantId) }
     var showPat by rememberSaveable { mutableStateOf(initial.authMethod == AuthMethod.PAT && initial.configured) }
+    // Signed in, the organization changes only through its confirmation: signing in again keeps it
     fun form() = SettingsForm(
-        organization.trim(), (poll.toIntOrNull() ?: 60).coerceIn(15, 3600), keepOn, clientId.trim(), tenantId.trim(),
+        if (initial.configured) initial.organization else organization.trim(),
+        (poll.toIntOrNull() ?: 60).coerceIn(15, 3600), keepOn, clientId.trim(), tenantId.trim(),
     )
 
     var section by rememberSaveable { mutableStateOf(if (showUpdate) SettingsSection.ABOUT else initialSection ?: SettingsSection.ACCOUNT) }
@@ -168,71 +165,20 @@ fun SettingsScreen(
                     }
                 })
             }
-            SettingsSection.ACCOUNT -> if (initial.configured) {
-                SettingsColumns(wide, left = {
-                    SignedInCard(initial, busy, onSignOut, buildsDenied, workItemsReadOnly)
-                })
-            } else {
-                SettingsColumns(
-                    wide,
-                    left = {
-                        SectionCard(stringResource(R.string.settings_account)) {
-                            AdoTextField(
-                                organization, { organization = it }, stringResource(R.string.settings_organization),
-                                hint = stringResource(R.string.settings_organization_hint),
-                            )
-                        }
-                        SectionCard(stringResource(R.string.settings_entra_title)) {
-                            Text(
-                                stringResource(R.string.settings_entra_hint),
-                                style = MaterialTheme.typography.bodySmall, color = AdoTheme.colors.textMuted,
-                            )
-                            AdoTextField(clientId, { clientId = it }, stringResource(R.string.settings_client_id), monospace = true)
-                            AdoTextField(
-                                tenantId, { tenantId = it }, stringResource(R.string.settings_tenant_id),
-                                hint = stringResource(R.string.settings_tenant_id_hint), monospace = true,
-                            )
-                            Row(
-                                Modifier.fillMaxWidth().padding(top = 4.dp),
-                                horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                if (busy) {
-                                    CircularProgressIndicator(Modifier.size(24.dp), color = AdoTheme.colors.primary, strokeWidth = 2.dp)
-                                    Spacer(Modifier.width(16.dp))
-                                }
-                                AdoButton(
-                                    stringResource(R.string.action_sign_in_microsoft), { onMicrosoftSignIn(form()) },
-                                    enabled = clientId.isNotBlank() && !busy && organization.isNotBlank(),
-                                )
-                            }
-                        }
-                    },
-                    right = {
-                        EntraValuesCard(redirectUri)
-                        SectionCard(stringResource(R.string.settings_more_options)) {
-                            SwitchRow(
-                                stringResource(R.string.settings_use_pat), showPat, { showPat = it },
-                                subtitle = stringResource(R.string.settings_use_pat_hint),
-                            )
-                            if (showPat) {
-                                AdoTextField(
-                                    pat, { pat = it }, stringResource(R.string.settings_pat),
-                                    hint = stringResource(R.string.settings_pat_hint),
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                                )
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                    AdoButton(
-                                        stringResource(R.string.action_sign_in_pat), { onPatSignIn(form(), pat.trim()) },
-                                        style = ButtonStyle.Tonal,
-                                        enabled = !busy && organization.isNotBlank() && pat.isNotBlank(),
-                                    )
-                                }
-                            }
-                        }
-                    },
-                )
-            }
+            SettingsSection.ACCOUNT -> AccountSection(
+                initial,
+                AccountDraft(
+                    organization, { organization = it }, clientId, { clientId = it }, tenantId, { tenantId = it },
+                    pat, { pat = it }, showPat, { showPat = it },
+                ),
+                AccountActions(
+                    onMicrosoftSignIn = { onMicrosoftSignIn(form()) },
+                    onPatSignIn = { onPatSignIn(form(), pat.trim()) },
+                    onSignOut = onSignOut,
+                    onChangeOrganization = onChangeOrganization,
+                ),
+                busy, wide, redirectUri, buildsDenied, workItemsReadOnly,
+            )
             SettingsSection.NOTIFICATIONS -> NotificationsSection(initial.notifications, notificationsAllowed, notificationActions, wide)
             SettingsSection.SCREEN -> SettingsColumns(wide, left = {
                 SectionCard(stringResource(R.string.settings_dashboard)) {
@@ -374,7 +320,7 @@ internal fun SettingsColumns(
 
 /** Who is signed in, on top of the navigation and in the account section. */
 @Composable
-private fun accountLine(settings: Settings): Pair<String, String> {
+internal fun accountLine(settings: Settings): Pair<String, String> {
     if (!settings.configured) return stringResource(R.string.settings_not_signed_in) to settings.organization
     val method = stringResource(if (settings.authMethod == AuthMethod.ENTRA) R.string.settings_auth_microsoft else R.string.settings_auth_pat)
     return settings.meName to "$method · ${settings.organization}"
@@ -426,55 +372,5 @@ private fun Navigation(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun SignedInCard(settings: Settings, busy: Boolean, onSignOut: () -> Unit, buildsDenied: Boolean, workItemsReadOnly: Boolean) {
-    val c = AdoTheme.colors
-    SectionCard(stringResource(R.string.settings_account)) {
-        val (name, detail) = accountLine(settings)
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(c.surfaceAlt)
-                .padding(start = 12.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Avatar(settings.meName)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(name, style = MaterialTheme.typography.titleSmall, color = c.text)
-                Text(detail, style = MaterialTheme.typography.bodySmall, color = c.textMuted)
-            }
-            if (!busy) TextAction(stringResource(R.string.action_sign_out), onSignOut)
-        }
-        val hints = buildList {
-            if (settings.authMethod == AuthMethod.PAT) {
-                if (buildsDenied) add(R.string.settings_pat_no_builds)
-                if (workItemsReadOnly) add(R.string.settings_pat_no_write)
-            }
-        }
-        hints.forEach { hint ->
-            Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(AdoIcons.Error, null, Modifier.size(16.dp), tint = c.warning)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(hint), style = MaterialTheme.typography.bodySmall, color = c.textMuted)
-            }
-        }
-    }
-}
-
-/** What to enter in Entra: package, signature hash and the redirect URI they make, each to copy. */
-@Composable
-private fun EntraValuesCard(uri: String) {
-    val clipboard = LocalClipboardManager.current
-    // msauth://<package>/<url-encoded hash>: Entra asks for the two parts separately
-    val pkg = uri.removePrefix("msauth://").substringBefore('/')
-    val hash = URLDecoder.decode(uri.substringAfterLast('/'), "UTF-8")
-    val copy = stringResource(R.string.action_copy)
-    SectionCard(stringResource(R.string.settings_entra_values)) {
-        Text(stringResource(R.string.settings_entra_path), style = MaterialTheme.typography.bodySmall, color = AdoTheme.colors.textMuted)
-        CopyField(stringResource(R.string.settings_package), pkg, copy, { clipboard.setText(AnnotatedString(pkg)) })
-        CopyField(stringResource(R.string.settings_signature_hash), hash, copy, { clipboard.setText(AnnotatedString(hash)) })
-        CopyField(stringResource(R.string.settings_redirect_uri), uri, copy, { clipboard.setText(AnnotatedString(uri)) })
     }
 }

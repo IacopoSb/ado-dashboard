@@ -11,6 +11,9 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
@@ -617,6 +620,39 @@ class DashboardRenderTest {
     @Config(qualifiers = "+it")
     @Test fun settingsSignedInItalian() = signedIn("settings-account-signed-in-it", section = SettingsSection.ACCOUNT)
 
+    @Test fun settingsSignedInDark() = signedIn("settings-account-signed-in-dark", section = SettingsSection.ACCOUNT, dark = true)
+
+    /** The design's client ID with a digit missing: the error under it, "Save and sign in again" off. */
+    @Test fun settingsInvalidGuid() = signedIn(
+        "settings-account-invalid-guid", section = SettingsSection.ACCOUNT, clientId = "3f2a9c1e-7b4d-4e8a-9c21-5d6e7f809a1",
+    )
+
+    @Config(qualifiers = "+it")
+    @Test fun settingsInvalidGuidItalian() = signedIn(
+        "settings-account-invalid-guid-it", section = SettingsSection.ACCOUNT, clientId = "3f2a9c1e-7b4d-4e8a-9c21-5d6e7f809a1",
+    )
+
+    /** A valid new client ID: Cancel and "Save and sign in again" on. */
+    @Test fun settingsChangedGuid() = signedIn(
+        "settings-account-changed-guid", section = SettingsSection.ACCOUNT, clientId = "9b1c4d2e-0a3f-4e5b-8c7d-6e5f4a3b2c1d",
+    )
+
+    /** Another organization typed and "Change organization" tapped: the confirmation. */
+    @Test fun settingsChangeOrganization() {
+        signedIn("settings-account-signed-in", section = SettingsSection.ACCOUNT)
+        compose.onNode(androidx.compose.ui.test.hasContentDescription(context.getString(R.string.settings_organization)))
+            .performTextReplacement("fabrikam")
+        compose.onNodeWithText(context.getString(R.string.action_change_organization)).performClick()
+        compose.waitForIdle()
+        captureScreenRoboImage("settings-account-change-organization.png")
+    }
+
+    /** Signed in with a PAT: the switch on, the token field to replace it. */
+    @Test fun settingsSignedInPat() = signedIn("settings-account-signed-in-pat", section = SettingsSection.ACCOUNT, pat = true)
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun settingsPhoneSignedInAccount() = signedIn("settings-phone-account-signed-in", section = SettingsSection.ACCOUNT)
+
     /** A PAT without Build (read): the hint under the account. */
     @Test fun settingsPatNoBuilds() =
         signedIn("settings-account-pat-no-builds", section = SettingsSection.ACCOUNT, pat = true, buildsDenied = true)
@@ -746,16 +782,22 @@ class DashboardRenderTest {
         pat: Boolean = false,
         buildsDenied: Boolean = false,
         workItemsReadOnly: Boolean = false,
+        /** The client ID as typed over the saved one. */
+        clientId: String? = null,
+        dark: Boolean = false,
     ) {
         compose.setContent {
-            AdoTheme(dark = false, dynamic = false) {
+            AdoTheme(dark = dark, dynamic = false) {
                 SettingsScreen(
                     Settings(
                         organization = "contoso", meId = "u1", meName = "Iacopo Sbalchiero",
                         authMethod = if (pat) AuthMethod.PAT else AuthMethod.ENTRA, pat = if (pat) "x" else "",
+                        entraClientId = "3f2a9c1e-7b4d-4e8a-9c21-5d6e7f809a1b",
                     ),
                     busy = false, message = null, {}, { _, _ -> }, {}, {}, onBack = {},
+                    redirectUri = "msauth://io.github.iacoposb.adodash/Xo8WBi6jzSxKDVR4drqm84yr9iU%3D",
                     version = "0.0.2", initialSection = section, buildsDenied = buildsDenied, workItemsReadOnly = workItemsReadOnly,
+                    initialClientId = clientId,
                 )
             }
         }

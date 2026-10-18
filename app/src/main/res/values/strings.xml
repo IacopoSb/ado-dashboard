@@ -19,7 +19,6 @@
     <string name="empty_mine">No open pull requests</string>
     <string name="panel_activity">Activity</string>
     <string name="action_mark_all_read">Mark all as read</string>
-    <string name="empty_activity">New activity will appear here</string>
     <string name="tab_work_items">Work items (%1$d)</string>
     <string name="tab_pull_requests">PRs (%1$d)</string>
     <string name="tab_activity">Activity</string>
@@ -87,7 +86,7 @@
     <string name="settings_not_signed_in">Not signed in</string>
     <string name="settings_account">Azure DevOps account</string>
     <string name="settings_auth_microsoft">Microsoft account</string>
-    <string name="settings_auth_pat" translatable="false">PAT</string>
+    <string name="settings_auth_pat" translatable="false">Personal access token</string>
     <string name="action_sign_out">Sign out</string>
     <string name="settings_organization">Organization</string>
     <string name="settings_organization_hint">The name in dev.azure.com/&lt;organization&gt;, or the full URL</string>
@@ -105,7 +104,7 @@
     <string name="action_sign_in_microsoft">Sign in with Microsoft</string>
     <string name="settings_more_options">More options</string>
     <string name="settings_pat" translatable="false">Personal Access Token</string>
-    <string name="settings_pat_hint">Permissions: Work Items (Read &amp; write), Code, Project and Team (Read)</string>
+    <string name="settings_pat_hint">Scopes: Work Items (Read &amp; write), Code (Read &amp; write), Build (Read), Project and Team (Read)</string>
     <string name="action_sign_in_pat">Sign in with PAT</string>
     <string name="settings_dashboard">Dashboard</string>
     <string name="settings_poll">Refresh interval while open (seconds)</string>
@@ -660,4 +659,25 @@
     <string name="empty_activity_text">Mentions, assignments and votes will appear here.</string>
     <string name="empty_no_data_title">No data yet</string>
     <string name="empty_no_data_text">The data will appear after the first successful update.</string>
+    <!-- Settings › Account, signed in -->
+    <string name="settings_entra_hint_signed_in">Only needed to sign in with Microsoft. Changing them requires signing in again.</string>
+    <string name="settings_tenant_placeholder">contoso.onmicrosoft.com or GUID</string>
+    <string name="settings_guid_invalid">Not a valid GUID: 8-4-4-4-12 hexadecimal digits</string>
+    <plurals name="settings_guid_missing">
+        <item quantity="one">(one missing)</item>
+        <item quantity="other">(%d missing)</item>
+    </plurals>
+    <plurals name="settings_guid_extra">
+        <item quantity="one">(one too many)</item>
+        <item quantity="other">(%d too many)</item>
+    </plurals>
+    <string name="settings_tenant_invalid">Use a GUID or a domain such as contoso.onmicrosoft.com, or leave it empty.</string>
+    <string name="action_save_and_sign_in">Save and sign in again</string>
+    <string name="settings_entra_permissions">API permissions: Azure DevOps › user_impersonation (delegated).</string>
+    <string name="action_change_organization">Change organization</string>
+    <string name="dialog_change_organization_title">Change organization?</string>
+    <string name="dialog_change_organization_text">Changing organization signs you out and clears local data: the activity, the saved dashboard, the filters and the views of %1$s.</string>
+    <string name="action_change_and_sign_out">Change and sign out</string>
+    <string name="action_save_pat">Save token</string>
+    <string name="settings_pat_saved">Saved: enter a new one to replace it</string>
 </resources>

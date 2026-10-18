@@ -396,8 +396,15 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
 
     /** Interactive Microsoft sign-in, then checks the token against the organization. */
     fun signInWithMicrosoft(activity: Activity, form: SettingsForm, onDone: () -> Unit, onError: (String) -> Unit = {}) = connect(form, onDone, onError) {
+        val before = app.settings.current()
         app.settings.saveEntraConfig(form.entraClientId, form.entraTenantId)
-        app.entra.signIn(activity)
+        try {
+            app.entra.signIn(activity)
+        } catch (e: Exception) {
+            // New IDs that do not sign in: the registration that worked stays
+            app.settings.saveEntraConfig(before.entraClientId, before.entraTenantId)
+            throw e
+        }
         AuthMethod.ENTRA to ""
     }
 
@@ -423,13 +430,26 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     }
 
     fun signOut() {
+        viewModelScope.launch { signOutNow() }
+    }
+
+    /**
+     * Another organization, confirmed in the account settings: signed out, its local data
+     * cleared (activity, saved snapshots, filters and views), the new one kept for the sign-in.
+     */
+    fun changeOrganization(organization: String) {
         viewModelScope.launch {
-            runCatching { app.entra.signOut() }
-            app.catalog.forget()
-            pipelinesController.forget()
-            app.sync.reset()
-            app.settings.signOut()
+            signOutNow()
+            app.settings.changeOrganization(organization)
         }
+    }
+
+    private suspend fun signOutNow() {
+        runCatching { app.entra.signOut() }
+        app.catalog.forget()
+        pipelinesController.forget()
+        app.sync.reset()
+        app.settings.signOut()
     }
 
     private fun connect(
