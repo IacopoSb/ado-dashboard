@@ -618,4 +618,29 @@
     <string name="sound_none">Nessuno</string>
     <string name="sounds_system_settings">Apri le impostazioni di notifica di sistema</string>
     <string name="action_ok">OK</string>
+    <!-- Home screen widgets -->
+    <string name="widget_small_name">Contatori</string>
+    <string name="widget_small_description">Pull request da revisionare, work item e menzioni non lette</string>
+    <string name="widget_large_name">Contatori e menzioni</string>
+    <string name="widget_large_description">Pull request da revisionare, work item, build fallite e ultime menzioni</string>
+    <string name="widget_to_review">da revisionare</string>
+    <string name="widget_work_items">work item</string>
+    <string name="widget_mentions">menzioni</string>
+    <plurals name="widget_builds_failed">
+        <item quantity="one">build fallita</item>
+        <item quantity="other">build fallite</item>
+    </plurals>
+    <string name="widget_latest_mentions">Ultime menzioni</string>
+    <string name="widget_no_mentions">Nessuna menzione</string>
+    <string name="widget_sign_in">Accedi ad ADO Dashboard</string>
+    <string name="widget_waiting">In attesa della prima sincronizzazione</string>
+    <string name="widget_updating">Aggiornamento…</string>
+    <string name="widget_refresh">Aggiorna</string>
+    <string name="widget_age_now">ora</string>
+    <string name="widget_age_minutes">%1$d min</string>
+    <string name="widget_age_hours">%1$d h</string>
+    <string name="widget_age_days">%1$d g</string>
+    <string name="widget_preview_build_failed">build fallita</string>
+    <string name="widget_preview_mention_context">PR !311 · va bene il backoff esponenziale?</string>
+    <string name="widget_preview_mention_context_2">#4812 · riesci a riprodurlo con guest01?</string>
 </resources>

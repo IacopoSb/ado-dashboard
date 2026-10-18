@@ -49,6 +49,7 @@ object Events {
                     at = it.createdAt.toEpochMilli(),
                     project = wi.project,
                     area = wi.areaPath,
+                    author = it.author.name,
                 )
             }
         }
@@ -117,6 +118,7 @@ object Events {
         hidden = true,
         project = item.project,
         area = item.areaPath,
+        author = comment.author.name.ifBlank { me.name },
     )
 
     /**
@@ -162,6 +164,7 @@ object Events {
             url = pr.url,
             at = c.publishedAt.toEpochMilli(),
             project = pr.project,
+            author = c.author.name,
         )
     }
 

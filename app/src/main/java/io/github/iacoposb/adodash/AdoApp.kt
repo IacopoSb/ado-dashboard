@@ -16,10 +16,16 @@ import io.github.iacoposb.adodash.sync.ResourceSyncTexts
 import io.github.iacoposb.adodash.sync.SyncRepository
 import io.github.iacoposb.adodash.sync.SyncWorker
 import io.github.iacoposb.adodash.update.Updater
+import io.github.iacoposb.adodash.widget.WidgetStore
+import io.github.iacoposb.adodash.widget.Widgets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -29,7 +35,7 @@ class AdoApp : Application() {
     /** Work that outlives the screens, such as an update download. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val database by lazy { Room.databaseBuilder(this, AppDatabase::class.java, "ado.db")
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_3_4)
             .build() }
     val settings by lazy { SettingsStore(this) }
     private val notifier by lazy { Notifier(this) }
@@ -42,9 +48,15 @@ class AdoApp : Application() {
             settings, database.events(), { events, s -> notifier.notify(events, s.notifications) }, ResourceSyncTexts(this),
             apiFor = { AdoClient(it.organization, authorization(it)) },
             onSynced = { s, snapshot ->
-                // Only a convenience for the filters: never a reason for the sync to fail
+                // Only conveniences for the filters and the widgets: never a reason for the sync to fail
                 try {
                     catalog.synced(s.organization, snapshot.workItems.map { it.type }.toSet()) { catalogApi(s) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
+                try {
+                    widgets.synced(s, snapshot, database.events().recentOnce())
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -52,6 +64,8 @@ class AdoApp : Application() {
             },
         )
     }
+
+    val widgets by lazy { Widgets(this, WidgetStore(File(filesDir, "widget-summary.json")), settings) }
 
     /** For calls outside a sync, such as the build details. */
     fun api(s: Settings): AdoApi = AdoClient(s.organization, authorization(s))
@@ -66,11 +80,19 @@ class AdoApp : Application() {
         AuthMethod.PAT -> AdoClient.pat(s.pat)
     }
 
+    @OptIn(FlowPreview::class)
     override fun onCreate() {
         super.onCreate()
         // At start (also renaming the channels after a language change) and at every change
         scope.launch {
             settings.settings.map { it.notifications }.distinctUntilChanged().collect { notifier.createChannels(it) }
+        }
+        // Mentions read or stored, filters changed, signed in or out: the widgets follow
+        scope.launch {
+            val shown = settings.settings.distinctUntilChanged { a, b -> a.configured == b.configured && a.filters == b.filters }
+            combine(shown, database.events().recent()) { s, events -> s to events }
+                .debounce(500)
+                .collectLatest { (s, events) -> widgets.eventsChanged(s, events) }
         }
         SyncWorker.schedule(this)
         scope.launch { updater.checkIfDue() }

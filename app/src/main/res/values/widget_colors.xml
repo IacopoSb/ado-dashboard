@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The design tokens (docs/design/tokens.css) for the widget picker's previews -->
+<resources>
+    <color name="widget_surface">#FFFFFF</color>
+    <color name="widget_surface_alt">#EEF1F5</color>
+    <color name="widget_text">#1A1C20</color>
+    <color name="widget_text_muted">#5C6370</color>
+    <color name="widget_text_faint">#8A919C</color>
+    <color name="widget_primary">#0067B8</color>
+    <color name="widget_danger">#C42B30</color>
+</resources>

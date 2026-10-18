@@ -44,6 +44,8 @@ class EventsTest {
         assertEquals(listOf("wi:7:c1"), events.map { it.key })
         assertEquals(EventKind.MENTION, events.single().kind)
         assertEquals("Work item 7\n@Iacopo puoi guardare?", events.single().body)
+        // For the widgets' latest mentions
+        assertEquals(anna.name, events.single().author)
     }
 
     @Test fun `a comment posted from the app is stored as seen and never notified`() {
@@ -95,6 +97,7 @@ class EventsTest {
         assertTrue("pr:2:t21:c1" !in byKey)
         assertEquals(EventKind.MENTION, byKey.getValue("pr:2:t22:c1").kind)
         assertTrue(byKey.getValue("pr:2:t22:c1").body.endsWith("@Iacopo Sbalchiero che ne pensi?"))
+        assertTrue(byKey.getValue("pr:2:t22:c1").author!!.isNotBlank())
         assertEquals(EventKind.PR_REVIEW, byKey.getValue("pr:2:review").kind)
     }
 

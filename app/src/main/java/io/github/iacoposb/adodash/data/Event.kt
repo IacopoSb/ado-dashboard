@@ -38,6 +38,8 @@ data class Event(
     val project: String? = null,
     /** Area path of a work item; null for pull requests, which have none. */
     val area: String? = null,
+    /** Who wrote a comment or a mention, for the widgets; null for the rest and before v4. */
+    val author: String? = null,
 ) {
     /** The build of a [EventKind.BUILD_FAILED] event, in [project]. */
     val buildId: Int?
@@ -84,6 +86,10 @@ interface EventDao {
     fun recent(limit: Int = 200): Flow<List<Event>>
 
     /** Row ids, -1 for events already known. */
+    /** The same as [recent], once: for the widgets, outside any screen. */
+    @Query("SELECT * FROM events WHERE hidden = 0 ORDER BY at DESC LIMIT :limit")
+    suspend fun recentOnce(limit: Int = 200): List<Event>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertNew(events: List<Event>): List<Long>
 
@@ -103,7 +109,7 @@ interface EventDao {
     suspend fun prune(before: Long)
 }
 
-@Database(entities = [Event::class], version = 3, exportSchema = false)
+@Database(entities = [Event::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun events(): EventDao
 
@@ -121,6 +127,13 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE events ADD COLUMN project TEXT")
                 db.execSQL("ALTER TABLE events ADD COLUMN area TEXT")
+            }
+        }
+
+        /** v4 knows who wrote a comment, for the widgets' latest mentions. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE events ADD COLUMN author TEXT")
             }
         }
     }

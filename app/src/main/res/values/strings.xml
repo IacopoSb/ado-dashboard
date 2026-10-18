@@ -616,4 +616,32 @@
     <string name="sound_none">None</string>
     <string name="sounds_system_settings">Open system notification settings</string>
     <string name="action_ok">OK</string>
+    <!-- Home screen widgets -->
+    <string name="widget_small_name">Counters</string>
+    <string name="widget_small_description">Pull requests to review, work items and unread mentions</string>
+    <string name="widget_large_name">Counters and mentions</string>
+    <string name="widget_large_description">Pull requests to review, work items, failed builds and the latest mentions</string>
+    <string name="widget_title" translatable="false">Azure DevOps</string>
+    <string name="widget_title_organization" translatable="false">Azure DevOps · %1$s</string>
+    <string name="widget_to_review">to review</string>
+    <string name="widget_work_items">work items</string>
+    <string name="widget_mentions">mentions</string>
+    <plurals name="widget_builds_failed">
+        <item quantity="one">build failed</item>
+        <item quantity="other">builds failed</item>
+    </plurals>
+    <string name="widget_latest_mentions">Latest mentions</string>
+    <string name="widget_no_mentions">No mentions</string>
+    <string name="widget_sign_in">Sign in to ADO Dashboard</string>
+    <string name="widget_waiting">Waiting for the first sync</string>
+    <string name="widget_updating">Updating…</string>
+    <string name="widget_refresh">Refresh</string>
+    <string name="widget_age_now">now</string>
+    <string name="widget_age_minutes">%1$d min</string>
+    <string name="widget_age_hours">%1$d h</string>
+    <string name="widget_age_days">%1$d d</string>
+    <!-- Widget picker previews: sample data -->
+    <string name="widget_preview_build_failed">build failed</string>
+    <string name="widget_preview_mention_context">PR !311 · is the exponential backoff OK?</string>
+    <string name="widget_preview_mention_context_2">#4812 · can you reproduce it with guest01?</string>
 </resources>
