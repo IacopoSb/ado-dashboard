@@ -119,7 +119,8 @@ data class PrFilesState(
 /** The files by folder, folders and files in path order. Pure. */
 object PrFileList {
     fun groups(changes: List<PrFileChange>): List<Pair<String, List<PrFileChange>>> =
-        changes.groupBy { it.folder }.toSortedMap(String.CASE_INSENSITIVE_ORDER)
+        // Case aside first, but /Docs and /docs stay two folders: a git repository can hold both
+        changes.groupBy { it.folder }.toSortedMap(String.CASE_INSENSITIVE_ORDER.thenComparing(naturalOrder()))
             .map { (folder, files) -> folder to files.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }) }
 
     fun ordered(changes: List<PrFileChange>): List<PrFileChange> = groups(changes).flatMap { it.second }
