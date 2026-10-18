@@ -48,6 +48,7 @@ class SyncRepository(
     /** A sync refused for the credentials (expired session, PAT refused), with its settings. */
     private val onSignInRequired: suspend (Settings) -> Unit = {},
     private val log: (String) -> Unit = { android.util.Log.i("AdoSync", it) },
+    private val clock: () -> Instant = Instant::now,
 ) {
     private val mutex = Mutex()
     private val stateCategories = mutableMapOf<String, Map<String, String>>()
@@ -93,7 +94,7 @@ class SyncRepository(
         if (!s.configured) return
         _state.update { it.copy(syncing = true) }
         try {
-            val now = Instant.now()
+            val now = clock()
             val fetched = SyncEngine(apiFor(s), stateCategories, teamAreas, texts = texts, cache = signalCache).fetch(
                 me = Identity(s.meId, s.meName),
                 since = s.lastSyncAt.takeIf { it > 0 }?.let(Instant::ofEpochMilli),
@@ -104,8 +105,12 @@ class SyncRepository(
             val firstSync = s.baselineAt == 0L
             val found = Events.from(fetched, if (firstSync) now else Instant.ofEpochMilli(s.baselineAt), texts)
             val (history, news) = Events.splitHistory(found, firstSync, s.lastSyncAt, s.filtersChangedAt)
-            if (history.isNotEmpty()) events.insertNew(history.map { it.copy(read = true, hidden = true) })
-            if (!firstSync) notify(store(news), s)
+            val stamp = now.toEpochMilli()
+            if (history.isNotEmpty()) events.insertNew(history.map { it.copy(read = true, hidden = true, storedAt = stamp) })
+            if (!firstSync) notify(store(news, now), s)
+            // What this sync found again stays known, however long ago it happened: forgotten,
+            // it would be stored and notified again at the next sync
+            found.map { it.key }.distinct().chunked(KEYS_PER_QUERY).forEach { events.touch(it, stamp) }
             events.prune(before = now.minus(RETENTION).toEpochMilli())
             if (fetched.snapshot.buildsDenied != buildsDenied) {
                 buildsDenied = fetched.snapshot.buildsDenied
@@ -143,20 +148,36 @@ class SyncRepository(
     /**
      * Stores [found] and returns what is new and worth notifying. Comments
      * on a PR I was just added to are history, not news: stored as read,
-     * mentions excepted.
+     * mentions excepted. So are comments older than what the app keeps: those were seen
+     * (or forgotten) long ago.
      */
-    private suspend fun store(found: List<Event>): List<Event> {
+    private suspend fun store(found: List<Event>, now: Instant): List<Event> {
+        val stamp = now.toEpochMilli()
+        val old = now.minus(RETENTION).toEpochMilli()
         val (primary, rest) = found.partition { it.kind == EventKind.ASSIGNED || it.kind == EventKind.PR_REVIEW }
-        val newPrimary = inserted(primary)
+        val newPrimary = inserted(primary, stamp)
         val newReviewPrs = newPrimary.filter { it.kind == EventKind.PR_REVIEW }.map { prId(it.key) }.toSet()
         val newRest = inserted(
-            rest.map { if (it.kind == EventKind.PR_COMMENT && prId(it.key) in newReviewPrs) it.copy(read = true) else it },
+            rest.map {
+                val history = it.kind == EventKind.PR_COMMENT && prId(it.key) in newReviewPrs
+                if (history || it.at < old) it.copy(read = true) else it
+            },
+            stamp,
         )
         return newPrimary + newRest.filterNot { it.read }
     }
 
-    private suspend fun inserted(list: List<Event>): List<Event> =
-        if (list.isEmpty()) emptyList() else list.zip(events.insertNew(list)).filter { it.second != -1L }.map { it.first }
+    private suspend fun inserted(list: List<Event>, stamp: Long): List<Event> {
+        if (list.isEmpty()) return emptyList()
+        val stamped = list.map { it.copy(storedAt = stamp) }
+        return stamped.zip(events.insertNew(stamped)).filter { it.second != -1L }.map { it.first }
+    }
+
+    /** Stored now, for the pruning. */
+    private suspend fun insertNow(list: List<Event>) {
+        val stamp = clock().toEpochMilli()
+        events.insertNew(list.map { it.copy(storedAt = stamp) })
+    }
 
     private fun prId(key: String) = key.removePrefix("pr:").substringBefore(':')
 
@@ -169,7 +190,7 @@ class SyncRepository(
     suspend fun applyOwnChange(detail: WorkItemDetail, assignedToMe: Boolean) {
         val item = detail.item
         if (assignedToMe) {
-            events.insertNew(
+            insertNow(
                 listOf(
                     Event(
                         key = "wi:${item.id}:assigned",
@@ -201,7 +222,7 @@ class SyncRepository(
     /** A comment I posted from the app: never notified back to me (see [Events.ownComment]). */
     suspend fun applyOwnComment(item: WorkItem, comment: Comment) {
         val s = settings.current()
-        events.insertNew(listOf(Events.ownComment(item, comment, Identity(s.meId, s.meName), texts)))
+        insertNow(listOf(Events.ownComment(item, comment, Identity(s.meId, s.meName), texts)))
     }
 
     /**
@@ -216,7 +237,7 @@ class SyncRepository(
     suspend fun applyOwnPrComments(pr: PullRequest, thread: PrThread) {
         val s = settings.current()
         val found = Events.ownPrThread(pr, thread, Identity(s.meId, s.meName), texts)
-        if (found.isNotEmpty()) events.insertNew(found)
+        if (found.isNotEmpty()) insertNow(found)
     }
 
     suspend fun markRead(key: String) = events.markRead(key)
@@ -236,5 +257,7 @@ class SyncRepository(
 
     companion object {
         private val RETENTION = Duration.ofDays(30)
+        /** Under SQLite's oldest limit of 999 variables per statement. */
+        private const val KEYS_PER_QUERY = 500
     }
 }

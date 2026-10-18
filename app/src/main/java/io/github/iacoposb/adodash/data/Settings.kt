@@ -1,6 +1,7 @@
 package io.github.iacoposb.adodash.data
 
 import android.content.Context
+import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -46,7 +47,10 @@ data class Settings(
 
 private val Context.dataStore by preferencesDataStore("settings")
 
-class SettingsStore(private val context: Context) {
+/** The settings in [dataStore]: the app's own file, or another one in the tests. */
+class SettingsStore(private val dataStore: DataStore<Preferences>) {
+    constructor(context: Context) : this(context.dataStore)
+
     private object K {
         val org = stringPreferencesKey("organization")
         val auth = stringPreferencesKey("auth_method")
@@ -66,7 +70,7 @@ class SettingsStore(private val context: Context) {
         val signInNotified = booleanPreferencesKey("sign_in_notified")
     }
 
-    val settings: Flow<Settings> = context.dataStore.data.map { it.toSettings() }
+    val settings: Flow<Settings> = dataStore.data.map { it.toSettings() }
 
     suspend fun current(): Settings = settings.first()
 
@@ -91,7 +95,7 @@ class SettingsStore(private val context: Context) {
 
     /** Saving a different account restarts the baseline. */
     suspend fun saveAccount(organization: String, method: AuthMethod, pat: String, meId: String, meName: String) {
-        context.dataStore.edit {
+        dataStore.edit {
             if (it[K.org] != organization || it[K.meId] != meId) {
                 it[K.baseline] = 0
                 it[K.lastSync] = 0
@@ -111,14 +115,14 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun savePreferences(pollSeconds: Int, keepScreenOn: Boolean) {
-        context.dataStore.edit {
+        dataStore.edit {
             it[K.poll] = pollSeconds
             it[K.keepOn] = keepScreenOn
         }
     }
 
     suspend fun saveFilters(filters: Filters, at: Long = System.currentTimeMillis()) {
-        context.dataStore.edit {
+        dataStore.edit {
             it[K.filters] = filters.encode()
             it[K.filtersChanged] = at
         }
@@ -126,17 +130,17 @@ class SettingsStore(private val context: Context) {
 
     /** Changes the views as they are stored now, so that two quick changes never undo each other. */
     suspend fun editViews(change: (ViewSet) -> ViewSet) {
-        context.dataStore.edit { it[K.views] = change(ViewSet.decode(it[K.views])).encode() }
+        dataStore.edit { it[K.views] = change(ViewSet.decode(it[K.views])).encode() }
     }
 
     /** Changes the notification settings as they are stored now (see [editViews]). */
     suspend fun editNotifications(change: (NotificationPrefs) -> NotificationPrefs) {
-        context.dataStore.edit { it[K.notifications] = change(NotificationPrefs.decode(it[K.notifications])).encode() }
+        dataStore.edit { it[K.notifications] = change(NotificationPrefs.decode(it[K.notifications])).encode() }
     }
 
     /** Identifiers, not secrets: stored in clear. */
     suspend fun saveEntraConfig(clientId: String, tenantId: String) {
-        context.dataStore.edit {
+        dataStore.edit {
             it[K.entraClient] = clientId
             it[K.entraTenant] = tenantId
         }
@@ -144,7 +148,7 @@ class SettingsStore(private val context: Context) {
 
     /** Back to the sign-in screen, keeping the organization and preferences. */
     suspend fun signOut() {
-        context.dataStore.edit {
+        dataStore.edit {
             it.remove(K.pat)
             it.remove(K.meId)
             it.remove(K.meName)
@@ -155,7 +159,7 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun setSignInNotified(notified: Boolean) {
-        context.dataStore.edit { if (notified) it[K.signInNotified] = true else it.remove(K.signInNotified) }
+        dataStore.edit { if (notified) it[K.signInNotified] = true else it.remove(K.signInNotified) }
     }
 
     /**
@@ -163,7 +167,7 @@ class SettingsStore(private val context: Context) {
      * start from the defaults, as [saveAccount] does for a new account.
      */
     suspend fun changeOrganization(organization: String) {
-        context.dataStore.edit {
+        dataStore.edit {
             if (!it[K.org].equals(organization, ignoreCase = true)) {
                 it.remove(K.filters)
                 it.remove(K.views)
@@ -175,7 +179,7 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun markSynced(at: Long) {
-        context.dataStore.edit {
+        dataStore.edit {
             if ((it[K.baseline] ?: 0) == 0L) it[K.baseline] = at
             it[K.lastSync] = at
         }

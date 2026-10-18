@@ -40,6 +40,11 @@ data class Event(
     val area: String? = null,
     /** Who wrote a comment or a mention, for the widgets; null for the rest and before v4. */
     val author: String? = null,
+    /**
+     * When the app stored it, or last found it again in a sync (epoch ms): what is pruned goes by
+     * this, never by [at], which can be long before the event reached the app. 0 until stored.
+     */
+    val storedAt: Long = 0,
 ) {
     /** The build of a [EventKind.BUILD_FAILED] event, in [project]. */
     val buildId: Int?
@@ -85,11 +90,15 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE hidden = 0 ORDER BY at DESC LIMIT :limit")
     fun recent(limit: Int = 200): Flow<List<Event>>
 
-    /** Row ids, -1 for events already known. */
     /** The same as [recent], once: for the widgets, outside any screen. */
     @Query("SELECT * FROM events WHERE hidden = 0 ORDER BY at DESC LIMIT :limit")
     suspend fun recentOnce(limit: Int = 200): List<Event>
 
+    /** Every event's key, the hidden ones too. */
+    @Query("SELECT `key` FROM events")
+    suspend fun keys(): List<String>
+
+    /** Row ids, -1 for events already known. */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertNew(events: List<Event>): List<Long>
 
@@ -105,11 +114,16 @@ interface EventDao {
     @Query("DELETE FROM events")
     suspend fun clear()
 
-    @Query("DELETE FROM events WHERE at < :before")
+    /** [keys] were found again by a sync: kept for another retention period of the sync. */
+    @Query("UPDATE events SET storedAt = :at WHERE `key` IN (:keys)")
+    suspend fun touch(keys: List<String>, at: Long)
+
+    /** Forgets what was neither stored nor found again since [before]. */
+    @Query("DELETE FROM events WHERE storedAt < :before")
     suspend fun prune(before: Long)
 }
 
-@Database(entities = [Event::class], version = 4, exportSchema = false)
+@Database(entities = [Event::class], version = 5, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun events(): EventDao
 
@@ -136,5 +150,18 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE events ADD COLUMN author TEXT")
             }
         }
+
+        /**
+         * v5 prunes by when the app stored an event, not by when it happened: what is stored now
+         * counts as stored at the update, so nothing is forgotten (and notified again) because of it.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE events ADD COLUMN storedAt INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE events SET storedAt = ?", arrayOf<Any>(System.currentTimeMillis()))
+            }
+        }
+
+        val MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
     }
 }
