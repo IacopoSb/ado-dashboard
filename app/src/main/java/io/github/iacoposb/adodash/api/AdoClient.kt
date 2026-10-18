@@ -702,10 +702,11 @@ class AdoClient(
                     if (limit != null && response.isSuccessful && length > limit) throw AdoException(TOO_LARGE, "Too large")
                     val body = response.body?.string().orEmpty()
                     if (limit != null && response.isSuccessful && body.length > limit) throw AdoException(TOO_LARGE, "Too large")
-                    // An expired PAT gets a 203 with the sign-in page instead of a 401
+                    // An expired PAT gets a 203 with the sign-in page instead of a 401; a proxy's
+                    // error page (502, 503…) is HTML too, but no reason to doubt the credentials
                     val isHtml = response.header("Content-Type")?.startsWith("text/html") == true
                     when {
-                        response.code == 401 || response.code == 203 || isHtml ->
+                        response.code == 401 || response.code == 203 || (isHtml && response.isSuccessful) ->
                             throw AdoException(401, "Invalid or expired credentials")
                         !response.isSuccessful -> throw AdoException(response.code, errorMessage(response.code, body))
                     }

@@ -7,6 +7,7 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -160,6 +161,19 @@ class AdoClientTest {
         server.enqueue(MockResponse().setResponseCode(203).setHeader("Content-Type", "text/html").setBody("<html/>"))
         val e = assertThrows(AdoException::class.java) { kotlinx.coroutines.runBlocking { client.me() } }
         assertEquals(401, e.code)
+    }
+
+    @Test fun `the sign-in page with a 200 is an auth error too`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setHeader("Content-Type", "text/html; charset=utf-8").setBody("<html/>"))
+        val e = assertThrows(AdoException::class.java) { kotlinx.coroutines.runBlocking { client.me() } }
+        assertEquals(401, e.code)
+    }
+
+    @Test fun `a proxy's error page keeps its status, not a refusal of the credentials`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(502).setHeader("Content-Type", "text/html").setBody("<html>Bad Gateway</html>"))
+        val e = assertThrows(AdoException::class.java) { kotlinx.coroutines.runBlocking { client.me() } }
+        assertEquals(502, e.code)
+        assertFalse(e.isDenied)
     }
 
     @Test fun `team field values become the board's area paths`() = runTest {
