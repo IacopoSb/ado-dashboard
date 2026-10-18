@@ -733,6 +733,7 @@ private fun checkText(kind: CheckKind, state: CheckState): String = when (kind) 
         stringResource(res, name).replace(Regex("\\s+"), " ")
     }
     is CheckKind.Reviewers -> pluralStringResource(R.plurals.pr_check_reviewers, kind.approvals, kind.approvals, kind.required)
+    is CheckKind.RequiredReviewers -> stringResource(R.string.pr_check_required_reviewers, kind.approvals, kind.required)
     is CheckKind.Comments -> when {
         kind.active == null -> stringResource(R.string.pr_check_comments)
         kind.active > 0 -> stringResource(R.string.pr_check_comments_active, kind.active)

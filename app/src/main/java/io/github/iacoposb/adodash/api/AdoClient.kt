@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -286,6 +287,9 @@ class AdoClient(
                 displayName = ((settings?.get("displayName") as? JsonPrimitive)?.contentOrNull
                     ?: (context?.get("buildDefinitionName") as? JsonPrimitive)?.contentOrNull)?.takeIf { n -> n.isNotBlank() },
                 minApprovers = (settings?.get("minimumApproverCount") as? JsonPrimitive)?.intOrNull,
+                requiredReviewerIds = (settings?.get("requiredReviewerIds") as? JsonArray)
+                    ?.mapNotNull { id -> (id as? JsonPrimitive)?.contentOrNull }.orEmpty(),
+                creatorVoteCounts = (settings?.get("creatorVoteCounts") as? JsonPrimitive)?.booleanOrNull == true,
                 completedAt = it.completedDate?.let(::instantOrNull),
             )
         }
@@ -835,8 +839,11 @@ private fun CommentDto.toComment(): Comment {
     val vote: Int = 0,
     val isRequired: Boolean = false,
     val isContainer: Boolean = false,
+    val votedFor: List<ReviewerRefDto> = emptyList(),
 )
-private fun ReviewerDto.toReviewer() = Reviewer(id, displayName, vote, isRequired, group = isContainer)
+@Serializable private data class ReviewerRefDto(val id: String = "")
+private fun ReviewerDto.toReviewer() =
+    Reviewer(id, displayName, vote, isRequired, group = isContainer, votedFor = votedFor.map { it.id }.filter { it.isNotEmpty() })
 @Serializable private data class RepositoryDto(val id: String, val name: String, val project: ProjectRefDto)
 @Serializable private data class ProjectRefDto(val id: String = "", val name: String)
 @Serializable private data class CommitRefDto(val commitId: String = "")

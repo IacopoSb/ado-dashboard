@@ -60,4 +60,74 @@ class PrChecksTest {
         assertEquals(CheckState.FAILED, PrChecks.of(pr.copy(mergeStatus = "conflicts"), emptyList(), 0, emptyList()).single().state)
         assertEquals(emptyList<CheckRow>(), PrChecks.of(pr.copy(mergeStatus = null), emptyList(), 0, emptyList()))
     }
+
+    private fun required(ids: List<String>, minimum: Int? = null, creatorVoteCounts: Boolean = false) = PolicyEvaluation(
+        PolicyEvaluation.REQUIRED_REVIEWERS_POLICY, "Required reviewers", blocking = true, enabled = true, status = "queued",
+        minApprovers = minimum, requiredReviewerIds = ids, creatorVoteCounts = creatorVoteCounts,
+    )
+
+    @Test fun `required reviewers without a minimum, each one named must approve`() {
+        val pr = Fakes.pr(
+            311, anna,
+            reviewers = listOf(
+                Reviewer(marco.id, marco.name, Vote.APPROVED_WITH_SUGGESTIONS, true),
+                Reviewer("luca", "Luca", Vote.WAITING, true),
+                Reviewer("other", "Other", Vote.APPROVED, false),
+            ),
+        )
+        val row = PrChecks.of(pr, listOf(required(listOf(marco.id.uppercase(), "luca"))), 0, emptyList()).single()
+        assertEquals(CheckKind.RequiredReviewers(approvals = 1, required = 2), row.kind)
+        assertEquals(CheckState.WAITING, row.state)
+    }
+
+    @Test fun `a group named is approved by one of its members`() {
+        val pr = Fakes.pr(
+            311, anna,
+            reviewers = listOf(
+                Reviewer("team", "[Contoso]\\Backend", Vote.APPROVED, true, group = true),
+                Reviewer(marco.id, marco.name, Vote.APPROVED, false, votedFor = listOf("team")),
+            ),
+        )
+        assertEquals(CheckKind.RequiredReviewers(1, 1), PrChecks.requiredReviewers(pr, required(listOf("team"))))
+        // The group's vote alone, with nobody voting for it, is not an approval of a person
+        val alone = pr.copy(reviewers = pr.reviewers.take(1))
+        assertEquals(CheckKind.RequiredReviewers(0, 1), PrChecks.requiredReviewers(alone, required(listOf("team"))))
+    }
+
+    @Test fun `with a minimum, approvals of the people named or voting for a group named`() {
+        val pr = Fakes.pr(
+            311, anna,
+            reviewers = listOf(
+                Reviewer("team", "Team", Vote.APPROVED, true, group = true),
+                Reviewer(marco.id, marco.name, Vote.APPROVED, false, votedFor = listOf("team")),
+                Reviewer("luca", "Luca", Vote.APPROVED, false, votedFor = listOf("team")),
+                Reviewer("sara", "Sara", Vote.REJECTED, false, votedFor = listOf("team")),
+                Reviewer("other", "Other", Vote.APPROVED, false),
+            ),
+        )
+        assertEquals(CheckKind.RequiredReviewers(2, 3), PrChecks.requiredReviewers(pr, required(listOf("team"), minimum = 3)))
+        // Never more than it asks for
+        assertEquals(CheckKind.RequiredReviewers(1, 1), PrChecks.requiredReviewers(pr, required(listOf("team"), minimum = 1)))
+    }
+
+    @Test fun `the author's approval counts only if the policy says so`() {
+        val pr = Fakes.pr(
+            311, anna,
+            reviewers = listOf(
+                Reviewer("team", "Team", Vote.APPROVED, true, group = true),
+                Reviewer(anna.id, anna.name, Vote.APPROVED, false, votedFor = listOf("team")),
+            ),
+        )
+        assertEquals(CheckKind.RequiredReviewers(0, 1), PrChecks.requiredReviewers(pr, required(listOf("team"))))
+        assertEquals(CheckKind.RequiredReviewers(1, 1), PrChecks.requiredReviewers(pr, required(listOf("team"), creatorVoteCounts = true)))
+        assertEquals(
+            CheckKind.Reviewers(0, 2),
+            PrChecks.of(pr, listOf(policy(PolicyEvaluation.MIN_REVIEWERS_POLICY, "queued")), 0, emptyList()).single().kind,
+        )
+    }
+
+    @Test fun `without names, the reviewers marked required`() {
+        val pr = Fakes.pr(311, anna, reviewers = listOf(Reviewer(marco.id, marco.name, Vote.APPROVED, true), Reviewer("luca", "Luca", Vote.NONE, true)))
+        assertEquals(CheckKind.RequiredReviewers(1, 2), PrChecks.requiredReviewers(pr, required(emptyList())))
+    }
 }

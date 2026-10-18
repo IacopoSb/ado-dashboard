@@ -35,7 +35,7 @@ class AdoClientPullRequestTest {
          "sourceRefName":"refs/heads/feature/x-311","targetRefName":"refs/heads/main",
          "mergeStatus":"succeeded",
          "repository":{"id":"repo-1","name":"backend","project":{"id":"p-1","name":"Contoso"}},
-         "reviewers":[{"id":"me","displayName":"Iacopo","vote":0,"isRequired":true},
+         "reviewers":[{"id":"me","displayName":"Iacopo","vote":0,"isRequired":true,"votedFor":[{"id":"team"}]},
                       {"id":"team","displayName":"[Contoso]\\Backend","vote":0,"isContainer":true}],
          "labels":[{"name":"payments","active":true},{"name":"old","active":false}],
          "workItemRefs":[{"id":"4812","url":"x"}]}
@@ -52,6 +52,7 @@ class AdoClientPullRequestTest {
         assertEquals("Retry & backoff", detail.pr.title)
         assertEquals("p-1", detail.pr.projectId)
         assertTrue(detail.pr.reviewers.first { it.id == "team" }.group)
+        assertEquals(listOf("team"), detail.pr.reviewers.first { it.id == "me" }.votedFor)
     }
 
     @Test fun `a pull request by id alone`() = runTest {
@@ -153,7 +154,8 @@ class AdoClientPullRequestTest {
                 """{"value":[
                 {"status":"approved","completedDate":"2026-10-16T09:56:00Z","context":{"buildId":981,"isExpired":false},
                  "configuration":{"isEnabled":true,"isBlocking":true,"type":{"id":"0609b952-1397-4640-95ec-e00a01b2c241","displayName":"Build"},"settings":{"displayName":"backend-ci"}}},
-                {"status":"queued","configuration":{"isEnabled":true,"isBlocking":true,"type":{"id":"fa4e907d-c16b-4a4c-9dfa-4906e5d171dd","displayName":"Minimum number of reviewers"},"settings":{"minimumApproverCount":2}}}
+                {"status":"queued","configuration":{"isEnabled":true,"isBlocking":true,"type":{"id":"fa4e907d-c16b-4a4c-9dfa-4906e5d171dd","displayName":"Minimum number of reviewers"},"settings":{"minimumApproverCount":2}}},
+                {"status":"queued","configuration":{"isEnabled":true,"isBlocking":true,"type":{"id":"fd2167ab-b0be-447a-8ec8-39368250530e","displayName":"Required reviewers"},"settings":{"requiredReviewerIds":["team-1","marco"],"creatorVoteCounts":true}}}
                 ]}""",
             ),
         )
@@ -163,6 +165,10 @@ class AdoClientPullRequestTest {
         assertEquals(Instant.parse("2026-10-16T09:56:00Z"), list[0].completedAt)
         assertEquals(2, list[1].minApprovers)
         assertNull(list[1].displayName)
+        assertEquals(false, list[1].creatorVoteCounts)
+        assertEquals(listOf("team-1", "marco"), list[2].requiredReviewerIds)
+        assertNull(list[2].minApprovers)
+        assertTrue(list[2].creatorVoteCounts)
     }
 
     @Test fun `names of the identities mentioned`() = runTest {

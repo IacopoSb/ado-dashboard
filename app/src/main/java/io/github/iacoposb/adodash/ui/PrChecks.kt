@@ -2,6 +2,7 @@ package io.github.iacoposb.adodash.ui
 
 import io.github.iacoposb.adodash.api.PolicyEvaluation
 import io.github.iacoposb.adodash.api.PullRequest
+import io.github.iacoposb.adodash.api.Reviewer
 import io.github.iacoposb.adodash.api.Vote
 import java.time.Instant
 
@@ -13,6 +14,8 @@ sealed interface CheckKind {
     /** [name] the pipeline's, null when the policy does not say. */
     data class Build(val name: String?, val buildId: Int?, val status: String, val expired: Boolean) : CheckKind
     data class Reviewers(val approvals: Int, val required: Int) : CheckKind
+    /** A "Required reviewers" policy: [approvals] of the [required] approvals it wants. */
+    data class RequiredReviewers(val approvals: Int, val required: Int) : CheckKind
     /** [active] null when the threads are not read yet. */
     data class Comments(val active: Int?) : CheckKind
     data class WorkItems(val ids: List<Int>) : CheckKind
@@ -34,16 +37,20 @@ object PrChecks {
             val kind: CheckKind = when (e.typeId.lowercase()) {
                 PolicyEvaluation.BUILD_POLICY -> CheckKind.Build(e.displayName, e.buildId, e.status, e.expired)
                 PolicyEvaluation.MIN_REVIEWERS_POLICY -> CheckKind.Reviewers(
-                    approvals = pr.reviewers.count { !it.group && it.vote >= Vote.APPROVED_WITH_SUGGESTIONS },
+                    approvals = pr.reviewers.count { !it.group && approves(it) && counts(pr, it, e) },
                     required = e.minApprovers ?: 1,
                 )
+                PolicyEvaluation.REQUIRED_REVIEWERS_POLICY -> requiredReviewers(pr, e)
                 PolicyEvaluation.COMMENTS_POLICY -> CheckKind.Comments(activeThreads)
                 PolicyEvaluation.WORK_ITEMS_POLICY -> CheckKind.WorkItems(workItemIds)
                 else -> CheckKind.Other(e.displayName ?: e.typeName)
             }
             CheckRow(kind, stateOf(kind, e), e.blocking, e.completedAt)
         }
-        val order = listOf(CheckKind.Build::class, CheckKind.Reviewers::class, CheckKind.Comments::class, CheckKind.WorkItems::class)
+        val order = listOf(
+            CheckKind.Build::class, CheckKind.Reviewers::class, CheckKind.RequiredReviewers::class,
+            CheckKind.Comments::class, CheckKind.WorkItems::class,
+        )
         val sorted = rows.sortedBy { r -> order.indexOf(r.kind::class).let { if (it < 0) order.size else it } }
         val merge = when (pr.mergeStatus) {
             "succeeded" -> CheckState.OK
@@ -54,6 +61,31 @@ object PrChecks {
         return sorted + listOfNotNull(merge?.let { CheckRow(CheckKind.Merge(pr.mergeStatus.orEmpty(), pr.targetBranch), it) })
     }
 
+    /**
+     * "Required reviewers": with a minimum count, the approvals of the people named or voting for
+     * a group named, up to that count; without one, every reviewer named must approve (a group
+     * by the approval of one of its members).
+     */
+    fun requiredReviewers(pr: PullRequest, e: PolicyEvaluation): CheckKind.RequiredReviewers {
+        val ids = e.requiredReviewerIds.map { it.lowercase() }.toSet()
+        val people = pr.reviewers.filter { !it.group && approves(it) && counts(pr, it, e) }
+        fun approvalFor(id: String) = people.any { it.id.lowercase() == id || it.votedFor.any { g -> g.lowercase() == id } }
+        val minimum = e.minApprovers?.takeIf { it > 0 }
+        return if (minimum != null) {
+            val approvals = people.count { p -> p.id.lowercase() in ids || p.votedFor.any { it.lowercase() in ids } }
+            CheckKind.RequiredReviewers(approvals.coerceAtMost(minimum), minimum)
+        } else {
+            val required = ids.ifEmpty { pr.reviewers.filter { it.required }.map { it.id.lowercase() }.toSet() }
+            CheckKind.RequiredReviewers(required.count(::approvalFor), required.size)
+        }
+    }
+
+    private fun approves(r: Reviewer) = r.vote >= Vote.APPROVED_WITH_SUGGESTIONS
+
+    /** The author's vote only where the policy lets it count. */
+    private fun counts(pr: PullRequest, r: Reviewer, e: PolicyEvaluation) =
+        e.creatorVoteCounts || !r.id.equals(pr.author.id, ignoreCase = true)
+
     private fun stateOf(kind: CheckKind, e: PolicyEvaluation): CheckState = when (kind) {
         is CheckKind.Build -> when (e.status) {
             "approved" -> if (e.expired) CheckState.WAITING else CheckState.OK
@@ -63,7 +95,7 @@ object PrChecks {
             else -> CheckState.WAITING
         }
         is CheckKind.Comments, is CheckKind.WorkItems -> if (e.status == "approved") CheckState.OK else CheckState.WARNING
-        is CheckKind.Reviewers -> if (e.status == "approved") CheckState.OK else CheckState.WAITING
+        is CheckKind.Reviewers, is CheckKind.RequiredReviewers -> if (e.status == "approved") CheckState.OK else CheckState.WAITING
         else -> when (e.status) {
             "approved" -> CheckState.OK
             "rejected", "broken" -> CheckState.FAILED

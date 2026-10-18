@@ -1022,6 +1022,10 @@ class DashboardRenderTest {
                 blocking = true, enabled = true, status = "queued", minApprovers = 2,
             ),
             io.github.iacoposb.adodash.api.PolicyEvaluation(
+                io.github.iacoposb.adodash.api.PolicyEvaluation.REQUIRED_REVIEWERS_POLICY, "Required reviewers",
+                blocking = true, enabled = true, status = "queued", requiredReviewerIds = listOf(me.id, marco.id),
+            ),
+            io.github.iacoposb.adodash.api.PolicyEvaluation(
                 io.github.iacoposb.adodash.api.PolicyEvaluation.COMMENTS_POLICY, "Comment requirements", blocking = true, enabled = true, status = "rejected",
             ),
             io.github.iacoposb.adodash.api.PolicyEvaluation(

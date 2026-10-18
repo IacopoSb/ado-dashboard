@@ -457,9 +457,10 @@
     <string name="pr_check_build_queued">Build %1$s queued</string>
     <string name="pr_check_build_expired">Build %1$s expired</string>
     <plurals name="pr_check_reviewers">
-        <item quantity="one">Required reviewers: %1$d of %2$d approvals</item>
-        <item quantity="other">Required reviewers: %1$d of %2$d approvals</item>
+        <item quantity="one">Minimum reviewers: %1$d of %2$d approvals</item>
+        <item quantity="other">Minimum reviewers: %1$d of %2$d approvals</item>
     </plurals>
+    <string name="pr_check_required_reviewers">Required reviewers: %1$d of %2$d</string>
     <string name="pr_check_comments">Comments must be resolved</string>
     <string name="pr_check_comments_active">Comments to resolve: %1$d</string>
     <string name="pr_check_comments_ok">All comments resolved</string>

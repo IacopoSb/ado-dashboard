@@ -107,8 +107,15 @@ data class PolicyEvaluation(
     val expired: Boolean = false,
     /** The name the policy was given (a build policy's "backend-ci"); null when it has none. */
     val displayName: String? = null,
-    /** Approvals a "Minimum number of reviewers" policy wants. */
+    /**
+     * Approvals a "Minimum number of reviewers" policy wants; for "Required reviewers", how many
+     * of [requiredReviewerIds] must approve (null: all of them).
+     */
     val minApprovers: Int? = null,
+    /** The people and groups a "Required reviewers" policy names. */
+    val requiredReviewerIds: List<String> = emptyList(),
+    /** The author's own approval counts towards the reviewer policies. */
+    val creatorVoteCounts: Boolean = false,
     /** When it was last evaluated, for "4 min ago". */
     val completedAt: Instant? = null,
 ) {
@@ -117,6 +124,7 @@ data class PolicyEvaluation(
     companion object {
         const val BUILD_POLICY = "0609b952-1397-4640-95ec-e00a01b2c241"
         const val MIN_REVIEWERS_POLICY = "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd"
+        const val REQUIRED_REVIEWERS_POLICY = "fd2167ab-b0be-447a-8ec8-39368250530e"
         const val COMMENTS_POLICY = "c6a1889d-b943-4856-b76f-9e46bb6b0df2"
         const val WORK_ITEMS_POLICY = "40e92b44-2fe1-4dd6-b3d8-74a9c21d0c6e"
     }

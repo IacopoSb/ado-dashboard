@@ -458,6 +458,7 @@
         <item quantity="one">Revisori richiesti: %1$d approvazione su %2$d</item>
         <item quantity="other">Revisori richiesti: %1$d approvazioni su %2$d</item>
     </plurals>
+    <string name="pr_check_required_reviewers">Revisori obbligatori: %1$d su %2$d</string>
     <string name="pr_check_comments">I commenti vanno risolti</string>
     <string name="pr_check_comments_active">Commenti da risolvere: %1$d</string>
     <string name="pr_check_comments_ok">Tutti i commenti risolti</string>

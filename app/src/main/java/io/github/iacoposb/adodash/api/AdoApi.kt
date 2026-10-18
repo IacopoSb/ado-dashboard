@@ -215,6 +215,8 @@ data class Reviewer(
     val required: Boolean,
     /** A group or a team rather than a person. */
     val group: Boolean = false,
+    /** The groups (required reviewers among them) this person's vote also counts for. */
+    val votedFor: List<String> = emptyList(),
 )
 
 data class PullRequest(
