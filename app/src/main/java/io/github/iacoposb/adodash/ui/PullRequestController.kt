@@ -296,8 +296,18 @@ class PullRequestController(
             if (known == null) {
                 update(id) { it.copy(pr = pr, vote = VoteState(myVote(pr, mine)), names = it.names + namesOf(pr, mine)) }
             }
-            launch { threads(api, pr) }
-            launch { files(api, pr) }
+            // Read once for the files and for the threads' lines in them
+            val iterations = async {
+                try {
+                    Result.success(api.pullRequestIterations(pr))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }
+            launch { threads(api, pr) { iterations.await().getOrNull()?.maxOfOrNull { it.id } } }
+            launch { files(api, pr) { iterations.await().getOrThrow() } }
             launch { commits(api, pr) }
             if (pr.projectId.isNotEmpty()) launch { policies(api, pr) }
             val detail = runCatchingNotCancelled { api.pullRequestDetail(pr) }
@@ -327,11 +337,14 @@ class PullRequestController(
         update(pr.id) { it.copy(policies = read ?: it.policies, policiesFailed = read == null && it.policies == null) }
     }
 
-    /** The threads; for a [PrScreen.target], the reply to its author ready in its composer. */
-    private suspend fun threads(api: AdoApi, pr: PullRequest) {
+    /**
+     * The threads, with their lines tracked to the latest push when it is known (as the Files tab
+     * shows it); for a [PrScreen.target], the reply to its author ready in its composer.
+     */
+    private suspend fun threads(api: AdoApi, pr: PullRequest, latestIteration: suspend () -> Int?) {
         val id = pr.id
         try {
-            val read = api.pullRequestThreads(pr)
+            val read = latestIteration()?.let { api.pullRequestThreads(pr, it) } ?: api.pullRequestThreads(pr)
             update(id) { s ->
                 val known = read.map { it.id }.toSet()
                 s.copy(
@@ -366,10 +379,10 @@ class PullRequestController(
     }
 
     /** The files of the latest push; the first one's diff, then the others' for their counts. */
-    private suspend fun files(api: AdoApi, pr: PullRequest) {
+    private suspend fun files(api: AdoApi, pr: PullRequest, iterations: suspend () -> List<PrIteration>) {
         val id = pr.id
         try {
-            val iteration = api.pullRequestIterations(pr).maxByOrNull { it.id }
+            val iteration = iterations().maxByOrNull { it.id }
             val changes = iteration?.let { PrFileList.ordered(api.iterationChanges(pr, it.id)) }.orEmpty()
             update(id) {
                 it.copy(

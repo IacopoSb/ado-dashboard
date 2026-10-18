@@ -170,9 +170,19 @@ class AdoClient(
     override suspend fun pullRequestComments(pr: PullRequest): List<PrComment> =
         pullRequestThreads(pr).flatMap { it.comments }
 
-    override suspend fun pullRequestThreads(pr: PullRequest): List<PrThread> {
+    override suspend fun pullRequestThreads(pr: PullRequest): List<PrThread> = threads(pr, iteration = null)
+
+    override suspend fun pullRequestThreads(pr: PullRequest, iteration: Int): List<PrThread> = threads(pr, iteration)
+
+    /** With [iteration], each thread's context holds its position tracked to that push. */
+    private suspend fun threads(pr: PullRequest, iteration: Int?): List<PrThread> {
         val list: ValueList<ThreadDto> = get(
-            url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "threads"),
+            url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "threads") {
+                if (iteration != null) {
+                    addQueryParameter("\$iteration", "$iteration")
+                    addQueryParameter("\$baseIteration", "0")
+                }
+            },
         )
         return list.value.filterNot { it.isDeleted }.map { it.toThread() }
     }

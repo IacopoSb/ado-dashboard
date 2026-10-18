@@ -106,6 +106,25 @@ class AdoClientPullRequestTest {
         assertTrue(threads.first { it.id == 7 }.comments.isEmpty())
     }
 
+    @Test fun `threads with their lines tracked to the latest push`() = runTest {
+        server.enqueue(
+            json(
+                """{"value":[
+                {"id":5,"status":"active",
+                 "threadContext":{"filePath":"/src/Gateway.kt","rightFileStart":{"line":95,"offset":1},"rightFileEnd":{"line":95,"offset":9}},
+                 "pullRequestThreadContext":{"iterationContext":{"firstComparingIteration":1,"secondComparingIteration":2},
+                   "trackingCriteria":{"origRightFileStart":{"line":88,"offset":1},"origRightFileEnd":{"line":88,"offset":9}}},
+                 "comments":[{"id":1,"author":{"id":"anna","displayName":"Anna"},"content":"ok?","commentType":"text","publishedDate":"2026-10-16T09:56:00Z"}]}
+                ]}""",
+            ),
+        )
+        val thread = client.pullRequestThreads(pr, 3).single()
+        assertEquals("$base/threads?%24iteration=3&%24baseIteration=0&api-version=7.1", server.takeRequest().path)
+        // Where the line is now, not where it was written
+        assertEquals(95, thread.line)
+        assertEquals("/src/Gateway.kt", thread.filePath)
+    }
+
     @Test fun `a reply goes to the thread's comments`() = runTest {
         server.enqueue(
             json("""{"id":3,"parentCommentId":1,"author":{"id":"me","displayName":"Me"},"content":"Done @<u-1>","commentType":"text","publishedDate":"2026-10-16T10:00:00Z"}"""),

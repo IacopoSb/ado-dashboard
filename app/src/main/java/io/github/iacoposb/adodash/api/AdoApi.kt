@@ -51,6 +51,12 @@ interface AdoApi {
     suspend fun pullRequestThreads(pr: PullRequest): List<PrThread> =
         pullRequestComments(pr).groupBy { it.threadId }.map { (id, comments) -> PrThread(id, null, comments) }
 
+    /**
+     * The threads with the lines of their files tracked up to push [iteration], as Azure DevOps'
+     * own page shows them: a comment stays on its code when later pushes move it.
+     */
+    suspend fun pullRequestThreads(pr: PullRequest, iteration: Int): List<PrThread> = pullRequestThreads(pr)
+
     /** The status of each policy of [pr]; needs [PullRequest.projectId]. */
     suspend fun policyEvaluations(pr: PullRequest): List<PolicyEvaluation> = emptyList()
 

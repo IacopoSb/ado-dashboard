@@ -62,7 +62,16 @@ class PullRequestFilesTest {
             return contents["$path@$commit"]?.let { FileContent.Text(it) } ?: FileContent.Missing
         }
         override suspend fun pullRequestCommits(pr: PullRequest) = listOf(PrCommit("abc", "Add retry", "Anna", Fakes.now, "https://x/commit/abc"))
-        override suspend fun pullRequestThreads(pr: PullRequest) = emptyList<PrThread>()
+        /** The pushes the threads were read with: null for untracked lines. */
+        val threadReads = mutableListOf<Int?>()
+        override suspend fun pullRequestThreads(pr: PullRequest): List<PrThread> {
+            threadReads += null
+            return emptyList()
+        }
+        override suspend fun pullRequestThreads(pr: PullRequest, iteration: Int): List<PrThread> {
+            threadReads += iteration
+            return emptyList()
+        }
         override suspend fun createPullRequestFileThread(pr: PullRequest, content: String, anchor: FileAnchor, iteration: Int, changeTrackingId: Int): PrThread {
             fileThreads += Triple(content, anchor, iteration to changeTrackingId)
             threadFail?.let { throw it }
@@ -99,6 +108,8 @@ class PullRequestFilesTest {
         val files = c.state.value!!.files
         assertTrue(files.loaded)
         assertEquals(PrIteration(2, "src", "base"), files.iteration)
+        // The threads' lines tracked to the push the files show, read once with them
+        assertEquals(listOf<Int?>(2), api.threadReads)
         assertEquals(listOf("/img.png", "/src/A.kt", "/src/B.kt"), files.changes.map { it.path })
         assertEquals("/img.png", files.selected)
         assertEquals(FileDiff.Binary, files.diffs["/img.png"])
