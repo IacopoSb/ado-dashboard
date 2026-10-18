@@ -50,6 +50,8 @@ class SyncRepositoryTest {
     private class FakeApi : AdoApi {
         var items: List<WorkItem> = emptyList()
         var toReview: List<PullRequest> = emptyList()
+        /** Pull requests cannot be read (a project refused, the network…). */
+        var prsFail = false
         /** Completed by the test to let a sync go on. */
         var gate: CompletableDeferred<Unit>? = null
         override suspend fun me() = Fakes.me
@@ -63,8 +65,10 @@ class SyncRepositoryTest {
         override suspend fun areas(project: String) = AreaNode(project, project)
         override suspend fun workItemTypes(project: String) = emptyList<WorkItemTypeInfo>()
         override suspend fun workItemComments(project: String, id: Int) = emptyList<Comment>()
-        override suspend fun activePullRequests(project: String, filter: PrFilter) =
-            if (filter is PrFilter.Reviewer) toReview else emptyList()
+        override suspend fun activePullRequests(project: String, filter: PrFilter): List<PullRequest> {
+            if (prsFail) error("no PRs")
+            return if (filter is PrFilter.Reviewer) toReview else emptyList()
+        }
         override suspend fun pullRequestComments(pr: PullRequest) = emptyList<PrComment>()
     }
 
@@ -176,5 +180,47 @@ class SyncRepositoryTest {
         assertEquals(listOf("wi:2:assigned"), cancelled)
         runBlocking { repo.markAllRead() }
         assertEquals(listOf("wi:2:assigned", "wi:3:assigned"), cancelled)
+    }
+
+    @Test fun `assigned again or added again as a reviewer is notified again`() {
+        sync()
+        api.items = listOf(Fakes.workItem(2))
+        api.toReview = listOf(Fakes.pr(7, Fakes.anna))
+        later()
+        sync()
+        assertEquals(listOf("wi:2:assigned", "pr:7:review"), notifiedKeys())
+
+        // Unassigned, removed as a reviewer; then back
+        api.items = emptyList()
+        api.toReview = emptyList()
+        later()
+        sync()
+        api.items = listOf(Fakes.workItem(2))
+        api.toReview = listOf(Fakes.pr(7, Fakes.anna))
+        later()
+        sync()
+        assertEquals(listOf("wi:2:assigned", "pr:7:review", "wi:2:assigned", "pr:7:review"), notifiedKeys())
+        // Both times stay in the activity
+        assertEquals(2, runBlocking { db.events().recentOnce() }.count { it.title.startsWith("assigned #2") })
+    }
+
+    @Test fun `a review missing because nothing could be read, or hidden by the filters, is not notified again`() {
+        api.toReview = listOf(Fakes.pr(7, Fakes.anna, draft = true))
+        sync()
+        later()
+        api.prsFail = true
+        api.items = listOf(Fakes.workItem(1))
+        sync()
+        api.prsFail = false
+        later()
+        sync()
+        // Drafts hidden from the reviews: still mine, only not shown
+        runBlocking { settings.editFilters { it.copy(draftsToReview = false) } }
+        later()
+        sync()
+        runBlocking { settings.editFilters { it.copy(draftsToReview = true) } }
+        later()
+        sync()
+        assertEquals(listOf("wi:1:assigned"), notifiedKeys())
     }
 }

@@ -127,6 +127,12 @@ data class Fetched(
     val prComments: Map<Int, List<PrComment>> = emptyMap(),
     /** Failed builds of my pull requests: all of them on the first sync, then those finished since the last. */
     val failedPrBuilds: List<FailedPrBuild> = emptyList(),
+    /** [Snapshot.workItems] holds all my work items the filters show: none left out by a failed query. */
+    val workItemsComplete: Boolean = false,
+    /** The projects whose pull requests were read: in the others, a review missing proves nothing. */
+    val prProjectsRead: Set<String> = emptySet(),
+    /** Every pull request I am a reviewer of in [prProjectsRead], whatever the filters show. */
+    val reviewerPrIds: Set<Int> = emptySet(),
 )
 
 /** A failed build of one of my pull requests, with its failed tests when they could be counted. */
@@ -170,18 +176,20 @@ class SyncEngine(
         val scope = view.board?.let { BoardScope(it.project, if (needs.teamAreas) areasOf(it, warnings) else emptyList()) }
         val panel = view.workItems
 
+        val assignedComplete = AtomicBoolean(false)
         val assigned = async {
             if (filters.selectsNothing) return@async emptyList()
             // Filtered in the query, so the top 200 are all items to show, and here again
             // for what the query cannot express exactly (case, renamed areas)
             val ids = queryIds(filters, warnings) { assignedWiql(it) }
-            val items = api.workItems(ids).filter(filters::accepts)
+            assignedComplete.set(ids != null)
+            val items = api.workItems(ids.orEmpty()).filter(filters::accepts)
             openOnly(items, warnings)
         }
         // Someone else's work items, or closed ones: a query of the view's own
         val viewItems = async {
             if (!needs.workItemQuery || filters.selectsNothing) return@async null
-            val ids = queryIds(filters, warnings) { ViewQuery.wiql(panel, it, scope) }
+            val ids = queryIds(filters, warnings) { ViewQuery.wiql(panel, it, scope) }.orEmpty()
             val items = api.workItems(ids).filter(filters::accepts)
             loadCategories(items, warnings)
             items
@@ -200,10 +208,10 @@ class SyncEngine(
 
         val projects = api.projects().filter(filters::includesProject)
         val firstFailure = AtomicReference<Throwable?>(null)
-        val prs = projects.map { project ->
+        val prsByProject = projects.map { project ->
             async {
                 limit.withPermit {
-                    runCatching {
+                    project to runCatching {
                         api.activePullRequests(project, PrFilter.Reviewer(me.id)) to
                             api.activePullRequests(project, PrFilter.Creator(me.id))
                     }.onFailure {
@@ -213,7 +221,8 @@ class SyncEngine(
                     }.getOrNull()
                 }
             }
-        }.awaitAll().filterNotNull()
+        }.awaitAll()
+        val prs = prsByProject.mapNotNull { it.second }
         // Why, for the dashboard: no connection or credentials refused are not a project's fault
         if (projects.isNotEmpty() && prs.isEmpty()) throw SyncException(warnings.firstOrNull() ?: texts.noReadableProject(), firstFailure.get())
         val allPrs = if (!needs.allPullRequests) emptyList() else projects.filter { p -> scope == null || p.equals(scope.project, ignoreCase = true) }.map { project ->
@@ -308,16 +317,19 @@ class SyncEngine(
             mentionedWorkItems = mentionedComments,
             prComments = prComments,
             failedPrBuilds = failedPrBuilds,
+            workItemsComplete = assignedComplete.get(),
+            prProjectsRead = prsByProject.filter { it.second != null }.map { it.first }.toSet(),
+            reviewerPrIds = prs.flatMap { it.first }.filter { it.author.id != me.id }.map { it.id }.toSet(),
         )
     }
 
     /**
      * The ids [wiql] finds with [filters]. A saved area that was renamed or deleted makes Azure
      * DevOps refuse the query (HTTP 400, TF51011): then it runs again without the areas the saved
-     * catalog does not know, and if that cannot be done or fails as well it finds nothing, with a
-     * warning, so that the pull requests and the pipelines still show.
+     * catalog does not know, and if that cannot be done or fails as well it finds nothing (null),
+     * with a warning, so that the pull requests and the pipelines still show.
      */
-    private suspend fun queryIds(filters: Filters, warnings: MutableList<String>, wiql: (Filters) -> String): List<Int> {
+    private suspend fun queryIds(filters: Filters, warnings: MutableList<String>, wiql: (Filters) -> String): List<Int>? {
         try {
             return api.queryWorkItemIds(wiql(filters))
         } catch (e: AdoException) {
@@ -337,7 +349,7 @@ class SyncEngine(
             }
         }
         warn()
-        return emptyList()
+        return null
     }
 
     private suspend fun savedCatalog(): FilterCatalog? = catalogLock.withLock {

@@ -111,6 +111,16 @@ interface EventDao {
     @Query("UPDATE events SET read = 1")
     suspend fun markAllRead()
 
+    @Query("SELECT * FROM events WHERE kind = :kind")
+    suspend fun ofKind(kind: EventKind): List<Event>
+
+    /**
+     * [keys] get another key, kept in the activity as they are: an event with the same key, stored
+     * later, is new again.
+     */
+    @Query("UPDATE OR IGNORE events SET `key` = `key` || ':left' || :at WHERE `key` IN (:keys)")
+    suspend fun retire(keys: List<String>, at: Long)
+
     @Query("SELECT `key` FROM events WHERE read = 0")
     suspend fun unreadKeys(): List<String>
 

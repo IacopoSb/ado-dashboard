@@ -12,6 +12,7 @@ import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.EventDao
 import io.github.iacoposb.adodash.data.EventKind
+import io.github.iacoposb.adodash.data.Filters
 import io.github.iacoposb.adodash.data.Settings
 import io.github.iacoposb.adodash.data.SettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -117,6 +118,7 @@ class SyncRepository(
             // What this sync found again stays known, however long ago it happened: forgotten,
             // it would be stored and notified again at the next sync
             found.map { it.key }.distinct().chunked(KEYS_PER_QUERY).forEach { events.touch(it, stamp) }
+            if (!firstSync) retireLeft(fetched, found, s.filters, stamp)
             events.prune(before = now.minus(RETENTION).toEpochMilli())
             if (fetched.snapshot.buildsDenied != buildsDenied) {
                 buildsDenied = fetched.snapshot.buildsDenied
@@ -171,6 +173,28 @@ class SyncRepository(
             stamp,
         )
         return newPrimary + newRest.filterNot { it.read }
+    }
+
+    /**
+     * Work items no longer assigned to me and pull requests I no longer review: their "assigned"
+     * and "review" events get another key, so that being assigned or added again is notified
+     * again. Only what this sync could tell for sure: not after a failed query or in a project
+     * whose pull requests could not be read, nor for what the filters hide (they may show it
+     * again), nor for a review the filters leave out (drafts, approved by me) but still mine.
+     */
+    private suspend fun retireLeft(fetched: Fetched, found: List<Event>, filters: Filters, stamp: Long) {
+        val current = found.map { it.key }.toSet()
+        val left = mutableListOf<String>()
+        if (fetched.workItemsComplete) {
+            left += events.ofKind(EventKind.ASSIGNED)
+                .filter { ASSIGNED_KEY.matches(it.key) && it.key !in current && filters.acceptsEvent(it) }.map { it.key }
+        }
+        val read = fetched.prProjectsRead.map { it.lowercase() }.toSet()
+        left += events.ofKind(EventKind.PR_REVIEW).filter { e ->
+            val id = REVIEW_KEY.matchEntire(e.key)?.groupValues?.get(1)?.toIntOrNull() ?: return@filter false
+            e.key !in current && id !in fetched.reviewerPrIds && e.project?.lowercase() in read && filters.acceptsEvent(e)
+        }.map { it.key }
+        left.chunked(KEYS_PER_QUERY).forEach { events.retire(it, stamp) }
     }
 
     private suspend fun inserted(list: List<Event>, stamp: Long): List<Event> {
@@ -286,5 +310,7 @@ class SyncRepository(
         private val RETENTION = Duration.ofDays(30)
         /** Under SQLite's oldest limit of 999 variables per statement. */
         private const val KEYS_PER_QUERY = 500
+        private val ASSIGNED_KEY = Regex("wi:\\d+:assigned")
+        private val REVIEW_KEY = Regex("pr:(\\d+):review")
     }
 }
