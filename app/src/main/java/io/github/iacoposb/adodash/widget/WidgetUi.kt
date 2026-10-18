@@ -7,6 +7,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.ColorFilter
@@ -68,6 +70,9 @@ data class WidgetUi(val signedIn: Boolean, val summary: WidgetSummary, val now: 
 
 /** 3×1: the app, the time of the last sync and three counters. */
 class SmallWidget : GlanceAppWidget() {
+    /** Its real height: a short cell gets the compact layout. */
+    override val sizeMode = SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) = provideWidget(context) { SmallWidgetContent(it) }
 }
 
@@ -117,30 +122,48 @@ fun WidgetTheme(content: @Composable () -> Unit) {
 
 private val WidgetColors = ColorProviders(light = LightAdoColors.toColorScheme(false), dark = DarkAdoColors.toColorScheme(true))
 
+/**
+ * One row of the launcher: from about 86 dp the design's layout, tighter below it (a phone's or a
+ * tablet's cell inside the launcher's padding can leave 70 dp), so the counters never get cut.
+ */
 @Composable
 fun SmallWidgetContent(ui: WidgetUi) {
     val context = LocalContext.current
     val s = ui.summary
-    WidgetFrame(openApp()) {
+    val compact = LocalSize.current.height < SMALL_COMPACT_BELOW
+    val label = if (compact) 11.sp else 12.sp
+    WidgetFrame(openApp(), vertical = if (compact) 6.dp else 10.dp) {
         Row(GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(context.getString(R.string.widget_title), GlanceModifier.defaultWeight(), style = small(GlanceTheme.colors.onSurfaceVariant), maxLines = 1)
-            if (ui.signedIn && s.hasData) Text(syncTime(context, s, ui.now), style = small(timeColor(s, ui.now)), maxLines = 1)
+            Text(
+                context.getString(R.string.widget_title), GlanceModifier.defaultWeight(),
+                style = small(GlanceTheme.colors.onSurfaceVariant).copy(fontSize = label), maxLines = 1,
+            )
+            if (ui.signedIn && s.hasData) {
+                Text(syncTime(context, s, ui.now), style = small(timeColor(s, ui.now)).copy(fontSize = label), maxLines = 1)
+            }
         }
         when {
             !ui.signedIn -> Message(context.getString(R.string.widget_sign_in))
             !s.hasData -> Message(context.getString(R.string.widget_waiting))
             else -> {
-                Spacer(GlanceModifier.height(6.dp))
+                if (!compact) Spacer(GlanceModifier.height(2.dp))
                 Row(GlanceModifier.fillMaxWidth()) {
                     val stale = s.stale(ui.now)
-                    Counter(s.toReview, context.getString(R.string.widget_to_review), countColor(stale, s.toReview, GlanceTheme.colors.primary))
-                    Counter(s.workItems, context.getString(R.string.widget_work_items), countColor(stale, 0, GlanceTheme.colors.onSurface))
-                    Counter(s.unreadMentions, context.getString(R.string.widget_mentions), countColor(stale, s.unreadMentions, GlanceTheme.colors.error))
+                    val count = if (compact) 22.sp else 24.sp
+                    Counter(s.toReview, context.getString(R.string.widget_to_review), countColor(stale, s.toReview, GlanceTheme.colors.primary), count, label)
+                    Counter(s.workItems, context.getString(R.string.widget_work_items), countColor(stale, 0, GlanceTheme.colors.onSurface), count, label)
+                    Counter(
+                        s.unreadMentions, context.getString(R.string.widget_mentions),
+                        countColor(stale, s.unreadMentions, GlanceTheme.colors.error), count, label,
+                    )
                 }
             }
         }
     }
 }
+
+/** Below this height the small widget is compact. */
+private val SMALL_COMPACT_BELOW = 86.dp
 
 @Composable
 fun LargeWidgetContent(ui: WidgetUi) {
@@ -206,10 +229,10 @@ fun LargeWidgetContent(ui: WidgetUi) {
 }
 
 @Composable
-private fun WidgetFrame(onClick: Action, content: @Composable () -> Unit) {
+private fun WidgetFrame(onClick: Action, vertical: Dp = 12.dp, content: @Composable () -> Unit) {
     Column(
         GlanceModifier.fillMaxSize().appWidgetBackground().cornerRadius(16.dp).background(GlanceTheme.colors.surface)
-            .clickable(onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+            .clickable(onClick).padding(horizontal = 16.dp, vertical = vertical),
     ) { content() }
 }
 
@@ -221,10 +244,10 @@ private fun Message(text: String) {
 }
 
 @Composable
-private fun RowScope.Counter(count: Int, label: String, color: ColorProvider) {
+private fun RowScope.Counter(count: Int, label: String, color: ColorProvider, size: TextUnit = 26.sp, labelSize: TextUnit = 12.sp) {
     Column(GlanceModifier.defaultWeight()) {
-        Text(count.toString(), style = TextStyle(color = color, fontSize = 26.sp), maxLines = 1)
-        Text(label, style = small(GlanceTheme.colors.onSurfaceVariant), maxLines = 1)
+        Text(count.toString(), style = TextStyle(color = color, fontSize = size), maxLines = 1)
+        Text(label, style = small(GlanceTheme.colors.onSurfaceVariant).copy(fontSize = labelSize), maxLines = 1)
     }
 }
 

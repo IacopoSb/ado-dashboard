@@ -51,7 +51,11 @@ class WidgetRenderTest {
         ),
     )
 
-    private val small = DpSize(300.dp, 100.dp)
+    /** One launcher row: a 110 dp cell less the launcher's padding. */
+    private val small = DpSize(300.dp, 90.dp)
+
+    /** A short cell (a phone's, or a dense grid): the compact layout. */
+    private val smallCompact = DpSize(300.dp, 70.dp)
     private val large = DpSize(420.dp, 254.dp)
 
     /** [preview]: only the widget, as the picker's preview images in res/drawable*-nodpi are. */
@@ -73,6 +77,11 @@ class WidgetRenderTest {
     }
 
     @Test fun small() = render("small", small) { SmallWidgetContent(WidgetUi(true, summary, t)) }
+
+    @Test fun smallCompact() = render("small-compact", smallCompact) { SmallWidgetContent(WidgetUi(true, summary, t)) }
+
+    @Test @Config(qualifiers = "+it") fun smallCompactItalian() =
+        render("small-compact-it", smallCompact) { SmallWidgetContent(WidgetUi(true, summary, t)) }
 
     @Test fun large() = render("large", large) { LargeWidgetContent(WidgetUi(true, summary, t)) }
 

@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 3×1: three counters. Updated by the app after each sync; the system's half-hourly update only
-     moves the time on, for a sync that is getting old -->
+     moves the time on, for a sync that is getting old.
+     One row high: launchers that still size widgets by minHeight (70 dp a cell, minus 30) give
+     40 dp one cell, and on Android 12+ targetCellHeight asks for one row directly. The content
+     fits from about 70 dp, what a cell of a phone or tablet leaves inside the launcher's padding -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/widget_small_description"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:minWidth="250dp"
-    android:minHeight="110dp"
+    android:minHeight="40dp"
     android:minResizeWidth="180dp"
-    android:minResizeHeight="80dp"
+    android:minResizeHeight="40dp"
     android:previewImage="@drawable/widget_small_preview_image"
     android:previewLayout="@layout/widget_small_preview"
     android:resizeMode="horizontal|vertical"
