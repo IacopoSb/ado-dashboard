@@ -83,14 +83,7 @@ class Notifier(private val context: Context) {
                 .setAutoCancel(true)
                 .setGroup(GROUP)
                 .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
-                .setContentIntent(
-                    when {
-                        event.buildId != null -> openBuild(event)
-                        event.workItemComment != null -> openComment(event)
-                        event.pullRequest != null -> openPullRequest(event)
-                        else -> openUrl(event)
-                    },
-                )
+                .setContentIntent(open(event))
                 .build()
             send(event.key.hashCode(), notification)
         }
@@ -136,53 +129,13 @@ class Notifier(private val context: Context) {
     @Suppress("MissingPermission") // checked by canNotify
     private fun send(id: Int, notification: android.app.Notification) = manager.notify(id, notification)
 
-    private fun openUrl(event: Event): PendingIntent = PendingIntent.getActivity(
+    /** Where [event] opens (see [EventIntents]). */
+    private fun open(event: Event): PendingIntent = PendingIntent.getActivity(
         context,
         event.key.hashCode(),
-        Intent(Intent.ACTION_VIEW, Uri.parse(event.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        EventIntents.of(context, event),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
-
-    /** A failed build opens its details over the dashboard. */
-    private fun openBuild(event: Event): PendingIntent = PendingIntent.getActivity(
-        context,
-        event.key.hashCode(),
-        Intent(context, MainActivity::class.java)
-            .putExtra(MainActivity.EXTRA_BUILD_ID, event.buildId)
-            .putExtra(MainActivity.EXTRA_BUILD_PROJECT, event.project)
-            .putExtra(MainActivity.EXTRA_EVENT_KEY, event.key)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-    )
-
-    /** A mention in a work item's comments opens the work item at that comment, ready to reply. */
-    private fun openComment(event: Event): PendingIntent {
-        val ref = requireNotNull(event.workItemComment)
-        return PendingIntent.getActivity(
-            context,
-            event.key.hashCode(),
-            Intent(context, MainActivity::class.java)
-                .putExtra(MainActivity.EXTRA_WORK_ITEM_ID, ref.workItemId)
-                .putExtra(MainActivity.EXTRA_COMMENT_ID, ref.commentId)
-                .putExtra(MainActivity.EXTRA_EVENT_KEY, event.key)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-    }
-
-    /** A pull request's event opens its page; a comment or a mention at its thread, ready to reply. */
-    private fun openPullRequest(event: Event): PendingIntent {
-        val ref = requireNotNull(event.pullRequest)
-        val intent = Intent(context, MainActivity::class.java)
-            .putExtra(MainActivity.EXTRA_PR_ID, ref.prId)
-            .putExtra(MainActivity.EXTRA_EVENT_KEY, event.key)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        ref.threadId?.let { intent.putExtra(MainActivity.EXTRA_PR_THREAD_ID, it) }
-        ref.commentId?.let { intent.putExtra(MainActivity.EXTRA_COMMENT_ID, it) }
-        return PendingIntent.getActivity(
-            context, event.key.hashCode(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-    }
 
     companion object {
         private const val GROUP = "ado"
