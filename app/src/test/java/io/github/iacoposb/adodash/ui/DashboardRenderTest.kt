@@ -1574,18 +1574,27 @@ class DashboardRenderTest {
     private val activityTab get() = context.getString(R.string.tab_activity_unread, 3)
 
     /** Contoso › Backend with its sprint and its builds. */
-    private fun boardView(name: String) {
+    private fun boardView(name: String, sprintName: String? = null) {
         val views = designViews().openBoard(BoardRef("Contoso", "Backend"))
+        val sprint = designSprint().let { s -> sprintName?.let { s.copy(iteration = s.iteration.copy(name = it)) } ?: s }
         val state = SyncState(
             snapshot.copy(
                 shown = Shown(
                     views.current.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs, pipeline = pipeline,
-                    pipelineProject = "Contoso", sprint = designSprint(),
+                    pipelineProject = "Contoso", sprint = sprint,
                 ),
             ),
         )
         viewsDashboard(name, views = views, state = state)
     }
+
+    private val longSprint = "Hardening sprint 42 before the spring release of the payments platform"
+
+    /** A long sprint name: cut, the pipelines and the title keep their room. */
+    @Config(qualifiers = PHONE)
+    @Test fun dashboardBoardViewPhoneLongSprint() = boardView("dashboard-board-view-phone-long-sprint", longSprint)
+
+    @Test fun dashboardBoardViewLongSprint() = boardView("dashboard-board-view-long-sprint", longSprint)
 
     @Config(qualifiers = PHONE_LANDSCAPE)
     @Test fun dashboardPhoneLandscape() = dashboard("dashboard-phone-landscape", dark = false)

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -476,6 +477,8 @@ private fun DashboardBar(
         val inline = maxWidth >= 840.dp
         // Room for my items in the sprint and the dots of the latest builds
         val detailed = if (inline) maxWidth >= 1100.dp else maxWidth >= 600.dp
+        // Phones: the sprint at most half the row, the builds' counts in the rest
+        val half = maxWidth / 2
         Column(Modifier.fillMaxWidth()) {
             Row(
                 Modifier.fillMaxWidth().height(60.dp).padding(start = 8.dp, end = 8.dp),
@@ -512,7 +515,8 @@ private fun DashboardBar(
                 if (inline) {
                     if (sprint != null) {
                         Spacer(Modifier.width(12.dp))
-                        sprintTile(Modifier, !detailed)
+                        // A long sprint name is cut rather than eating the title
+                        sprintTile(Modifier.widthIn(max = SPRINT_TILE_MAX), !detailed)
                     }
                     if (project != null) {
                         Spacer(Modifier.width(12.dp))
@@ -535,7 +539,7 @@ private fun DashboardBar(
                 ) {
                     // Phones: the sprint as wide as its name, the builds' counts in the rest
                     val alone = sprint == null || project == null
-                    sprintTile(if (detailed || alone) Modifier.weight(1f) else Modifier, !detailed)
+                    sprintTile(if (detailed || alone) Modifier.weight(1f) else Modifier.widthIn(max = half), !detailed)
                     pipelineTile(Modifier.weight(1f), detailed)
                 }
             }
@@ -549,6 +553,9 @@ private fun LazyListScope.skeleton(description: String) = item(key = "skeleton")
 
 /** A panel's empty state: its title and one line. */
 private data class EmptyTexts(val title: String, val text: String)
+
+/** The sprint tile's widest in the app bar: a long sprint name is cut, the title keeps its room. */
+private val SPRINT_TILE_MAX = 360.dp
 
 /** Readable, but clearly not current. */
 private const val DIMMED_ALPHA = 0.55f
