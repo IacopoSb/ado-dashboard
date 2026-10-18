@@ -270,7 +270,7 @@ private fun TreeNode(
         else -> null
     }
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 44.dp).clip(RoundedCornerShape(8.dp))
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp))
             .then(if (match) Modifier.background(c.primaryContainer) else Modifier)
             .combinedClickable(role = Role.Checkbox, onLongClick = { onOnly(node) }, onClick = { onCheck(node) })
             .semantics { toggleableState = state }

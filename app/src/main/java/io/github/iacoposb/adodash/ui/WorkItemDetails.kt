@@ -311,7 +311,7 @@ private fun LinkRowView(link: LinkRow, actions: WorkItemActions) {
     val isPr = link.kind == LinkKind.PULL_REQUEST
     val onClick = if (isPr) { { if (link.url.isNotEmpty()) actions.onOpenUrl(link.url) } } else { { actions.onOpenWorkItem(link.id) } }
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 36.dp).clip(RoundedCornerShape(8.dp)).background(c.surfaceAlt)
+        Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp)).background(c.surfaceAlt)
             .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -627,7 +627,7 @@ private fun HoursField(hours: Double?, enabled: Boolean, label: String, onSave: 
         keyboardActions = KeyboardActions(onDone = { commit() }),
         decorationBox = { inner ->
             Row(
-                Modifier.fillMaxWidth().heightIn(min = 42.dp).clip(shape).background(c.surface)
+                Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(shape).background(c.surface)
                     .border(if (focused) 2.dp else 1.dp, if (focused) c.primary else c.outline, shape)
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,

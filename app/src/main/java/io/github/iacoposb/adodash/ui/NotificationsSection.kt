@@ -243,7 +243,7 @@ private fun PickerField(label: String, value: String, modifier: Modifier = Modif
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = c.textMuted)
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 42.dp).clip(shape).background(c.surface).border(1.dp, c.outline, shape)
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(shape).background(c.surface).border(1.dp, c.outline, shape)
                 .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
                 .semantics {
                     contentDescription = label

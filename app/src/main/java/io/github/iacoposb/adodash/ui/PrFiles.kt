@@ -272,7 +272,7 @@ private fun PhoneFilePicker(screen: PrScreen, change: PrFileChange, actions: PrA
     val c = AdoTheme.colors
     val files = screen.files
     fun label(f: PrFileChange) = f.name + ((files.diffs[f.path] as? FileDiff.Ready)?.let { "  ·  +${it.added} −${it.deleted}" } ?: "")
-    Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         DropdownField(label(change), stringResource(R.string.pr_file_choose), Modifier.weight(1f)) { close ->
             PrFileList.ordered(files.changes).forEach { f ->
                 DropdownOption(f.path.removePrefix("/") + ((files.diffs[f.path] as? FileDiff.Ready)?.let { "  +${it.added} −${it.deleted}" } ?: ""), f.path == change.path) {
@@ -281,19 +281,20 @@ private fun PhoneFilePicker(screen: PrScreen, change: PrFileChange, actions: PrA
                 }
             }
         }
-        ViewedToggle(change.path in files.viewed, compact = true) { actions.onToggleViewed(change.path) }
+        ViewedToggle(change.path in files.viewed) { actions.onToggleViewed(change.path) }
     }
 }
 
 @Composable
-private fun ViewedToggle(viewed: Boolean, compact: Boolean = false, onClick: () -> Unit) {
+private fun ViewedToggle(viewed: Boolean, onClick: () -> Unit) {
     val c = AdoTheme.colors
     Row(
-        Modifier.heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Checkbox, onClick = onClick)
-            .padding(start = 4.dp, end = if (compact) 4.dp else 8.dp),
+        Modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp)).clickable(role = Role.Checkbox, onClick = onClick)
+            .padding(start = 8.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AdoCheckbox(if (viewed) ToggleableState.On else ToggleableState.Off, null)
+        Spacer(Modifier.width(6.dp))
         Text(stringResource(R.string.pr_file_viewed), style = MaterialTheme.typography.bodyMedium, color = c.text, maxLines = 1)
     }
 }

@@ -85,7 +85,7 @@ fun ProjectHeader(group: BoardGroup, query: String, onToggle: () -> Unit, modifi
     val searching = query.isNotEmpty()
     val label = stringResource(if (group.expanded) R.string.action_collapse else R.string.action_expand, group.project)
     Row(
-        modifier.fillMaxWidth().heightIn(min = 44.dp)
+        modifier.fillMaxWidth().heightIn(min = 48.dp)
             .clickable(enabled = !searching, role = Role.Button, onClickLabel = label, onClick = onToggle)
             .padding(start = 8.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -391,8 +392,14 @@ private fun BuildLine(
             Spacer(Modifier.width(12.dp))
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 val time = run.duration(now)
+                // Phones: the time alone, the icon already says it is running; the number keeps its room
+                val phone = LocalConfiguration.current.screenWidthDp < 600
                 val (text, color) = when (run.state) {
-                    BuildState.RUNNING -> (time?.let { stringResource(R.string.pipelines_running_for, duration(it)) } ?: stringResource(R.string.build_state_running)) to c.textMuted
+                    BuildState.RUNNING -> when {
+                        time == null -> stringResource(R.string.build_state_running)
+                        phone -> duration(time)
+                        else -> stringResource(R.string.pipelines_running_for, duration(time))
+                    } to c.textMuted
                     BuildState.QUEUED -> stringResource(R.string.pipelines_queued) to c.textMuted
                     BuildState.FAILED -> time?.let { duration(it) }.orEmpty() to c.danger
                     else -> time?.let { duration(it) }.orEmpty() to c.textMuted

@@ -41,7 +41,7 @@ import io.github.iacoposb.adodash.ui.AdoTheme
 fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier) {
     val c = AdoTheme.colors
     Row(
-        modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(c.surfaceAlt).padding(start = 14.dp, end = 4.dp),
+        modifier.height(48.dp).clip(RoundedCornerShape(24.dp)).background(c.surfaceAlt).padding(start = 14.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(Icons.Filled.Search, null, Modifier.size(20.dp), tint = c.textMuted)

@@ -60,7 +60,7 @@ fun DropdownField(
     val shape = RoundedCornerShape(8.dp)
     Box(modifier) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 42.dp).clip(shape).background(c.surface).border(1.dp, c.outline, shape)
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(shape).background(c.surface).border(1.dp, c.outline, shape)
                 .clickable(enabled = enabled, role = Role.DropdownList) { open = true }
                 .semantics {
                     contentDescription = label

@@ -139,7 +139,7 @@ fun AdoTextField(
             interactionSource = interaction,
             decorationBox = { inner ->
                 Box(
-                    Modifier.fillMaxWidth().heightIn(min = 42.dp).clip(shape).background(c.surface)
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(shape).background(c.surface)
                         .border(
                             if (error != null || focused) 2.dp else 1.dp,
                             when {

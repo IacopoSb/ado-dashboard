@@ -383,7 +383,7 @@ private fun StaticField(text: String, modifier: Modifier) {
     val c = AdoTheme.colors
     val shape = RoundedCornerShape(8.dp)
     Box(
-        modifier.heightIn(min = 42.dp).clip(shape).background(c.surface).border(1.dp, c.outline, shape).padding(horizontal = 12.dp),
+        modifier.heightIn(min = 48.dp).clip(shape).background(c.surface).border(1.dp, c.outline, shape).padding(horizontal = 12.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         Text(text, style = MaterialTheme.typography.bodyMedium, color = c.text, maxLines = 1)

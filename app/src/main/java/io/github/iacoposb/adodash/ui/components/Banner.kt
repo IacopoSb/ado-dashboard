@@ -29,7 +29,7 @@ import io.github.iacoposb.adodash.ui.AdoTheme
 
 enum class BannerTone { Error, Offline, Warning, Info }
 
-/** A message across the top of a screen, with optional text actions on the right. */
+/** A message across the top of a screen, with optional text actions on the right; up to four lines on phones. */
 @Composable
 fun Banner(
     text: String,
@@ -60,7 +60,7 @@ fun Banner(
         Spacer(Modifier.width(12.dp))
         Text(
             text, Modifier.weight(1f).padding(vertical = 8.dp), style = MaterialTheme.typography.bodyMedium,
-            color = textColor, maxLines = 2, overflow = TextOverflow.Ellipsis,
+            color = textColor, maxLines = 4, overflow = TextOverflow.Ellipsis,
         )
         actions()
     }

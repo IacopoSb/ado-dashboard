@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -134,7 +135,7 @@ fun AdoFilterChip(text: String, selected: Boolean, onClick: () -> Unit, modifier
     val c = AdoTheme.colors
     val shape = RoundedCornerShape(8.dp)
     Row(
-        modifier.height(32.dp).clip(shape)
+        modifier.minimumInteractiveComponentSize().height(32.dp).clip(shape)
             .then(if (selected) Modifier.background(c.primaryContainer) else Modifier.border(1.dp, c.outline, shape))
             .selectable(selected, onClick = onClick, role = Role.Checkbox)
             .padding(start = if (selected) 10.dp else 12.dp, end = 12.dp),
