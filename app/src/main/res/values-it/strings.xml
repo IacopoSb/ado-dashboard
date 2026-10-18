@@ -540,4 +540,49 @@
     <string name="pr_diff_elsewhere">Su righe che non sono più in questo diff</string>
     <string name="pr_commits_failed">I commit non si possono leggere: %1$s</string>
     <string name="pr_commits_none">Nessun commit</string>
+    <!-- Riquadro sprint e backlog -->
+    <plurals name="sprint_days_left">
+        <item quantity="one">%d giorno</item>
+        <item quantity="many">%d giorni</item>
+        <item quantity="other">%d giorni</item>
+    </plurals>
+    <plurals name="sprint_working_days_left">
+        <item quantity="one">manca %d giorno lavorativo</item>
+        <item quantity="many">mancano %d giorni lavorativi</item>
+        <item quantity="other">mancano %d giorni lavorativi</item>
+    </plurals>
+    <string name="sprint_over">terminato</string>
+    <string name="sprint_mine_counts">I miei: %1$d da fare · %2$d in corso · %3$d fatti</string>
+    <string name="sprint_open">Apri il backlog dello sprint</string>
+    <string name="backlog_mine">I miei</string>
+    <string name="backlog_team">Tutto il team</string>
+    <string name="backlog_all_types">Tutti i tipi</string>
+    <string name="backlog_hide_closed">Nascondi chiusi</string>
+    <string name="backlog_expand_all">Espandi tutto</string>
+    <string name="backlog_collapse_all">Comprimi tutto</string>
+    <string name="backlog_filters">Filtri</string>
+    <string name="backlog_col_type">Tipo</string>
+    <string name="backlog_col_id">ID</string>
+    <string name="backlog_col_title">Titolo</string>
+    <string name="backlog_col_children">Figli</string>
+    <string name="backlog_col_state">Stato</string>
+    <string name="backlog_col_who">Chi</string>
+    <string name="backlog_col_remaining">Resto</string>
+    <string name="backlog_show_children">Mostra i figli</string>
+    <string name="backlog_hide_children">Nascondi i figli</string>
+    <string name="backlog_children_count">%1$d/%2$d figli</string>
+    <plurals name="backlog_items">
+        <item quantity="one">%d elemento</item>
+        <item quantity="many">%d elementi</item>
+        <item quantity="other">%d elementi</item>
+    </plurals>
+    <plurals name="backlog_children">
+        <item quantity="one">%d figlio</item>
+        <item quantity="many">%d figli</item>
+        <item quantity="other">%d figli</item>
+    </plurals>
+    <string name="backlog_hours">%1$s h</string>
+    <string name="backlog_remaining">%1$s rimanenti</string>
+    <string name="backlog_hint">Tocca una riga per aprirla · freccia per i figli</string>
+    <string name="backlog_empty">Nessun elemento dello sprint corrisponde ai filtri</string>
 </resources>

@@ -140,7 +140,7 @@ class WorkItemController(
     private val catalog: () -> FilterCatalog?,
     private val me: () -> Person?,
     /** After a save: the dashboard row and, for my own assignment, no notification. */
-    private val onSaved: suspend (WorkItem, assignedToMe: Boolean) -> Unit,
+    private val onSaved: suspend (WorkItemDetail, assignedToMe: Boolean) -> Unit,
     private val errorText: (Throwable) -> String,
     /** After a comment is posted: stored as seen, so that it never comes back as a notification. */
     private val onCommented: suspend (WorkItem, Comment) -> Unit = { _, _ -> },
@@ -326,7 +326,7 @@ class WorkItemController(
                     val mine = me()
                     val assignedToMe = sent is FieldChange.AssignedTo && sent.person != null && mine != null &&
                         (sent.person.id.equals(mine.id, ignoreCase = true) || sent.person.name == mine.name)
-                    onSaved(result.item, assignedToMe)
+                    onSaved(result, assignedToMe)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

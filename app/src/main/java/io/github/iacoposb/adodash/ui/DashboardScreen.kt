@@ -65,6 +65,7 @@ import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.DashboardView
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.PrScope
+import io.github.iacoposb.adodash.sync.BacklogFilter
 import io.github.iacoposb.adodash.sync.SyncState
 import io.github.iacoposb.adodash.ui.components.Banner
 import io.github.iacoposb.adodash.ui.components.BannerTone
@@ -139,12 +140,20 @@ fun DashboardScreen(
     /** For the screenshots: the vote menu open, and threads expanded, on the pull request page. */
     prVoteMenu: Boolean = false,
     prExpanded: Set<Int> = emptySet(),
+    /** For the screenshots: the sprint backlog open, with its filters and the parents expanded. */
+    initialBacklog: Boolean = false,
+    backlogFilter: BacklogFilter = BacklogFilter(),
+    backlogExpanded: Set<Int> = emptySet(),
 ) {
     val c = AdoTheme.colors
     val view = choices.views.current
     var switcher by remember { mutableStateOf(initialSwitcher) }
     var editor by remember { mutableStateOf(initialEditor) }
     LaunchedEffect(switcher) { if (switcher) onLoadBoards() }
+    // The backlog of the board's sprint: only while the board shows one
+    var backlog by remember(view.id) { mutableStateOf(initialBacklog) }
+    val sprint = state.snapshot?.shownFor(view)?.sprint?.takeIf { view.board != null }
+    val backlogShown = backlog && sprint != null
 
     Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(
@@ -152,14 +161,19 @@ fun DashboardScreen(
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 // Under the switcher or the editor nothing is reachable
                 .then(
-                    if (switcher || editor != null || buildDetail != null || workItem != null || pipelines != null || pullRequest != null) {
+                    if (switcher || editor != null || buildDetail != null || workItem != null || pipelines != null || pullRequest != null ||
+                        backlogShown
+                    ) {
                         Modifier.clearAndSetSemantics {}
                     } else {
                         Modifier
                     },
                 ),
         ) {
-            DashboardBar(organization, view, state, onRefresh, onSettings, onTitle = { switcher = true }, onOpenPipelines = onOpenPipelines)
+            DashboardBar(
+                organization, view, state, now, onRefresh, onSettings, onTitle = { switcher = true }, onOpenPipelines = onOpenPipelines,
+                onOpenSprint = { backlog = true },
+            )
             Panels(
                 state, events, view, now, updateVersion, onUpdate, onDismissUpdate, onRefresh, onOpen, onEventOpen,
                 onMarkAllRead, onEdit = { editor = EditorTarget(view, focus = it) },
@@ -186,6 +200,22 @@ fun DashboardScreen(
                 onDelete = { editor = null; onDeleteView(it) },
                 onDismiss = { editor = null },
             )
+        }
+        // The details of its rows show over it
+        if (backlogShown && sprint != null) {
+            Box(Modifier.fillMaxSize().then(if (workItem != null) Modifier.clearAndSetSemantics {} else Modifier)) {
+                SprintBacklogScreen(
+                    sprint, state.snapshot?.me ?: Identity("", ""), now, state.syncing,
+                    BacklogActions(
+                        onBack = { backlog = false },
+                        onRefresh = onRefresh,
+                        onOpen = onOpenWorkItem ?: { onOpen(it.url) },
+                    ),
+                    boardTitle = viewTitle(view),
+                    initialFilter = backlogFilter,
+                    initialExpanded = backlogExpanded,
+                )
+            }
         }
         // The page first: the build and work item details it opens show over it
         pullRequest?.let {
@@ -363,10 +393,12 @@ private fun DashboardBar(
     organization: String,
     view: DashboardView,
     state: SyncState,
+    now: Instant,
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
     onTitle: () -> Unit,
     onOpenPipelines: (project: String, team: String?) -> Unit,
+    onOpenSprint: () -> Unit,
 ) {
     val c = AdoTheme.colors
     BoxWithConstraints {
@@ -403,8 +435,15 @@ private fun DashboardBar(
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
+            // A board's sprint: the global view has no tile, nor a team without a current sprint
+            val snapshot = state.snapshot
+            val sprint = snapshot?.shownFor(view)?.sprint?.takeIf { view.board != null }
+            if (sprint != null) {
+                Spacer(Modifier.width(12.dp))
+                SprintTile(sprint, snapshot.me, now, onOpenSprint, compact = !dots)
+            }
             // A board's builds: the global view has no tile, nor a board without readable builds
-            val shown = state.snapshot?.takeIf { !it.buildsDenied }?.shownFor(view)
+            val shown = snapshot?.takeIf { !it.buildsDenied }?.shownFor(view)
             val pipeline = shown?.pipeline.orEmpty()
             val project = shown?.pipelineProject
             if (project != null) {

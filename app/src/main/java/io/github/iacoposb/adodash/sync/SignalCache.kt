@@ -1,7 +1,9 @@
 package io.github.iacoposb.adodash.sync
 
+import io.github.iacoposb.adodash.api.DayRange
 import io.github.iacoposb.adodash.api.PolicyEvaluation
 import io.github.iacoposb.adodash.api.PrThread
+import java.time.DayOfWeek
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
@@ -23,6 +25,11 @@ class SignalCache {
     /** Failed tests of a finished build: it never changes. */
     val failedTests = ConcurrentHashMap<Int, Int>()
 
+    /** "project/team" to the team's working days: they seldom change, read once. */
+    val workingDays = ConcurrentHashMap<String, Set<DayOfWeek>>()
+    /** "project/team/iteration id" to the team's days off in that sprint, read once. */
+    val daysOff = ConcurrentHashMap<String, List<DayRange>>()
+
     /** When builds were last refused (a PAT without Build (read)); null while they are readable. */
     @Volatile var buildsDeniedAt: Instant? = null
 
@@ -31,6 +38,8 @@ class SignalCache {
         threads.clear()
         defaultBranches.clear()
         failedTests.clear()
+        workingDays.clear()
+        daysOff.clear()
         buildsDeniedAt = null
     }
 }

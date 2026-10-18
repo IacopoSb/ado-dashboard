@@ -7,6 +7,7 @@ import io.github.iacoposb.adodash.api.PrThread
 import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.TeamArea
 import io.github.iacoposb.adodash.api.WorkItem
+import io.github.iacoposb.adodash.api.WorkItemDetail
 import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.EventDao
@@ -106,10 +107,12 @@ class SyncRepository(
 
     /**
      * A change made from the app: the dashboard row shows [item] at once, without waiting for the
-     * next sync. Assigning it to myself is not news: its "assigned" event is stored as already
-     * seen, so the next sync does not notify my own change.
+     * next sync, and so does its row in the sprint backlog. Assigning it to myself is not news:
+     * its "assigned" event is stored as already seen, so the next sync does not notify my own
+     * change.
      */
-    suspend fun applyOwnChange(item: WorkItem, assignedToMe: Boolean) {
+    suspend fun applyOwnChange(detail: WorkItemDetail, assignedToMe: Boolean) {
+        val item = detail.item
         if (assignedToMe) {
             events.insertNew(
                 listOf(
@@ -128,7 +131,16 @@ class SyncRepository(
                 ),
             )
         }
-        _state.update { s -> s.snapshot?.let { s.copy(snapshot = it.replacing(item)) } ?: s }
+        val category = SyncEngine.categoryOf(stateCategories, item)
+        val sprintChange = { old: SprintItem ->
+            old.copy(
+                item = item,
+                remainingWork = detail.remainingWork,
+                assigneeId = detail.assignee?.id?.takeIf { it.isNotEmpty() },
+                category = category ?: old.category.takeIf { old.item.state == item.state },
+            )
+        }
+        _state.update { s -> s.snapshot?.let { s.copy(snapshot = it.replacing(item, sprintChange)) } ?: s }
     }
 
     /** A comment I posted from the app: never notified back to me (see [Events.ownComment]). */

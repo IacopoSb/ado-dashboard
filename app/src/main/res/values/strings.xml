@@ -542,4 +542,45 @@
     <string name="pr_diff_elsewhere">On lines no longer in this diff</string>
     <string name="pr_commits_failed">The commits can\'t be read: %1$s</string>
     <string name="pr_commits_none">No commits</string>
+    <!-- Sprint tile and backlog -->
+    <plurals name="sprint_days_left">
+        <item quantity="one">%d day left</item>
+        <item quantity="other">%d days left</item>
+    </plurals>
+    <plurals name="sprint_working_days_left">
+        <item quantity="one">%d working day left</item>
+        <item quantity="other">%d working days left</item>
+    </plurals>
+    <string name="sprint_over">over</string>
+    <string name="sprint_mine_counts">Mine: %1$d to do · %2$d in progress · %3$d done</string>
+    <string name="sprint_open">Open the sprint backlog</string>
+    <string name="backlog_mine">Mine</string>
+    <string name="backlog_team">Whole team</string>
+    <string name="backlog_all_types">All types</string>
+    <string name="backlog_hide_closed">Hide closed</string>
+    <string name="backlog_expand_all">Expand all</string>
+    <string name="backlog_collapse_all">Collapse all</string>
+    <string name="backlog_filters">Filters</string>
+    <string name="backlog_col_type">Type</string>
+    <string name="backlog_col_id">ID</string>
+    <string name="backlog_col_title">Title</string>
+    <string name="backlog_col_children">Children</string>
+    <string name="backlog_col_state">State</string>
+    <string name="backlog_col_who">Who</string>
+    <string name="backlog_col_remaining">Left</string>
+    <string name="backlog_show_children">Show the children</string>
+    <string name="backlog_hide_children">Hide the children</string>
+    <string name="backlog_children_count">%1$d/%2$d children</string>
+    <plurals name="backlog_items">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
+    <plurals name="backlog_children">
+        <item quantity="one">%d child</item>
+        <item quantity="other">%d children</item>
+    </plurals>
+    <string name="backlog_hours">%1$s h</string>
+    <string name="backlog_remaining">%1$s remaining</string>
+    <string name="backlog_hint">Tap a row to open it · arrow for the children</string>
+    <string name="backlog_empty">Nothing in this sprint matches the filters</string>
 </resources>

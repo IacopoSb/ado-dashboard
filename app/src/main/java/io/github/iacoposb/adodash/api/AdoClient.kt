@@ -33,7 +33,9 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.time.DayOfWeek
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.concurrent.TimeUnit
 
 /**
@@ -518,11 +520,76 @@ class AdoClient(
         return values.values.map { TeamArea(it.value, it.includeChildren) }
     }
 
-    override suspend fun currentSprint(project: String, team: String): String? {
-        val list: ValueList<ProjectDto> = get(
+    override suspend fun currentSprint(project: String, team: String): String? = currentIteration(project, team)?.name
+
+    override suspend fun currentIteration(project: String, team: String): TeamIteration? {
+        val list: ValueList<TeamIterationDto> = get(
             url(project, team, "_apis", "work", "teamsettings", "iterations") { addQueryParameter("\$timeframe", "current") },
         )
-        return list.value.firstOrNull()?.name
+        return list.value.firstOrNull()?.let {
+            TeamIteration(
+                it.id, it.name, it.path.ifEmpty { it.name },
+                it.attributes?.startDate?.let(::instantOrNull), it.attributes?.finishDate?.let(::instantOrNull),
+            )
+        }
+    }
+
+    override suspend fun iterationWorkItems(project: String, team: String, iterationId: String): List<IterationLink> {
+        val result: IterationWorkItemsDto = get(
+            url(project, team, "_apis", "work", "teamsettings", "iterations", iterationId, "workitems"),
+        )
+        // A top-level item comes without a source; a child with its parent as the source. An
+        // item listed both ways keeps its parent.
+        return result.workItemRelations.mapNotNull { r ->
+            val id = r.target?.id ?: return@mapNotNull null
+            IterationLink(id, r.source?.id?.takeIf { r.rel == HIERARCHY_FORWARD })
+        }.groupBy { it.id }.map { (_, links) -> links.firstOrNull { it.parentId != null } ?: links.first() }
+    }
+
+    override suspend fun backlogItems(ids: List<Int>): List<BacklogItem> = ids.chunked(200).flatMap { chunk ->
+        // Stack Rank and Backlog Priority exist in every organization; a server without one of
+        // them refuses the call: read again with the dashboard's fields only
+        val list = try {
+            batch(chunk, BACKLOG_FIELDS)
+        } catch (e: AdoException) {
+            if (e.code != 400) throw e
+            batch(chunk, WORK_ITEM_FIELDS)
+        }
+        list.map { dto ->
+            fun number(name: String) = (dto.fields[name] as? JsonPrimitive)?.doubleOrNull
+            BacklogItem(
+                item = dto.toWorkItem(),
+                assigneeId = (dto.fields["System.AssignedTo"] as? JsonObject)?.get("id")?.jsonPrimitive?.contentOrNull,
+                remainingWork = number(WiFields.REMAINING_WORK),
+                rank = number(STACK_RANK) ?: number(BACKLOG_PRIORITY),
+                parentId = (dto.fields["System.Parent"] as? JsonPrimitive)?.intOrNull,
+            )
+        }
+    }
+
+    private suspend fun batch(ids: List<Int>, fields: List<String>): List<WorkItemDto> {
+        val body = buildJsonObject {
+            putJsonArray("ids") { ids.forEach { add(JsonPrimitive(it)) } }
+            putJsonArray("fields") { fields.forEach { add(JsonPrimitive(it)) } }
+        }
+        return post<ValueList<WorkItemDto>>(url("_apis", "wit", "workitemsbatch"), body).value
+    }
+
+    override suspend fun teamWorkingDays(project: String, team: String): Set<DayOfWeek>? {
+        val settings: TeamSettingsDto = get(url(project, team, "_apis", "work", "teamsettings"))
+        return settings.workingDays.mapNotNull { day -> DayOfWeek.entries.firstOrNull { it.name.equals(day, ignoreCase = true) } }
+            .toSet().takeIf { it.isNotEmpty() }
+    }
+
+    override suspend fun teamDaysOff(project: String, team: String, iterationId: String): List<DayRange> {
+        val result: TeamDaysOffDto = get(
+            url(project, team, "_apis", "work", "teamsettings", "iterations", iterationId, "teamdaysoff"),
+        )
+        return result.daysOff.mapNotNull { d ->
+            val start = instantOrNull(d.start)?.atOffset(ZoneOffset.UTC)?.toLocalDate() ?: return@mapNotNull null
+            val end = instantOrNull(d.end)?.atOffset(ZoneOffset.UTC)?.toLocalDate() ?: start
+            DayRange(start, end)
+        }
     }
 
     override suspend fun repositories(project: String): List<String> {
@@ -795,6 +862,11 @@ class AdoClient(
             "System.Id", "System.TeamProject", "System.WorkItemType", "System.Title", "System.State",
             "System.AssignedTo", "System.ChangedDate", "Microsoft.VSTS.Common.Priority", "System.AreaPath",
         )
+        private const val STACK_RANK = "Microsoft.VSTS.Common.StackRank"
+        private const val BACKLOG_PRIORITY = "Microsoft.VSTS.Common.BacklogPriority"
+        private val BACKLOG_FIELDS = WORK_ITEM_FIELDS +
+            listOf(WiFields.REMAINING_WORK, STACK_RANK, BACKLOG_PRIORITY, "System.Parent")
+        private const val HIERARCHY_FORWARD = "System.LinkTypes.Hierarchy-Forward"
         /** Deep enough for any real area tree. */
         private const val AREA_DEPTH = 10
         /** Older servers: the states of a project's types read a few at a time. */
@@ -875,6 +947,22 @@ class AdoClient(
     val field: TeamFieldDto = TeamFieldDto(),
     val values: List<TeamFieldValueDto> = emptyList(),
 )
+@Serializable private data class TeamIterationDto(
+    val id: String = "",
+    val name: String,
+    val path: String = "",
+    val attributes: NodeAttributesDto? = null,
+)
+@Serializable private data class WorkItemRefDto(val id: Int)
+@Serializable private data class IterationRelationDto(
+    val rel: String? = null,
+    val source: WorkItemRefDto? = null,
+    val target: WorkItemRefDto? = null,
+)
+@Serializable private data class IterationWorkItemsDto(val workItemRelations: List<IterationRelationDto> = emptyList())
+@Serializable private data class TeamSettingsDto(val workingDays: List<String> = emptyList())
+@Serializable private data class DayOffDto(val start: String = "", val end: String = "")
+@Serializable private data class TeamDaysOffDto(val daysOff: List<DayOffDto> = emptyList())
 @Serializable private data class StateDto(val name: String, val category: String = "")
 @Serializable private data class ClassificationNodeDto(
     val name: String,

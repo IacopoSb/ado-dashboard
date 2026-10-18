@@ -91,6 +91,24 @@ interface AdoApi {
     /** The name of the team's current sprint; null when it has none. */
     suspend fun currentSprint(project: String, team: String): String? = null
 
+    /** The team's current sprint with its id and dates; null when it has none. */
+    suspend fun currentIteration(project: String, team: String): TeamIteration? = null
+
+    /**
+     * The work items of a team's sprint, each with its parent when that is in the sprint too
+     * (the hierarchy as the sprint backlog shows it).
+     */
+    suspend fun iterationWorkItems(project: String, team: String, iterationId: String): List<IterationLink> = emptyList()
+
+    /** Work items with what the sprint backlog shows: remaining work, backlog rank, parent. */
+    suspend fun backlogItems(ids: List<Int>): List<BacklogItem> = workItems(ids).map { BacklogItem(it) }
+
+    /** The days of the week the team works; null when they cannot be read. */
+    suspend fun teamWorkingDays(project: String, team: String): Set<java.time.DayOfWeek>? = null
+
+    /** The team's days off in a sprint (holidays and the like). */
+    suspend fun teamDaysOff(project: String, team: String, iterationId: String): List<DayRange> = emptyList()
+
     /** The project's Git repository names, sorted. */
     suspend fun repositories(project: String): List<String> = emptyList()
 

@@ -54,7 +54,12 @@ import io.github.iacoposb.adodash.data.PullRequestsPanel
 import io.github.iacoposb.adodash.data.ViewSet
 import io.github.iacoposb.adodash.data.WiField
 import io.github.iacoposb.adodash.data.WorkItemsPanel
+import io.github.iacoposb.adodash.api.TeamIteration
+import io.github.iacoposb.adodash.sync.BacklogFilter
 import io.github.iacoposb.adodash.sync.Shown
+import io.github.iacoposb.adodash.sync.Sprint
+import io.github.iacoposb.adodash.sync.SprintGroup
+import io.github.iacoposb.adodash.sync.SprintItem
 import io.github.iacoposb.adodash.sync.TeamInfo
 import io.github.iacoposb.adodash.data.Settings
 import io.github.iacoposb.adodash.errorText
@@ -873,11 +878,108 @@ class DashboardRenderTest {
         val view = views.current
         val state = SyncState(
             snapshot.copy(
-                shown = Shown(view.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs, pipeline = pipeline, pipelineProject = "Contoso"),
+                shown = Shown(
+                    view.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs, pipeline = pipeline, pipelineProject = "Contoso",
+                    sprint = designSprint(),
+                ),
             ),
         )
         viewsDashboard("dashboard-board-view", views = views, state = state)
     }
+
+    // --- Sprint backlog ---
+
+    /**
+     * The design's sprint: Sprint 42 of Contoso › Backend, 12 to 23 October (6 working days
+     * left on Friday 16), stories, bugs, a chore and a doc, a closed bug hidden by default.
+     */
+    private fun designSprint(): Sprint {
+        val it = italian
+        val categories = mapOf(
+            "New" to SprintItem.PROPOSED, "Active" to SprintItem.IN_PROGRESS, "Blocked" to SprintItem.IN_PROGRESS,
+            "Resolved" to SprintItem.RESOLVED, "Closed" to SprintItem.COMPLETED,
+        )
+        var rank = 0.0
+        fun item(
+            id: Int, type: String, title: String, state: String, who: io.github.iacoposb.adodash.api.Identity?, hours: Double? = null,
+        ) = SprintItem(
+            Fakes.workItem(id, type, title, state).copy(assignedTo = who?.name), who?.id, hours, ++rank, categories[state],
+        )
+        fun group(parent: SprintItem, vararg children: SprintItem) = SprintGroup(parent, children.toList())
+        val groups = listOf(
+            group(
+                item(4790, "User Story", if (it) "Esportazione CSV dei report mensili" else "CSV export of the monthly reports", "Active", me),
+                item(4791, "Task", if (it) "Endpoint di esportazione" else "Export endpoint", "Closed", me),
+                item(4792, "Task", if (it) "Formato CSV con separatore configurabile" else "CSV format with a configurable separator", "Active", me, 5.0),
+                item(4793, "Task", if (it) "Test di integrazione" else "Integration tests", "New", marco, 3.0),
+            ),
+            group(item(4812, "Bug", if (it) "Il login con SSO fallisce dopo il rinnovo del token" else "SSO sign-in fails after the token is renewed", "Active", me, 3.0)),
+            group(
+                item(4777, "User Story", if (it) "Filtro per area path nella dashboard" else "Filter by area path in the dashboard", "Active", anna),
+                item(4778, "Task", if (it) "Albero delle aree" else "Area tree", "Closed", anna),
+                item(4779, "Task", if (it) "Ricerca nelle aree" else "Search in the areas", "Closed", anna),
+                item(4780, "Task", if (it) "Filtro nelle query" else "Filter in the queries", "Active", anna, 4.0),
+                item(4781, "Task", if (it) "Screenshot" else "Screenshots", "New", me, 2.0),
+            ),
+            group(
+                item(4755, "Chore", if (it) "Aggiornare le dipendenze di build" else "Update the build dependencies", "New", me),
+                item(4756, "Task", "Gradle 9", "New", me, 1.0),
+                item(4757, "Task", "AGP 9", "New", anna, 1.0),
+            ),
+            group(item(4770, "Documentation", if (it) "Guida alla registrazione dell'app in Entra" else "Guide to registering the app in Entra", "Active", luca, 4.0)),
+            group(
+                item(4769, "User Story", if (it) "Aggiornamento SDK pagamenti a 4.2" else "Payments SDK update to 4.2", "Resolved", marco),
+                item(4771, "Task", "SDK 4.2", "Closed", marco),
+                item(4772, "Task", if (it) "Migrazione delle chiamate" else "Migrate the calls", "Closed", marco),
+                item(4773, "Task", if (it) "Test end-to-end" else "End-to-end tests", "Closed", me),
+            ),
+            group(item(4801, "Bug", if (it) "Retry infinito se il gateway risponde 503" else "Infinite retry when the gateway answers 503", "Blocked", anna, 5.0)),
+            group(item(4760, "Bug", if (it) "Crash all'avvio senza rete" else "Crash at launch without a network", "Closed", me)),
+        )
+        fun day(d: String) = java.time.Instant.parse("${d}T00:00:00Z")
+        return Sprint(
+            BoardRef("Contoso", "Backend"),
+            TeamIteration("it-42", "Sprint 42", "Contoso\\Release 3\\Sprint 42", day("2026-10-12"), day("2026-10-23")),
+            groups,
+        )
+    }
+
+    private fun backlog(
+        name: String,
+        filter: BacklogFilter = BacklogFilter(),
+        expanded: Set<Int> = setOf(4790),
+        dark: Boolean = false,
+    ) {
+        val views = designViews().openBoard(BoardRef("Contoso", "Backend"))
+        val shown = Shown(
+            views.current.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs, pipeline = pipeline, pipelineProject = "Contoso",
+            sprint = designSprint(),
+        )
+        compose.setContent {
+            AdoTheme(dark = dark, dynamic = false) {
+                DashboardScreen(
+                    "contoso", SyncState(snapshot.copy(shown = shown)), events(), {}, {}, {}, {}, {}, now = now,
+                    choices = choices(views), initialBacklog = true, backlogFilter = filter, backlogExpanded = expanded,
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    @Test fun sprintBacklog() = backlog("sprint-backlog")
+
+    @Config(qualifiers = "+it")
+    @Test fun sprintBacklogItalian() = backlog("sprint-backlog-it")
+
+    @Test fun sprintBacklogDark() = backlog("sprint-backlog-dark", dark = true)
+
+    /** Mine: my items with all their children, the others with only mine. */
+    @Test fun sprintBacklogMine() = backlog("sprint-backlog-mine", BacklogFilter(mine = true), expanded = setOf(4790, 4777, 4755))
+
+    @Test fun sprintBacklogCollapsed() = backlog("sprint-backlog-collapsed", expanded = emptySet())
+
+    @Config(qualifiers = "it-w411dp-h891dp-xxhdpi")
+    @Test fun sprintPhone() = backlog("sprint-phone")
 
     /** A view of reviews only: the work items panel is off, the others share the width. */
     @Test fun dashboardReviewsOnly() {

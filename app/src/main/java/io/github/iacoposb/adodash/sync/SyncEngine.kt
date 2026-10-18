@@ -55,10 +55,16 @@ data class Snapshot(
     fun shownFor(view: DashboardView): Shown? = shown?.takeIf { it.viewKey == view.queryKey }
         ?: if (shown == null) Shown(view.queryKey, workItems, reviewPrs, myPrs) else null
 
-    /** [item] in place of the work item with its id, wherever it is listed. */
-    fun replacing(item: WorkItem): Snapshot {
+    /**
+     * [item] in place of the work item with its id, wherever it is listed; in the sprint with
+     * [sprintChange] applied too.
+     */
+    fun replacing(item: WorkItem, sprintChange: (SprintItem) -> SprintItem = { it.copy(item = item) }): Snapshot {
         fun List<WorkItem>.swap() = map { if (it.id == item.id) item else it }
-        return copy(workItems = workItems.swap(), shown = shown?.copy(workItems = shown.workItems.swap()))
+        return copy(
+            workItems = workItems.swap(),
+            shown = shown?.copy(workItems = shown.workItems.swap(), sprint = shown.sprint?.replacing(item.id, sprintChange)),
+        )
     }
 
     /** My [vote] on pull request [prId] wherever it is listed: added as a reviewer if I was not one. */
@@ -102,6 +108,8 @@ data class Shown(
      * it has some. Null hides the tile, as in the global view.
      */
     val pipelineProject: String? = null,
+    /** A board's current sprint with its backlog; null for other views or a team without one. */
+    val sprint: Sprint? = null,
 )
 
 /** A snapshot plus the comments needed to find new events. */
@@ -162,6 +170,8 @@ class SyncEngine(
             loadCategories(items, warnings)
             items
         }
+        // A board's sprint: its own reads, whatever the panels show
+        val sprintRead = async { view.board?.let { readSprint(it, warnings, limit) } }
         val mentioned = async {
             if (since == null || filters.selectsNothing) return@async emptyList()
             // @RecentMentions: work items where I was mentioned in the last 30 days
@@ -258,6 +268,7 @@ class SyncEngine(
             otherPrs = shownOthers,
             pipeline = pipeline,
             pipelineProject = pipelineProject,
+            sprint = sprintRead.await(),
         )
 
         Fetched(
@@ -323,6 +334,46 @@ class SyncEngine(
             }
         }
         builds to false
+    }
+
+    /**
+     * The team's current sprint with its work items: null when it has none, or when it cannot
+     * be read (with a warning). The team's working days and its days off in the sprint are
+     * read once and kept; without them the days left count Monday to Friday.
+     */
+    private suspend fun readSprint(board: BoardRef, warnings: MutableList<String>, limit: Semaphore): Sprint? = coroutineScope {
+        val (project, team) = board
+        val warn = { e: Throwable -> warnings += texts.projectWarning("$project › $team", texts.error(e)) }
+        val iteration = limit.withPermit { runCatching { api.currentIteration(project, team) } }
+            .onFailure(warn).getOrNull() ?: return@coroutineScope null
+        val teamKey = "$project/$team"
+        val days = async {
+            cache.workingDays[teamKey] ?: limit.withPermit { runCatching { api.teamWorkingDays(project, team) }.getOrNull() }
+                ?.also { cache.workingDays[teamKey] = it }
+        }
+        val daysOffKey = "$teamKey/${iteration.id}"
+        val daysOff = async {
+            cache.daysOff[daysOffKey] ?: limit.withPermit { runCatching { api.teamDaysOff(project, team, iteration.id) }.getOrNull() }
+                ?.also { cache.daysOff[daysOffKey] = it }
+        }
+        val items = runCatching {
+            val links = limit.withPermit { api.iterationWorkItems(project, team, iteration.id) }
+            val read = if (links.isEmpty()) emptyList() else limit.withPermit { api.backlogItems(links.map { it.id }) }
+            links to read
+        }.onFailure(warn).getOrNull() ?: return@coroutineScope null
+        val (links, read) = items
+        loadCategories(read.map { it.item }, warnings)
+        val sprintItems = read.map { b ->
+            SprintItem(b.item, b.assigneeId, b.remainingWork, b.rank, categoryOf(b.item))
+        }
+        // The sprint's own hierarchy first, the parent field for what it leaves out
+        val fromField = read.mapNotNull { b -> b.parentId?.let { b.item.id to it } }.toMap()
+        val parents = fromField + links.mapNotNull { l -> l.parentId?.let { l.id to it } }.toMap()
+        Sprint(
+            board, iteration, Backlog.build(sprintItems, parents),
+            workingDays = days.await() ?: Sprint.DEFAULT_WORKING_DAYS,
+            daysOff = daysOff.await().orEmpty(),
+        )
     }
 
     /** Threads of a PR neither mine nor to review: only counted, so read again only now and then. */
@@ -400,9 +451,11 @@ class SyncEngine(
 
     /** Resolved, Completed or Removed, by category; a state of unknown category is open. */
     private fun isClosed(wi: WorkItem): Boolean {
-        val category = stateCategories["${wi.project}/${wi.type}"]?.get(wi.state) ?: return false
+        val category = categoryOf(wi) ?: return false
         return category !in OPEN_CATEGORIES
     }
+
+    private fun categoryOf(wi: WorkItem): String? = categoryOf(stateCategories, wi)
 
     /** Unreadable or not by area: the whole project, with a warning for the former. */
     private suspend fun areasOf(board: BoardRef, warnings: MutableList<String>): List<TeamArea> =
@@ -413,6 +466,10 @@ class SyncEngine(
 
     companion object {
         val OPEN_CATEGORIES = setOf("Proposed", "InProgress")
+
+        /** The category of [wi]'s state, from "project/type" to state to category. */
+        fun categoryOf(categories: Map<String, Map<String, String>>, wi: WorkItem): String? =
+            categories["${wi.project}/${wi.type}"]?.get(wi.state)
 
         /** Late-indexed changes still get caught by the next sync. */
         private val OVERLAP = Duration.ofMinutes(10)
