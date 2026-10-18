@@ -16,7 +16,7 @@ val localProps = Properties().apply {
 fun setting(env: String, local: String): String? = System.getenv(env) ?: localProps.getProperty(local)
 
 // -PappVersion=1.2.3 -> versionName 1.2.3, versionCode 10203
-val appVersion = (findProperty("appVersion") as String?) ?: "0.0.20"
+val appVersion = (findProperty("appVersion") as String?) ?: "0.0.21"
 val appVersionCode = appVersion.split(".").map { it.takeWhile(Char::isDigit).toIntOrNull() ?: 0 }
     .let { (it + listOf(0, 0, 0)).take(3) }.let { (a, b, c) -> a * 10000 + b * 100 + c }
     .coerceAtLeast(1)
