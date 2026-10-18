@@ -217,6 +217,7 @@ class PullRequestController(
     private val _state = MutableStateFlow<PrScreen?>(null)
     val state: StateFlow<PrScreen?> = _state.asStateFlow()
 
+    /** Reads of the pull request shown: cancelled when the page closes or another opens. */
     private val jobs = mutableListOf<Job>()
     private var mentionSearch: Job? = null
     /** What was typed and not sent, by "pr:thread": kept for the session. */
@@ -266,6 +267,7 @@ class PullRequestController(
     /** The thread of [PrScreen.target] was scrolled to: not again. */
     fun targetShown() = _state.update { it?.copy(target = null) }
 
+    /** Only reads: votes, comments and statuses already sent go on, closed or not. */
     private fun cancelAll() {
         jobs.forEach { it.cancel() }
         jobs.clear()
@@ -275,6 +277,9 @@ class PullRequestController(
     private fun update(id: Int, change: (PrScreen) -> PrScreen) {
         _state.update { s -> if (s?.id == id) change(s) else s }
     }
+
+    /** The page of [id], if it is still the one open. */
+    private fun shown(id: Int): PrScreen? = _state.value?.takeIf { it.id == id }
 
     private fun load(id: Int, known: PullRequest?) {
         jobs += scope.launch {
@@ -501,7 +506,8 @@ class PullRequestController(
         val next = VoteMachine.start(s.vote, vote) ?: return
         val id = s.id
         update(id) { it.copy(vote = next) }
-        jobs += scope.launch {
+        // Not among the reads: closing never cancels it
+        scope.launch {
             try {
                 val saved = api().votePullRequest(pr, mine.id, vote)
                 update(id) { st ->
@@ -513,9 +519,9 @@ class PullRequestController(
                     }
                     st.copy(vote = VoteMachine.saved(st.vote, saved.vote), pr = current.copy(reviewers = reviewers))
                 }
-                onVoted(_state.value?.pr ?: pr, saved.vote)
+                onVoted(shown(id)?.pr ?: pr, saved.vote)
                 // A minimum number of approvals may be met now
-                policies(api(), _state.value?.pr ?: pr)
+                shown(id)?.let { policies(api(), it.pr ?: pr) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -570,7 +576,8 @@ class PullRequestController(
                 files = if (anchor != null) it.files.copy(newThread = null) else it.files,
             )
         }
-        jobs += scope.launch {
+        // Not among the reads: closing never cancels it
+        scope.launch {
             try {
                 val api = api()
                 val saved = if (anchor != null) {
@@ -584,7 +591,7 @@ class PullRequestController(
                     // Replies go to the thread's first comment, as Azure DevOps' own page does
                     val root = thread.comments.firstOrNull { it.parentId == 0 }?.id ?: thread.comments.first().id
                     val comment = api.addPullRequestComment(pr, threadId, root, markdown)
-                    val current = _state.value?.threads?.items?.firstOrNull { it.id == threadId } ?: thread
+                    val current = shown(id)?.threads?.items?.firstOrNull { it.id == threadId } ?: thread
                     current.copy(comments = current.comments.filterNot { it.id == comment.id } + comment)
                 }
                 update(id) { st ->
@@ -631,7 +638,8 @@ class PullRequestController(
                 ),
             )
         }
-        jobs += scope.launch {
+        // Not among the reads: closing never cancels it
+        scope.launch {
             try {
                 val saved = api().setPullRequestThreadStatus(pr, threadId, status)
                 update(id) { st ->
@@ -645,7 +653,7 @@ class PullRequestController(
                     )
                 }
                 // "Comments must be resolved" may pass now
-                policies(api(), pr)
+                if (shown(id) != null) policies(api(), pr)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

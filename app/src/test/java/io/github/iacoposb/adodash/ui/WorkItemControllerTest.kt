@@ -31,18 +31,27 @@ class WorkItemControllerTest {
 
     private inner class Api : AdoApi {
         var detail = WorkItemDetail(item, rev = 7)
+        /** Any other work item: a linked one. */
+        var linked = WorkItemDetail(Fakes.workItem(4790, "Task", "Linked task"), rev = 3)
         var failWith: AdoException? = null
         /** Completed by the test to let a save finish. */
         var gate: CompletableDeferred<Unit>? = null
         val sent = mutableListOf<Pair<Int, FieldChange>>()
+        val sentIds = mutableListOf<Int>()
 
-        override suspend fun workItemDetail(id: Int) = detail
+        override suspend fun workItemDetail(id: Int) = if (id == item.id) detail else linked
         override suspend fun updateWorkItem(id: Int, rev: Int, change: FieldChange): WorkItemDetail {
             sent += rev to change
+            sentIds += id
             gate?.await()
             failWith?.let { throw it }
-            detail = detail.with(change).copy(rev = rev + 1)
-            return detail
+            return if (id == item.id) {
+                detail = detail.with(change).copy(rev = rev + 1)
+                detail
+            } else {
+                linked = linked.with(change).copy(rev = rev + 1)
+                linked
+            }
         }
         override suspend fun stateCategories(project: String, type: String) =
             linkedMapOf("New" to "Proposed", "Active" to "InProgress", "Resolved" to "Resolved", "Closed" to "Completed")
@@ -163,5 +172,56 @@ class WorkItemControllerTest {
         assertEquals(4812, c.state.value!!.page.id)
         c.back()
         assertNull(c.state.value)
+    }
+
+    @Test fun `changes made just before closing are all saved`() = runTest {
+        val api = Api()
+        val c = controller(api)
+        c.open(item.id, item)
+        advanceUntilIdle()
+        c.change(FieldChange.State("Resolved"))
+        c.change(FieldChange.Priority(3))
+        c.close()
+        advanceUntilIdle()
+        assertEquals(listOf(7 to FieldChange.State("Resolved"), 8 to FieldChange.Priority(3)), api.sent)
+        assertEquals(listOf("Resolved" to 1, "Resolved" to 3), saved.map { it.first.state to it.first.priority })
+    }
+
+    @Test fun `a save in flight when the details close still updates the dashboard`() = runTest {
+        val api = Api().apply { gate = CompletableDeferred() }
+        val c = controller(api)
+        c.open(item.id, item)
+        advanceUntilIdle()
+        c.change(FieldChange.State("Resolved"))
+        advanceUntilIdle()
+        c.close()
+        // Another work item opened meanwhile: the save is not its business
+        c.open(4790)
+        api.gate!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals("Resolved", saved.single().first.state)
+        assertEquals(4790, c.state.value!!.page.id)
+        assertEquals(3, c.state.value!!.page.saved!!.rev)
+    }
+
+    @Test fun `a change of a linked work item is saved after going back`() = runTest {
+        val api = Api()
+        val c = controller(api)
+        c.open(item.id, item)
+        advanceUntilIdle()
+        c.openLinked(4790)
+        advanceUntilIdle()
+        c.change(FieldChange.Priority(1))
+        c.back()
+        advanceUntilIdle()
+        assertEquals(listOf(4790), api.sentIds)
+        assertEquals(listOf(3 to FieldChange.Priority(1)), api.sent)
+        assertEquals(4790, saved.single().first.id)
+        // Opened again later: the next change goes against the revision that save returned
+        c.openLinked(4790)
+        advanceUntilIdle()
+        c.change(FieldChange.State("Resolved"))
+        advanceUntilIdle()
+        assertEquals(listOf(3, 4), api.sent.map { it.first })
     }
 }

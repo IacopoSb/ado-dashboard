@@ -153,7 +153,13 @@ class WorkItemController(
     /** Refused once, refused for the session. */
     val readOnly: StateFlow<Boolean> = _readOnly.asStateFlow()
     private val saves = Mutex()
+    /** Reads of the work items shown: cancelled when the details close or another opens. */
     private val jobs = mutableListOf<Job>()
+    /**
+     * The latest revision known of each work item, for the next save: kept across pages, so that
+     * a save queued for a work item no longer shown still goes against the right revision.
+     */
+    private val revisions = mutableMapOf<Int, Int>()
     private var search: Job? = null
 
     private val statesCache = mutableMapOf<String, List<StateInfo>>()
@@ -165,7 +171,7 @@ class WorkItemController(
     private val drafts = mutableMapOf<Int, Draft>()
     /** The people mentioned from the app, the latest first: offered first. */
     private val recentMentions = ArrayDeque<Person>()
-    private var revisions = 0
+    private var composerRevisions = 0
     private var localIds = 0
     private var mentionSearch: Job? = null
 
@@ -177,7 +183,7 @@ class WorkItemController(
     }
 
     private fun newPage(id: Int, known: WorkItem? = null, target: Int? = null) =
-        WorkItemPage(id, known, composer = ComposerState(drafts[id] ?: Draft(), ++revisions), target = target)
+        WorkItemPage(id, known, composer = ComposerState(drafts[id] ?: Draft(), ++composerRevisions), target = target)
 
     /** A linked work item, over the one open. */
     fun openLinked(id: Int) {
@@ -209,11 +215,16 @@ class WorkItemController(
         load(page.id, withComments = false)
     }
 
+    /** Only reads: changes and comments already sent go on, closed or not (see [change]). */
     private fun cancelAll() {
         jobs.forEach { it.cancel() }
         jobs.clear()
         search?.cancel()
         mentionSearch?.cancel()
+    }
+
+    private fun knownRevision(id: Int, rev: Int) {
+        revisions[id] = maxOf(revisions[id] ?: rev, rev)
     }
 
     private fun updatePage(id: Int, change: (WorkItemPage) -> WorkItemPage) {
@@ -231,6 +242,7 @@ class WorkItemController(
                 updatePage(id) { it.copy(error = errorText(e)) }
                 return@launch
             }
+            knownRevision(id, detail.rev)
             updatePage(id) { it.copy(saved = detail, error = null) }
             val item = detail.item
             if (withComments) launch { comments(api, item.project, id) }
@@ -300,23 +312,27 @@ class WorkItemController(
 
     /**
      * Shows [change] at once and saves it. Saves go one at a time, each against the revision the
-     * previous one returned; a failure shows the saved value again with the reason.
+     * previous one returned; a failure shows the saved value again with the reason. Once made, a
+     * change is saved even if the details close or another work item opens meanwhile.
      */
     fun change(change: FieldChange) {
         val modal = _state.value ?: return
         if (modal.readOnly) return
         val page = modal.page
+        val saved = page.saved ?: return
         val shown = page.detail ?: return
         if (shown.with(change) == shown) return
         val id = page.id
+        knownRevision(id, saved.rev)
         updatePage(id) { it.copy(pending = it.pending + (change.field to change), fieldError = null) }
-        jobs += scope.launch {
+        // Not among the reads: closing never cancels it
+        scope.launch {
             saves.withLock {
-                val api = api()
-                val saved = _state.value?.pages?.firstOrNull { it.id == id }?.saved ?: return@withLock
                 try {
+                    val api = api()
                     val sent = resolved(api, change)
-                    val result = api.updateWorkItem(id, saved.rev, sent)
+                    val result = api.updateWorkItem(id, revisions.getValue(id), sent)
+                    knownRevision(id, result.rev)
                     updatePage(id) {
                         it.copy(
                             saved = result,
@@ -432,7 +448,7 @@ class WorkItemController(
                     if (p.composer.draft.isBlank && !mine && author.name.isNotBlank()) {
                         val draft = MentionTyping.reply(author)
                         drafts[id] = draft
-                        p.copy(composer = ComposerState(draft, ++revisions))
+                        p.copy(composer = ComposerState(draft, ++composerRevisions))
                     } else {
                         p
                     }
@@ -511,7 +527,7 @@ class WorkItemController(
         drafts.remove(id)
         updatePage(id) {
             it.copy(
-                composer = ComposerState(Draft(), ++revisions),
+                composer = ComposerState(Draft(), ++composerRevisions),
                 comments = it.comments.copy(sending = it.comments.sending + sending, sendError = null),
             )
         }
@@ -519,7 +535,8 @@ class WorkItemController(
             recentMentions.removeAll { it.id == p.id }
             recentMentions.addFirst(p)
         }
-        jobs += scope.launch {
+        // Not among the reads: closing never cancels it
+        scope.launch {
             try {
                 val posted = api().addWorkItemComment(item.project, id, sending.html)
                 updatePage(id) { p ->
@@ -540,7 +557,7 @@ class WorkItemController(
                     val restore = p.composer.draft.isBlank
                     if (restore) drafts[id] = draft
                     p.copy(
-                        composer = if (restore) ComposerState(draft, ++revisions) else p.composer,
+                        composer = if (restore) ComposerState(draft, ++composerRevisions) else p.composer,
                         comments = p.comments.copy(
                             sending = p.comments.sending.filterNot { it.localId == sending.localId },
                             sendError = CommentError(problem, errorText(e)),

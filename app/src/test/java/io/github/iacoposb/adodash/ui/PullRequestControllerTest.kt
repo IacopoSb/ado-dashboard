@@ -312,4 +312,39 @@ class PullRequestControllerTest {
         assertEquals(pending, VoteMachine.synced(pending, Vote.NONE))
         assertEquals(Vote.WAITING, VoteMachine.synced(none, Vote.WAITING).saved)
     }
+
+    @Test fun `a vote in flight when the page closes still reaches the dashboard`() = runTest {
+        val api = Api().apply { gate = CompletableDeferred() }
+        val c = controller(api)
+        c.open(311, pr)
+        advanceUntilIdle()
+        c.vote(Vote.APPROVED)
+        runCurrent()
+        c.close()
+        api.gate!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf(Vote.APPROVED), api.votes)
+        assertEquals(listOf(311 to Vote.APPROVED), voted)
+    }
+
+    @Test fun `a reply and a status sent before opening another pull request are not lost`() = runTest {
+        val api = Api().apply { gate = CompletableDeferred() }
+        val c = controller(api)
+        c.open(311, pr)
+        advanceUntilIdle()
+        c.editDraft(5, Draft("On my way"))
+        c.send(5)
+        c.setStatus(6, ThreadStatus.ACTIVE)
+        runCurrent()
+        val other = Fakes.pr(400, marco).copy(projectId = "p-1")
+        c.open(400, other)
+        api.gate!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf(6 to ThreadStatus.ACTIVE), api.statuses)
+        assertEquals(1, api.posted.size)
+        // Stored as mine, with the thread as it was on the page that sent it
+        assertEquals(5, commented.single().id)
+        assertEquals(400, c.state.value!!.id)
+        assertTrue(c.state.value!!.threads.statusPending.isEmpty())
+    }
 }

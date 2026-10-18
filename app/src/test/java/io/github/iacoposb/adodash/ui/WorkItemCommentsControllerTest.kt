@@ -202,4 +202,19 @@ class WorkItemCommentsControllerTest {
         c.searchMentions("")
         assertTrue(c.state.value!!.mentions.results.isEmpty())
     }
+
+    @Test fun `a comment being sent when the details close is still stored as mine`() = runTest {
+        val api = Api().apply { gate = CompletableDeferred() }
+        val c = controller(api)
+        c.open(item.id, item)
+        advanceUntilIdle()
+        c.editDraft(Draft("Sent just before closing"))
+        c.sendComment()
+        advanceUntilIdle()
+        c.close()
+        api.gate!!.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, api.posted.size)
+        assertEquals(item.id, commented.single().first.id)
+    }
 }
