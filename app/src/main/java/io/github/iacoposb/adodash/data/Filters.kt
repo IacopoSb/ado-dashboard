@@ -1,5 +1,6 @@
 package io.github.iacoposb.adodash.data
 
+import io.github.iacoposb.adodash.api.AreaNode
 import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.Vote
@@ -71,6 +72,22 @@ data class Filters(
             append(states.sorted().joinToString(",") { quote(it) })
             append("))")
         }
+    }
+
+    /**
+     * Without the selected areas and projects missing from [projects] (renamed or deleted in
+     * Azure DevOps, which refuses a query naming them); the same when nothing is missing.
+     */
+    fun withoutAreasMissingFrom(projects: List<AreaNode>): Filters {
+        val selected = areas ?: return this
+        val known = mutableSetOf<String>()
+        fun walk(node: AreaNode) {
+            known += node.path.lowercase()
+            node.children.forEach(::walk)
+        }
+        projects.forEach(::walk)
+        val kept = selected.filterTo(mutableSetOf()) { it.lowercase() in known }
+        return if (kept.size == selected.size) this else copy(areas = kept)
     }
 
     fun encode(): String = json.encodeToString(serializer(), this)

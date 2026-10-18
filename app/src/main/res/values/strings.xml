@@ -63,6 +63,7 @@
 
     <!-- Sync warnings and errors -->
     <string name="warning_mentions">Mentions: %1$s</string>
+    <string name="warning_missing_area">A global filter refers to an area that no longer exists: check the filters in the settings</string>
     <string name="warning_project">%1$s: %2$s</string>
     <string name="warning_states">%1$s states: %2$s</string>
     <string name="error_no_readable_project">No project could be read</string>

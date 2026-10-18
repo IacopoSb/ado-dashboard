@@ -64,6 +64,7 @@
 
     <!-- Sync warnings and errors -->
     <string name="warning_mentions">Menzioni: %1$s</string>
+    <string name="warning_missing_area">Un filtro globale riguarda un\'area che non esiste più: controlla i filtri nelle impostazioni</string>
     <string name="warning_project">%1$s: %2$s</string>
     <string name="warning_states">Stati di %1$s: %2$s</string>
     <string name="error_no_readable_project">Nessun progetto leggibile</string>

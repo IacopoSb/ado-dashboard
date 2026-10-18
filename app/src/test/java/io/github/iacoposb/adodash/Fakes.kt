@@ -136,6 +136,7 @@ object Fakes {
         override fun projectWarning(project: String, error: String) = "$project: $error"
         override fun statesWarning(type: String, error: String) = "$type states: $error"
         override fun noReadableProject() = "no readable project"
+        override fun missingAreaWarning() = "missing area"
         override fun error(e: Throwable) = e.message ?: e.javaClass.simpleName
     }
 }

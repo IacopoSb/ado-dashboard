@@ -44,9 +44,8 @@ class AdoApp : Application() {
     /** Online or not, for the dashboard's offline banner and its sync when the network is back. */
     val network by lazy { NetworkMonitor(this) }
     val entra by lazy { EntraAuth(this, settings) }
-    val catalog by lazy {
-        CatalogRepository(CatalogCache(File(filesDir, "filter-catalog.json")), scope, ::errorText)
-    }
+    private val catalogCache by lazy { CatalogCache(File(filesDir, "filter-catalog.json")) }
+    val catalog by lazy { CatalogRepository(catalogCache, scope, ::errorText) }
     val sync by lazy {
         SyncRepository(
             settings, database.events(), { events, s -> notifier.notify(events, s.notifications) }, ResourceSyncTexts(this),
@@ -79,6 +78,7 @@ class AdoApp : Application() {
                     settings.setSignInNotified(true)
                 }
             },
+            catalog = { s -> catalogCache.load(s.organization)?.catalog },
         )
     }
 

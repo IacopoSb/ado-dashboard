@@ -26,6 +26,8 @@ interface SyncTexts {
     fun projectWarning(project: String, error: String): String
     fun statesWarning(type: String, error: String): String
     fun noReadableProject(): String
+    /** A global filter selects an area (or project) Azure DevOps does not know any more. */
+    fun missingAreaWarning(): String
 
     /** What to show for a failure. */
     fun error(e: Throwable): String
@@ -62,6 +64,7 @@ class ResourceSyncTexts(private val context: Context) : SyncTexts {
     override fun projectWarning(project: String, error: String) = s(R.string.warning_project, project, error)
     override fun statesWarning(type: String, error: String) = s(R.string.warning_states, type, error)
     override fun noReadableProject() = s(R.string.error_no_readable_project)
+    override fun missingAreaWarning() = s(R.string.warning_missing_area)
 
     override fun error(e: Throwable) = context.errorText(e)
 }

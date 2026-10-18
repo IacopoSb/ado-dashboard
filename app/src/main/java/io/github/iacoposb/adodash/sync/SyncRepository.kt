@@ -48,6 +48,8 @@ class SyncRepository(
     /** A sync refused for the credentials (expired session, PAT refused), with its settings. */
     private val onSignInRequired: suspend (Settings) -> Unit = {},
     private val log: (String) -> Unit = { android.util.Log.i("AdoSync", it) },
+    /** The saved filters' catalog of the account, to tell the areas that no longer exist. */
+    private val catalog: suspend (Settings) -> FilterCatalog? = { null },
     private val clock: () -> Instant = Instant::now,
 ) {
     private val mutex = Mutex()
@@ -95,7 +97,9 @@ class SyncRepository(
         _state.update { it.copy(syncing = true) }
         try {
             val now = clock()
-            val fetched = SyncEngine(apiFor(s), stateCategories, teamAreas, texts = texts, cache = signalCache).fetch(
+            val fetched = SyncEngine(
+                apiFor(s), stateCategories, teamAreas, texts = texts, cache = signalCache, catalog = { catalog(s) },
+            ).fetch(
                 me = Identity(s.meId, s.meName),
                 since = s.lastSyncAt.takeIf { it > 0 }?.let(Instant::ofEpochMilli),
                 filters = s.filters,

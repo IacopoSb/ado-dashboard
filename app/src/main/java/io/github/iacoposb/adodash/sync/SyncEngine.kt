@@ -143,7 +143,13 @@ class SyncEngine(
     private val texts: SyncTexts,
     /** Policies, threads, branches and test counts; kept by the caller across syncs. */
     private val cache: SignalCache = SignalCache(),
+    /** The saved filters' catalog, to tell the areas that no longer exist; null when none is saved. */
+    private val catalog: suspend () -> FilterCatalog? = { null },
 ) {
+    private val catalogLock = Mutex()
+    private var catalogRead = false
+    private var savedCatalog: FilterCatalog? = null
+    private val missingAreaWarned = AtomicBoolean(false)
 
     /**
      * [since] is the previous sync; null on the first one, when comments are
@@ -168,13 +174,15 @@ class SyncEngine(
             if (filters.selectsNothing) return@async emptyList()
             // Filtered in the query, so the top 200 are all items to show, and here again
             // for what the query cannot express exactly (case, renamed areas)
-            val items = api.workItems(api.queryWorkItemIds(assignedWiql(filters))).filter(filters::accepts)
+            val ids = queryIds(filters, warnings) { assignedWiql(it) }
+            val items = api.workItems(ids).filter(filters::accepts)
             openOnly(items, warnings)
         }
         // Someone else's work items, or closed ones: a query of the view's own
         val viewItems = async {
             if (!needs.workItemQuery || filters.selectsNothing) return@async null
-            val items = api.workItems(api.queryWorkItemIds(ViewQuery.wiql(panel, filters, scope))).filter(filters::accepts)
+            val ids = queryIds(filters, warnings) { ViewQuery.wiql(panel, it, scope) }
+            val items = api.workItems(ids).filter(filters::accepts)
             loadCategories(items, warnings)
             items
         }
@@ -301,6 +309,49 @@ class SyncEngine(
             prComments = prComments,
             failedPrBuilds = failedPrBuilds,
         )
+    }
+
+    /**
+     * The ids [wiql] finds with [filters]. A saved area that was renamed or deleted makes Azure
+     * DevOps refuse the query (HTTP 400, TF51011): then it runs again without the areas the saved
+     * catalog does not know, and if that cannot be done or fails as well it finds nothing, with a
+     * warning, so that the pull requests and the pipelines still show.
+     */
+    private suspend fun queryIds(filters: Filters, warnings: MutableList<String>, wiql: (Filters) -> String): List<Int> {
+        try {
+            return api.queryWorkItemIds(wiql(filters))
+        } catch (e: AdoException) {
+            if (e.code != 400 || filters.areas.isNullOrEmpty()) throw e
+        }
+        fun warn() {
+            if (missingAreaWarned.compareAndSet(false, true)) warnings += texts.missingAreaWarning()
+        }
+        val known = savedCatalog()?.let { filters.withoutAreasMissingFrom(it.projects) }
+        if (known != null && known != filters) {
+            warn()
+            if (known.selectsNothing) return emptyList()
+            try {
+                return api.queryWorkItemIds(wiql(known))
+            } catch (e: AdoException) {
+                if (e.code != 400) throw e
+            }
+        }
+        warn()
+        return emptyList()
+    }
+
+    private suspend fun savedCatalog(): FilterCatalog? = catalogLock.withLock {
+        if (!catalogRead) {
+            savedCatalog = try {
+                catalog()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            catalogRead = true
+        }
+        savedCatalog
     }
 
     /**

@@ -94,4 +94,12 @@ class FiltersTest {
             f.wiqlConditions(),
         )
     }
+
+    @Test fun `areas and projects that no longer exist are left out, case aside`() {
+        val f = Filters(areas = setOf("contoso\\backend", "Contoso\\Gone", "Interno", "Old project"))
+        assertEquals(setOf("contoso\\backend", "Interno"), f.withoutAreasMissingFrom(Fakes.projects).areas)
+        val all = Filters(areas = setOf("Contoso\\Backend\\Gateway"))
+        assertTrue(all.withoutAreasMissingFrom(Fakes.projects) === all)
+        assertEquals(Filters(), Filters().withoutAreasMissingFrom(Fakes.projects))
+    }
 }
