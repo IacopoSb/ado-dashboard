@@ -91,7 +91,7 @@ internal fun today(now: Instant): LocalDate = now.atZone(ZoneId.systemDefault())
 
 /**
  * The app bar's sprint tile of a board: "Sprint 42 · 6 days left" and my items by state
- * ("Mine: 2 to do · 3 in progress · 4 done"), the latter left out when [compact]. Tapping it
+ * ("Mine: 2 to do · 3 in progress · 4 done"); when [compact] the name over the days. Tapping it
  * opens the sprint backlog.
  */
 @Composable
@@ -107,16 +107,15 @@ fun SprintTile(sprint: Sprint, me: Identity, now: Instant, onOpen: () -> Unit, m
         Icon(AdoIcons.Flag, null, Modifier.size(20.dp), tint = c.primary)
         Spacer(Modifier.width(12.dp))
         Column {
+            val days = daysLeftShort(sprint, now)
             Text(
-                listOfNotNull(sprint.iteration.name, daysLeftShort(sprint, now)).joinToString(" · "),
+                if (compact) sprint.iteration.name else listOfNotNull(sprint.iteration.name, days).joinToString(" · "),
                 style = MaterialTheme.typography.titleSmall, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            // Narrow screens: the name and the days only
-            if (!compact) {
-                Text(
-                    stringResource(R.string.sprint_mine_counts, mine.toDo, mine.inProgress, mine.done),
-                    style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
+            // Narrow screens: the name over the days, as the pipeline tile's two lines
+            val detail = if (compact) days else stringResource(R.string.sprint_mine_counts, mine.toDo, mine.inProgress, mine.done)
+            detail?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

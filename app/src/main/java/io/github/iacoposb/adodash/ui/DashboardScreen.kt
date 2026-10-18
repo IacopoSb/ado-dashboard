@@ -411,7 +411,9 @@ private fun Panels(
     // An expired session: the data stays readable, dimmed, until signing in again
     BoxWithConstraints(Modifier.fillMaxSize().then(if (status.dimmed) Modifier.alpha(DIMMED_ALPHA) else Modifier)) {
         val insets = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
-        if (maxWidth >= 840.dp) {
+        // Side by side on wide screens; tabs on narrow ones and on phones on their side, where
+        // three columns would be too short and too narrow for their titles
+        if (maxWidth >= 840.dp && maxHeight >= 480.dp) {
             Row(insets.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 panels.forEach { (_, panel) -> panel(Modifier.weight(1f).fillMaxHeight()) }
             }
@@ -456,64 +458,87 @@ private fun DashboardBar(
     onOpenSprint: () -> Unit,
 ) {
     val c = AdoTheme.colors
+    val snapshot = state.snapshot
+    // A board's sprint: the global view has no tile, nor a team without a current sprint
+    val sprint = snapshot?.shownFor(view)?.sprint?.takeIf { view.board != null }
+    // A board's builds: the global view has no tile, nor a board without readable builds
+    val shown = snapshot?.takeIf { !it.buildsDenied }?.shownFor(view)
+    val pipeline = shown?.pipeline.orEmpty()
+    val project = shown?.pipelineProject
+    val sprintTile: @Composable (Modifier, Boolean) -> Unit = { m, compact ->
+        if (sprint != null) SprintTile(sprint, snapshot.me, now, onOpenSprint, m, compact = compact)
+    }
+    val pipelineTile: @Composable (Modifier, Boolean) -> Unit = { m, dots ->
+        if (project != null) PipelineTile(pipeline, { onOpenPipelines(project, view.board?.team) }, m, dots = dots)
+    }
     BoxWithConstraints {
-        val dots = maxWidth >= 600.dp
-        Row(
-            Modifier.fillMaxWidth().height(60.dp).padding(start = 8.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f).padding(top = 4.dp)) {
-                val choose = stringResource(R.string.action_choose_view)
-                Row(
-                    Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = choose, role = Role.Button, onClick = onTitle)
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+        // Narrower than this the tiles would squeeze the title: they go in a row below
+        val inline = maxWidth >= 840.dp
+        // Room for my items in the sprint and the dots of the latest builds
+        val detailed = if (inline) maxWidth >= 1100.dp else maxWidth >= 600.dp
+        Column(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth().height(60.dp).padding(start = 8.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f).padding(top = 4.dp)) {
+                    val choose = stringResource(R.string.action_choose_view)
+                    Row(
+                        Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClickLabel = choose, role = Role.Button, onClick = onTitle)
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            viewTitle(view), Modifier.weight(1f, fill = false).semantics { heading() },
+                            style = MaterialTheme.typography.titleLarge, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Filled.KeyboardArrowDown, choose, Modifier.size(24.dp), tint = c.textMuted)
+                    }
+                    // What is on screen is from then, also while a sync runs over what was saved
+                    val subtitle = when {
+                        snapshot != null && view.board != null -> stringResource(R.string.dashboard_updated_at, updatedAt(snapshot.syncedAt, now))
+                        snapshot != null -> stringResource(R.string.dashboard_synced, snapshot.me.name, updatedAt(snapshot.syncedAt, now))
+                        status.content == PanelsContent.LOADING -> stringResource(R.string.dashboard_syncing)
+                        else -> stringResource(R.string.dashboard_not_synced)
+                    }
                     Text(
-                        viewTitle(view), Modifier.weight(1f, fill = false).semantics { heading() },
-                        style = MaterialTheme.typography.titleLarge, color = c.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        if (view.board != null) stringResource(R.string.view_board_subtitle, subtitle) else "$organization · $subtitle",
+                        Modifier.padding(horizontal = 8.dp),
+                        style = MaterialTheme.typography.bodySmall, color = c.textMuted,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.width(4.dp))
-                    Icon(Icons.Filled.KeyboardArrowDown, choose, Modifier.size(24.dp), tint = c.textMuted)
                 }
-                val snapshot = state.snapshot
-                // What is on screen is from then, also while a sync runs over what was saved
-                val subtitle = when {
-                    snapshot != null && view.board != null -> stringResource(R.string.dashboard_updated_at, updatedAt(snapshot.syncedAt, now))
-                    snapshot != null -> stringResource(R.string.dashboard_synced, snapshot.me.name, updatedAt(snapshot.syncedAt, now))
-                    status.content == PanelsContent.LOADING -> stringResource(R.string.dashboard_syncing)
-                    else -> stringResource(R.string.dashboard_not_synced)
+                if (inline) {
+                    if (sprint != null) {
+                        Spacer(Modifier.width(12.dp))
+                        sprintTile(Modifier, !detailed)
+                    }
+                    if (project != null) {
+                        Spacer(Modifier.width(12.dp))
+                        pipelineTile(Modifier, detailed)
+                        Spacer(Modifier.width(20.dp))
+                    }
                 }
-                Text(
-                    if (view.board != null) stringResource(R.string.view_board_subtitle, subtitle) else "$organization · $subtitle",
-                    Modifier.padding(horizontal = 8.dp),
-                    style = MaterialTheme.typography.bodySmall, color = c.textMuted,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
+                if (state.syncing) {
+                    CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), color = c.primary, strokeWidth = 2.dp)
+                } else {
+                    IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, stringResource(R.string.action_refresh), tint = c.textMuted) }
+                }
+                Spacer(Modifier.width(if (inline) 12.dp else 4.dp))
+                IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.action_settings), tint = c.textMuted) }
             }
-            // A board's sprint: the global view has no tile, nor a team without a current sprint
-            val snapshot = state.snapshot
-            val sprint = snapshot?.shownFor(view)?.sprint?.takeIf { view.board != null }
-            if (sprint != null) {
-                Spacer(Modifier.width(12.dp))
-                SprintTile(sprint, snapshot.me, now, onOpenSprint, compact = !dots)
+            if (!inline && (sprint != null || project != null)) {
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    // Phones: the sprint as wide as its name, the builds' counts in the rest
+                    val alone = sprint == null || project == null
+                    sprintTile(if (detailed || alone) Modifier.weight(1f) else Modifier, !detailed)
+                    pipelineTile(Modifier.weight(1f), detailed)
+                }
             }
-            // A board's builds: the global view has no tile, nor a board without readable builds
-            val shown = snapshot?.takeIf { !it.buildsDenied }?.shownFor(view)
-            val pipeline = shown?.pipeline.orEmpty()
-            val project = shown?.pipelineProject
-            if (project != null) {
-                Spacer(Modifier.width(12.dp))
-                PipelineTile(pipeline, { onOpenPipelines(project, view.board?.team) }, dots = dots)
-                Spacer(Modifier.width(20.dp))
-            }
-            if (state.syncing) {
-                CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp), color = c.primary, strokeWidth = 2.dp)
-            } else {
-                IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, stringResource(R.string.action_refresh), tint = c.textMuted) }
-            }
-            Spacer(Modifier.width(12.dp))
-            IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, stringResource(R.string.action_settings), tint = c.textMuted) }
         }
     }
 }
