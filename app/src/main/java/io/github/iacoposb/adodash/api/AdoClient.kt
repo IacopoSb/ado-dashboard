@@ -233,6 +233,128 @@ class AdoClient(
         return dto.toThread()
     }
 
+    override suspend fun createPullRequestFileThread(
+        pr: PullRequest,
+        content: String,
+        anchor: FileAnchor,
+        iteration: Int,
+        changeTrackingId: Int,
+    ): PrThread {
+        val side = if (anchor.left) "left" else "right"
+        val body = buildJsonObject {
+            putJsonArray("comments") {
+                add(
+                    buildJsonObject {
+                        put("parentCommentId", 0)
+                        put("content", content)
+                        put("commentType", 1)
+                    },
+                )
+            }
+            put("status", ThreadStatus.ACTIVE)
+            putJsonObject("threadContext") {
+                put("filePath", anchor.path)
+                putJsonObject("${side}FileStart") {
+                    put("line", anchor.line)
+                    put("offset", 1)
+                }
+                putJsonObject("${side}FileEnd") {
+                    put("line", anchor.line)
+                    put("offset", 1)
+                }
+            }
+            if (iteration > 0 && changeTrackingId > 0) {
+                putJsonObject("pullRequestThreadContext") {
+                    put("changeTrackingId", changeTrackingId)
+                    putJsonObject("iterationContext") {
+                        put("firstComparingIteration", 1)
+                        put("secondComparingIteration", iteration)
+                    }
+                }
+            }
+        }
+        val dto: ThreadDto = post(url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "threads"), body)
+        return dto.toThread()
+    }
+
+    override suspend fun pullRequestIterations(pr: PullRequest): List<PrIteration> {
+        val list: ValueList<IterationDto> = get(
+            url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "iterations"),
+        )
+        return list.value.map {
+            PrIteration(it.id, it.sourceRefCommit?.commitId.orEmpty(), (it.commonRefCommit ?: it.targetRefCommit)?.commitId.orEmpty())
+        }.sortedBy { it.id }
+    }
+
+    override suspend fun iterationChanges(pr: PullRequest, iteration: Int): List<PrFileChange> {
+        val dto: IterationChangesDto = get(
+            url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "iterations", "$iteration", "changes") {
+                addQueryParameter("\$top", "2000")
+            },
+        )
+        return dto.changeEntries.mapNotNull { e ->
+            val item = e.item ?: return@mapNotNull null
+            val path = item.path.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            if (item.isFolder || item.gitObjectType == "tree") return@mapNotNull null
+            val type = PrFileChange.typeOf(e.changeType)
+            PrFileChange(
+                path, type,
+                originalPath = (e.originalPath ?: e.sourceServerItem)?.takeIf { type == ChangeType.RENAME && it.isNotBlank() && it != path },
+                changeTrackingId = e.changeTrackingId,
+            )
+        }
+    }
+
+    override suspend fun fileContent(pr: PullRequest, path: String, commit: String): FileContent {
+        val target = url(pr.project, "_apis", "git", "repositories", pr.repoId, "items") {
+            addQueryParameter("path", path)
+            addQueryParameter("versionDescriptor.version", commit)
+            addQueryParameter("versionDescriptor.versionType", "commit")
+            addQueryParameter("includeContent", "true")
+        }
+        val text = try {
+            fetch(Request.Builder().url(target).get(), maxBytes = FileContent.MAX_BYTES).first
+        } catch (e: AdoException) {
+            when (e.code) {
+                404 -> return FileContent.Missing
+                TOO_LARGE -> return FileContent.TooLarge
+                else -> throw e
+            }
+        }
+        val item = json.decodeFromString<ItemDto>(text)
+        val content = item.content ?: return FileContent.Missing
+        return when {
+            item.contentMetadata?.isBinary == true || content.contains('\u0000') -> FileContent.Binary
+            content.length > FileContent.MAX_BYTES -> FileContent.TooLarge
+            else -> FileContent.Text(content)
+        }
+    }
+
+    override suspend fun pullRequestCommits(pr: PullRequest): List<PrCommit> {
+        val all = mutableListOf<CommitDto>()
+        var token: String? = null
+        var pages = 0
+        do {
+            val (page, next) = page<ValueList<CommitDto>>(
+                url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "commits") {
+                    token?.let { addQueryParameter("continuationToken", it) }
+                },
+            )
+            all += page.value
+            token = next?.takeIf { it.isNotBlank() }
+        } while (token != null && ++pages < MAX_COMMIT_PAGES)
+        return all.distinctBy { it.commitId }.map { c ->
+            PrCommit(
+                id = c.commitId,
+                message = c.comment.lineSequence().firstOrNull { it.isNotBlank() }.orEmpty().trim(),
+                author = c.author?.name.orEmpty(),
+                date = c.author?.date?.let(::instantOrNull) ?: Instant.EPOCH,
+                url = baseUrl.newBuilder().addPathSegment(pr.project).addPathSegment("_git").addPathSegment(pr.repoName)
+                    .addPathSegment("commit").addPathSegment(c.commitId).build().toString(),
+            )
+        }
+    }
+
     override suspend fun setPullRequestThreadStatus(pr: PullRequest, threadId: Int, status: String): PrThread {
         val body = buildJsonObject { put("status", status) }
         val dto: ThreadDto = call(
@@ -498,13 +620,21 @@ class AdoClient(
     private suspend inline fun <reified T> page(url: HttpUrl): Pair<T, String?> =
         fetch(Request.Builder().url(url).get()).let { (text, next) -> json.decodeFromString<T>(text) to next }
 
-    /** The body of a successful response and its continuation token. */
-    private suspend fun fetch(request: Request.Builder): Pair<String, String?> {
+    /**
+     * The body of a successful response and its continuation token; one longer than [maxBytes]
+     * is not read, but fails with [TOO_LARGE].
+     */
+    private suspend fun fetch(request: Request.Builder, maxBytes: Long? = null): Pair<String, String?> {
         val auth = authorization()
         return withContext(Dispatchers.IO) {
             http.newCall(request.header("Authorization", auth).header("Accept", "application/json").build())
                 .execute().use { response ->
+                    // A JSON item holds the file's content escaped: some room over the file's limit
+                    val limit = maxBytes?.let { it * 2 }
+                    val length = response.body?.contentLength() ?: -1
+                    if (limit != null && response.isSuccessful && length > limit) throw AdoException(TOO_LARGE, "Too large")
                     val body = response.body?.string().orEmpty()
+                    if (limit != null && response.isSuccessful && body.length > limit) throw AdoException(TOO_LARGE, "Too large")
                     // An expired PAT gets a 203 with the sign-in page instead of a 401
                     val isHtml = response.header("Content-Type")?.startsWith("text/html") == true
                     when {
@@ -669,6 +799,12 @@ class AdoClient(
         private const val AREA_DEPTH = 10
         /** Older servers: the states of a project's types read a few at a time. */
         private const val PARALLEL_TYPE_STATES = 4
+
+        /** What [fetch] answers for a body over its limit: not an HTTP code. */
+        private const val TOO_LARGE = -413
+
+        /** Pull request commits: pages read at most. */
+        private const val MAX_COMMIT_PAGES = 5
 
         /** Pipelines read per call, and calls at most. */
         private const val DEFINITIONS_PAGE = 1000
@@ -855,6 +991,25 @@ private fun ReviewerDto.toReviewer() =
     val comments: List<ThreadCommentDto> = emptyList(),
     val threadContext: ThreadContextDto? = null,
 )
+@Serializable private data class IterationDto(
+    val id: Int,
+    val sourceRefCommit: CommitRefDto? = null,
+    val targetRefCommit: CommitRefDto? = null,
+    val commonRefCommit: CommitRefDto? = null,
+)
+@Serializable private data class ChangeItemDto(val path: String = "", val isFolder: Boolean = false, val gitObjectType: String? = null)
+@Serializable private data class ChangeEntryDto(
+    val changeTrackingId: Int = 0,
+    val changeType: String = "edit",
+    val item: ChangeItemDto? = null,
+    val originalPath: String? = null,
+    val sourceServerItem: String? = null,
+)
+@Serializable private data class IterationChangesDto(val changeEntries: List<ChangeEntryDto> = emptyList())
+@Serializable private data class ContentMetadataDto(val isBinary: Boolean = false)
+@Serializable private data class ItemDto(val content: String? = null, val contentMetadata: ContentMetadataDto? = null)
+@Serializable private data class GitUserDateDto(val name: String = "", val date: String? = null)
+@Serializable private data class CommitDto(val commitId: String, val comment: String = "", val author: GitUserDateDto? = null)
 @Serializable private data class FilePositionDto(val line: Int = 0)
 @Serializable private data class ThreadContextDto(
     val filePath: String? = null,
@@ -877,8 +1032,12 @@ private fun ThreadCommentDto.toComment(threadId: Int) =
 private fun ThreadDto.toThread(): PrThread {
     val comments = comments.filter { !it.isDeleted && it.commentType == "text" }.map { it.toComment(id) }
     val context = threadContext
-    val line = (context?.rightFileStart ?: context?.leftFileStart)?.line?.takeIf { it > 0 }
-    return PrThread(id, status, comments, filePath = context?.filePath?.takeIf { it.isNotBlank() }, line = line)
+    val right = context?.rightFileStart?.line?.takeIf { it > 0 }
+    val left = context?.leftFileStart?.line?.takeIf { it > 0 }
+    return PrThread(
+        id, status, comments, filePath = context?.filePath?.takeIf { it.isNotBlank() }, line = right ?: left,
+        leftSide = right == null && left != null,
+    )
 }
 
 @Serializable private data class PolicyTypeDto(val id: String = "", val displayName: String = "")

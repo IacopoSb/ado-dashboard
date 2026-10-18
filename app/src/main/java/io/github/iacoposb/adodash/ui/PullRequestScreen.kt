@@ -51,7 +51,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
@@ -115,6 +115,15 @@ class PrActions(
     val onOpenWorkItem: (WorkItem) -> Unit = {},
     /** The thread opened from a mention was shown. */
     val onTargetShown: () -> Unit = {},
+    val onSelectFile: (path: String) -> Unit = {},
+    val onToggleViewed: (path: String) -> Unit = {},
+    val onToggleFolder: (folder: String) -> Unit = {},
+    val onSetSideBySide: (Boolean) -> Unit = {},
+    val onExpandGap: (path: String, start: Int) -> Unit = { _, _ -> },
+    val onRetryFile: (path: String) -> Unit = {},
+    /** A line long-pressed, or its number tapped: a new thread on it. */
+    val onStartFileThread: (LineRef) -> Unit = {},
+    val onCancelFileThread: () -> Unit = {},
 )
 
 /** How long the thread opened from a mention stays highlighted. */
@@ -187,6 +196,8 @@ fun PullRequestScreen(
                     PrTabs(screen, pr, actions, wide)
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         when {
+                            screen.tab == PrTab.FILES -> FilesTab(screen, now, actions, wide)
+                            screen.tab == PrTab.COMMITS -> CommitsTab(screen, now, actions, wide)
                             screen.tab == PrTab.THREADS && wide -> WideThreads(screen, now, actions, view)
                             screen.tab == PrTab.THREADS -> NarrowThreads(screen, now, actions, view)
                             wide -> WideOverview(screen, pr, now, actions, view)
@@ -397,18 +408,23 @@ private fun PhoneVoteBar(screen: PrScreen, actions: PrActions, initialMenu: Bool
     }
 }
 
-/** Overview and Threads, with the signals on the right on tablets. */
+/** Overview, Files, Threads and Commits, with the signals on the right on tablets. */
 @Composable
 private fun PrTabs(screen: PrScreen, pr: PullRequest, actions: PrActions, wide: Boolean) {
     val c = AdoTheme.colors
     val active = screen.threads.activeCount
+    val files = screen.files.changes.size.takeIf { screen.files.loaded && screen.files.error == null }
+    val commits = screen.commits.items.size.takeIf { screen.commits.loaded && screen.commits.error == null }
     val tabs = listOf(
         PrTab.OVERVIEW to stringResource(R.string.pr_tab_overview),
-        PrTab.THREADS to if (screen.threads.loaded && active > 0) {
-            pluralStringResource(R.plurals.pr_tab_threads_active, active, active)
-        } else {
-            stringResource(R.string.pr_tab_threads)
+        PrTab.FILES to if (files != null) stringResource(R.string.pr_tab_files_count, files) else stringResource(R.string.pr_tab_files),
+        PrTab.THREADS to when {
+            !screen.threads.loaded || active == 0 -> stringResource(R.string.pr_tab_threads)
+            wide -> pluralStringResource(R.plurals.pr_tab_threads_active, active, active)
+            // Four tabs on a phone: the count alone
+            else -> "${stringResource(R.string.pr_tab_threads)} · $active"
         },
+        PrTab.COMMITS to if (commits != null) stringResource(R.string.pr_tab_commits_count, commits) else stringResource(R.string.pr_tab_commits),
     )
     val selected = tabs.indexOfFirst { it.first == screen.tab }.coerceAtLeast(0)
     if (wide) {
@@ -440,9 +456,9 @@ private fun PrTabs(screen: PrScreen, pr: PullRequest, actions: PrActions, wide: 
         return
     }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        TabRow(
+        ScrollableTabRow(
             selectedTabIndex = selected, containerColor = c.bg, contentColor = c.primary,
-            modifier = if (wide) Modifier.width(360.dp) else Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth(), edgePadding = 0.dp,
             indicator = { positions ->
                 TabRowDefaults.SecondaryIndicator(Modifier.tabIndicatorOffset(positions[selected]), color = c.primary)
             },

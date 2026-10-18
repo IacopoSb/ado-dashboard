@@ -2,6 +2,11 @@ package io.github.iacoposb.adodash.ui
 
 import io.github.iacoposb.adodash.api.AdoApi
 import io.github.iacoposb.adodash.api.AdoException
+import io.github.iacoposb.adodash.api.FileAnchor
+import io.github.iacoposb.adodash.api.FileContent
+import io.github.iacoposb.adodash.api.PrCommit
+import io.github.iacoposb.adodash.api.PrFileChange
+import io.github.iacoposb.adodash.api.PrIteration
 import io.github.iacoposb.adodash.api.Person
 import io.github.iacoposb.adodash.api.PolicyEvaluation
 import io.github.iacoposb.adodash.api.PrThread
@@ -14,7 +19,13 @@ import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.api.isDenied
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,8 +33,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Instant
+import kotlin.coroutines.CoroutineContext
 
-enum class PrTab { OVERVIEW, THREADS }
+enum class PrTab { OVERVIEW, FILES, THREADS, COMMITS }
 
 /** Which threads the Threads tab lists: those still to act on, those done with, or all. */
 enum class ThreadFilter {
@@ -61,8 +73,59 @@ object VoteMachine {
     fun synced(state: VoteState, vote: Int) = if (state.busy) state else state.copy(saved = vote)
 }
 
-/** A comment posted from the page, shown at once while it is sent; [threadId] 0 for a new thread. */
-data class SendingPrComment(val localId: Int, val threadId: Int, val markdown: String, val at: Instant)
+/**
+ * A comment posted from the page, shown at once while it is sent; [threadId] 0 for a new thread,
+ * [PrScreen.NEW_FILE_THREAD] for one on the line of a file at [anchor].
+ */
+data class SendingPrComment(val localId: Int, val threadId: Int, val markdown: String, val at: Instant, val anchor: FileAnchor? = null)
+
+/** A file's diff in the Files tab: read and computed when the file is first shown. */
+sealed interface FileDiff {
+    data object Loading : FileDiff
+    data class Ready(val lines: List<DiffLine>, val added: Int, val deleted: Int) : FileDiff
+    data object TooLarge : FileDiff
+    data object Binary : FileDiff
+    data class Failed(val message: String) : FileDiff
+}
+
+/**
+ * The Files tab: the files of the latest push ([iteration]) and the one [selected]; [diffs] by
+ * path; [viewed] the files marked as seen (for the session); [expandedGaps] the hidden stretches
+ * shown, by path; [newThread] the line a new thread is being written on.
+ */
+data class PrFilesState(
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val iteration: PrIteration? = null,
+    val changes: List<PrFileChange> = emptyList(),
+    val selected: String? = null,
+    val diffs: Map<String, FileDiff> = emptyMap(),
+    val viewed: Set<String> = emptySet(),
+    val collapsedFolders: Set<String> = emptySet(),
+    val sideBySide: Boolean = false,
+    val expandedGaps: Map<String, Set<Int>> = emptyMap(),
+    val newThread: FileAnchor? = null,
+) {
+    val selectedChange: PrFileChange? get() = changes.firstOrNull { it.path == selected }
+
+    /** Lines added and deleted in all the files, once every diff is known. */
+    val totals: Pair<Int, Int>?
+        get() {
+            val ready = changes.map { diffs[it.path] as? FileDiff.Ready ?: return null }
+            return ready.sumOf { it.added } to ready.sumOf { it.deleted }
+        }
+}
+
+/** The files by folder, folders and files in path order. Pure. */
+object PrFileList {
+    fun groups(changes: List<PrFileChange>): List<Pair<String, List<PrFileChange>>> =
+        changes.groupBy { it.folder }.toSortedMap(String.CASE_INSENSITIVE_ORDER)
+            .map { (folder, files) -> folder to files.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }) }
+
+    fun ordered(changes: List<PrFileChange>): List<PrFileChange> = groups(changes).flatMap { it.second }
+}
+
+data class PrCommitsState(val loaded: Boolean = false, val error: String? = null, val items: List<PrCommit> = emptyList())
 
 /**
  * The threads of the pull request open: [items] as read or saved, [statusPending] the statuses
@@ -114,6 +177,8 @@ data class PrScreen(
     val filter: ThreadFilter = ThreadFilter.ACTIVE,
     val target: PrCommentTarget? = null,
     val me: Person? = null,
+    val files: PrFilesState = PrFilesState(),
+    val commits: PrCommitsState = PrCommitsState(),
 ) {
     fun composer(threadId: Int) = composers[threadId] ?: ComposerState()
 
@@ -126,6 +191,9 @@ data class PrScreen(
     companion object {
         /** The composer of a new thread on the pull request as a whole. */
         const val NEW_THREAD = 0
+
+        /** The composer of a new thread on a line of a file ([PrFilesState.newThread]). */
+        const val NEW_FILE_THREAD = -1
     }
 }
 
@@ -143,6 +211,8 @@ class PullRequestController(
     /** After I commented in a thread: its comments are stored as seen, never notified to me. */
     private val onCommented: suspend (PullRequest, PrThread) -> Unit = { _, _ -> },
     private val clock: () -> Instant = Instant::now,
+    /** Where diffs are computed: off the main thread. */
+    private val compute: CoroutineContext = Dispatchers.Default,
 ) {
     private val _state = MutableStateFlow<PrScreen?>(null)
     val state: StateFlow<PrScreen?> = _state.asStateFlow()
@@ -154,6 +224,11 @@ class PullRequestController(
     private val recentMentions = ArrayDeque<Person>()
     private var revisions = 0
     private var localIds = 0
+    /** The files marked as viewed, by pull request, and the diff's layout: kept for the session. */
+    private val viewed = mutableMapOf<Int, Set<String>>()
+    private var sideBySide = false
+    /** Diffs read ahead for the +/- counts, a few at a time. */
+    private val prefetch = Semaphore(PREFETCH_PARALLEL)
 
     /** [known] (the dashboard row) shows at once; [target] opens a thread from a mention. */
     fun open(id: Int, known: PullRequest? = null, target: PrCommentTarget? = null) {
@@ -168,6 +243,7 @@ class PullRequestController(
             filter = if (target != null) ThreadFilter.ALL else ThreadFilter.ACTIVE,
             vote = VoteState(known?.let { myVote(it, mine) } ?: Vote.NONE),
             names = known?.let { namesOf(it, mine) }.orEmpty(),
+            files = PrFilesState(viewed = viewed[id].orEmpty(), sideBySide = sideBySide),
         )
         load(id, known)
     }
@@ -216,6 +292,8 @@ class PullRequestController(
                 update(id) { it.copy(pr = pr, vote = VoteState(myVote(pr, mine)), names = it.names + namesOf(pr, mine)) }
             }
             launch { threads(api, pr) }
+            launch { files(api, pr) }
+            launch { commits(api, pr) }
             if (pr.projectId.isNotEmpty()) launch { policies(api, pr) }
             val detail = runCatchingNotCancelled { api.pullRequestDetail(pr) }
             if (detail != null) {
@@ -281,6 +359,128 @@ class PullRequestController(
             update(id) { it.copy(threads = it.threads.copy(loaded = true, error = errorText(e)), target = null) }
         }
     }
+
+    /** The files of the latest push; the first one's diff, then the others' for their counts. */
+    private suspend fun files(api: AdoApi, pr: PullRequest) {
+        val id = pr.id
+        try {
+            val iteration = api.pullRequestIterations(pr).maxByOrNull { it.id }
+            val changes = iteration?.let { PrFileList.ordered(api.iterationChanges(pr, it.id)) }.orEmpty()
+            update(id) {
+                it.copy(
+                    files = it.files.copy(
+                        loaded = true, error = null, iteration = iteration, changes = changes,
+                        selected = it.files.selected?.takeIf { p -> changes.any { c -> c.path == p } } ?: changes.firstOrNull()?.path,
+                    ),
+                )
+            }
+            val selected = _state.value?.takeIf { it.id == id }?.files?.selected ?: return
+            loadDiff(selected)
+            if (changes.size <= PREFETCH_MAX_FILES) changes.filter { it.path != selected }.forEach { loadDiff(it.path, ahead = true) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            update(id) { it.copy(files = it.files.copy(loaded = true, error = errorText(e))) }
+        }
+    }
+
+    private suspend fun commits(api: AdoApi, pr: PullRequest) {
+        val id = pr.id
+        try {
+            val read = api.pullRequestCommits(pr)
+            update(id) { it.copy(commits = PrCommitsState(loaded = true, items = read)) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            update(id) { it.copy(commits = PrCommitsState(loaded = true, error = errorText(e))) }
+        }
+    }
+
+    /** Reads and diffs a file unless it is already (or being); [ahead] when not shown yet, queued. */
+    private fun loadDiff(path: String, ahead: Boolean = false) {
+        val s = _state.value ?: return
+        val pr = s.pr ?: return
+        val change = s.files.changes.firstOrNull { it.path == path } ?: return
+        val iteration = s.files.iteration ?: return
+        val current = s.files.diffs[path]
+        if (current != null && current !is FileDiff.Failed) return
+        val id = s.id
+        update(id) { it.copy(files = it.files.copy(diffs = it.files.diffs + (path to FileDiff.Loading))) }
+        jobs += scope.launch {
+            val diff = try {
+                if (ahead) prefetch.withPermit { readDiff(api(), pr, change, iteration) } else readDiff(api(), pr, change, iteration)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                FileDiff.Failed(errorText(e))
+            }
+            update(id) { it.copy(files = it.files.copy(diffs = it.files.diffs + (path to diff))) }
+        }
+    }
+
+    private suspend fun readDiff(api: AdoApi, pr: PullRequest, change: PrFileChange, iteration: PrIteration): FileDiff = coroutineScope {
+        val base = change.basePath?.let { async { api.fileContent(pr, it, iteration.baseCommit) } }
+        val target = change.targetPath?.let { async { api.fileContent(pr, it, iteration.sourceCommit) } }
+        val old = base?.await() ?: FileContent.Missing
+        val new = target?.await() ?: FileContent.Missing
+        when {
+            old is FileContent.Binary || new is FileContent.Binary -> FileDiff.Binary
+            old is FileContent.TooLarge || new is FileContent.TooLarge -> FileDiff.TooLarge
+            else -> withContext(compute) {
+                val oldLines = LineDiff.lines((old as? FileContent.Text)?.text.orEmpty())
+                val newLines = LineDiff.lines((new as? FileContent.Text)?.text.orEmpty())
+                if (oldLines.size > FileContent.MAX_LINES || newLines.size > FileContent.MAX_LINES) {
+                    FileDiff.TooLarge
+                } else {
+                    val lines = LineDiff.diff(oldLines, newLines)
+                    val (added, deleted) = DiffRows.counts(lines)
+                    FileDiff.Ready(lines, added, deleted)
+                }
+            }
+        }
+    }
+
+    /** A file of the list tapped: its diff, read if needed. */
+    fun selectFile(path: String) {
+        val s = _state.value ?: return
+        if (s.files.changes.none { it.path == path }) return
+        update(s.id) { it.copy(files = it.files.copy(selected = path, newThread = it.files.newThread?.takeIf { a -> a.path == path })) }
+        loadDiff(path)
+    }
+
+    /** A file whose diff could not be read: read again. */
+    fun retryFile(path: String) = loadDiff(path)
+
+    /** Marks a file as viewed, or not any more: for the session. */
+    fun toggleViewed(path: String) {
+        val s = _state.value ?: return
+        val next = if (path in s.files.viewed) s.files.viewed - path else s.files.viewed + path
+        viewed[s.id] = next
+        update(s.id) { it.copy(files = it.files.copy(viewed = next)) }
+    }
+
+    fun toggleFolder(folder: String) = _state.update { s ->
+        s?.copy(files = s.files.copy(collapsedFolders = s.files.collapsedFolders.let { if (folder in it) it - folder else it + folder }))
+    }
+
+    /** Unified or side by side: kept for the session. */
+    fun setSideBySide(on: Boolean) {
+        sideBySide = on
+        _state.update { it?.copy(files = it.files.copy(sideBySide = on)) }
+    }
+
+    /** "N unchanged lines" tapped: shown. */
+    fun expandGap(path: String, start: Int) = _state.update { s ->
+        s?.copy(files = s.files.copy(expandedGaps = s.files.expandedGaps + (path to (s.files.expandedGaps[path].orEmpty() + start))))
+    }
+
+    /** A line long-pressed (or its number tapped): the composer of a new thread under it. */
+    fun startFileThread(line: LineRef) = _state.update { s ->
+        val path = s?.files?.selected ?: return@update s
+        s.copy(files = s.files.copy(newThread = FileAnchor(path, line.line, line.left)))
+    }
+
+    fun cancelFileThread() = _state.update { it?.copy(files = it.files.copy(newThread = null)) }
 
     /** Names for the mentions of people who are neither reviewers nor authors of a comment. */
     private suspend fun resolveNames(api: AdoApi, id: Int) {
@@ -350,10 +550,13 @@ class PullRequestController(
         val draft = s.composer(threadId).draft.pruned()
         if (draft.isBlank) return
         val thread = s.threads.items.firstOrNull { it.id == threadId }
-        if (threadId != PrScreen.NEW_THREAD && thread == null) return
+        val anchor = if (threadId == PrScreen.NEW_FILE_THREAD) s.files.newThread ?: return else null
+        if (threadId != PrScreen.NEW_THREAD && anchor == null && thread == null) return
+        val change = anchor?.let { a -> s.files.changes.firstOrNull { it.path == a.path } }
+        val iteration = s.files.iteration?.id ?: 0
         val id = s.id
         val markdown = PrMarkup.build(draft)
-        val sending = SendingPrComment(++localIds, threadId, markdown, clock())
+        val sending = SendingPrComment(++localIds, threadId, markdown, clock(), anchor)
         drafts.remove("$id:$threadId")
         draft.mentions.forEach { p ->
             recentMentions.removeAll { it.id == p.id }
@@ -364,12 +567,18 @@ class PullRequestController(
                 composers = it.composers + (threadId to ComposerState(Draft(), ++revisions)),
                 threads = it.threads.copy(sending = it.threads.sending + sending, sendErrors = it.threads.sendErrors - threadId),
                 names = it.names + draft.mentions.associate { p -> p.id.lowercase() to p.name },
+                files = if (anchor != null) it.files.copy(newThread = null) else it.files,
             )
         }
         jobs += scope.launch {
             try {
                 val api = api()
-                val saved = if (thread == null) {
+                val saved = if (anchor != null) {
+                    api.createPullRequestFileThread(pr, markdown, anchor, iteration, change?.changeTrackingId ?: 0).let { t ->
+                        // Placed where it was written even if the answer leaves the context out
+                        if (t.filePath == null) t.copy(filePath = anchor.path, line = anchor.line, leftSide = anchor.left) else t
+                    }
+                } else if (thread == null) {
                     api.createPullRequestThread(pr, markdown)
                 } else {
                     // Replies go to the thread's first comment, as Azure DevOps' own page does
@@ -395,6 +604,8 @@ class PullRequestController(
                     if (restore) drafts["$id:$threadId"] = draft
                     st.copy(
                         composers = if (restore) st.composers + (threadId to ComposerState(draft, ++revisions)) else st.composers,
+                        // The composer back on its line, unless another one was opened
+                        files = if (anchor != null && restore && st.files.newThread == null) st.files.copy(newThread = anchor) else st.files,
                         threads = st.threads.copy(
                             sending = st.threads.sending.filterNot { it.localId == sending.localId },
                             sendErrors = st.threads.sendErrors + (threadId to errorOf(e)),
@@ -500,5 +711,8 @@ class PullRequestController(
     private companion object {
         const val SEARCH_DELAY_MS = 250L
         const val MAX_SUGGESTIONS = 8
+        /** Up to this many files, every diff is read ahead for the counts. */
+        const val PREFETCH_MAX_FILES = 30
+        const val PREFETCH_PARALLEL = 3
     }
 }

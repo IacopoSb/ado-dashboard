@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
@@ -1054,7 +1055,14 @@ class DashboardRenderTest {
         )
     }
 
-    private fun prPage(name: String, screen: PrScreen, dark: Boolean = false, voteMenu: Boolean = false, expanded: Set<Int> = emptySet()) {
+    private fun prPage(
+        name: String,
+        screen: PrScreen,
+        dark: Boolean = false,
+        voteMenu: Boolean = false,
+        expanded: Set<Int> = emptySet(),
+        capture: Boolean = true,
+    ) {
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
                 DashboardScreen(
@@ -1063,6 +1071,7 @@ class DashboardRenderTest {
                 )
             }
         }
+        if (!capture) return
         // The vote menu is a popup: the whole screen, its windows included
         if (voteMenu) captureScreenRoboImage("$name.png") else compose.onRoot().captureRoboImage("$name.png")
     }
@@ -1121,6 +1130,142 @@ class DashboardRenderTest {
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("pr-threads-long-comment-scrolled.png")
     }
+
+    // --- Files and commits ---
+
+    /** Gateway.kt as in the design: lines 84-88 of the base become 84-94, the rest unchanged. */
+    private val gatewayBase: List<String> = run {
+        val head = listOf(
+            "package com.contoso.payments", "", "import com.contoso.http.HttpClient", "import kotlinx.coroutines.delay", "",
+            "class Gateway(private val client: HttpClient, private val policy: RetryPolicy) {",
+        )
+        val filler = (1..19).flatMap { n ->
+            listOf("", "    /** Step $n of the payment flow. */", "    private fun step$n(req: ChargeRequest) = req.copy(step = $n)")
+        }
+        val body = (head + filler).take(83)
+        body + List(83 - body.size) { "" } + listOf(
+            "    suspend fun charge(req: ChargeRequest): ChargeResult {",
+            "        var attempt = 0",
+            "        return client.post(req)",
+            "    }",
+            "}",
+        )
+    }
+
+    private val gatewayNew: List<String> = gatewayBase.take(85) + listOf(
+        "        while (true) {",
+        "            val result = runCatching { client.post(req) }",
+        "            if (result.isSuccess || attempt >= policy.maxAttempts) return result.getOrThrow()",
+        "            val wait = policy.backoff(attempt)",
+        "            delay(wait)",
+        "            attempt++",
+        "        }",
+    ) + gatewayBase.drop(86)
+
+    private fun ready(old: List<String>, new: List<String>): FileDiff.Ready {
+        val lines = LineDiff.diff(old, new)
+        val (added, deleted) = DiffRows.counts(lines)
+        return FileDiff.Ready(lines, added, deleted)
+    }
+
+    private fun designFilesScreen(
+        sideBySide: Boolean = false,
+        fullThreads: Boolean = false,
+        newThread: io.github.iacoposb.adodash.api.FileAnchor? = null,
+        tab: PrTab = PrTab.FILES,
+    ): PrScreen {
+        val base = designPrScreen(tab = tab)
+        val gateway = "/src/payments/Gateway.kt"
+        val changes = listOf(
+            io.github.iacoposb.adodash.api.PrFileChange(gateway, io.github.iacoposb.adodash.api.ChangeType.EDIT, changeTrackingId = 1),
+            io.github.iacoposb.adodash.api.PrFileChange("/src/payments/RetryPolicy.kt", io.github.iacoposb.adodash.api.ChangeType.ADD, changeTrackingId = 2),
+            io.github.iacoposb.adodash.api.PrFileChange("/src/test/payments/GatewayTest.kt", io.github.iacoposb.adodash.api.ChangeType.ADD, changeTrackingId = 3),
+            io.github.iacoposb.adodash.api.PrFileChange("/build.gradle.kts", io.github.iacoposb.adodash.api.ChangeType.EDIT, changeTrackingId = 4),
+            io.github.iacoposb.adodash.api.PrFileChange("/src/payments/LegacyClient.kt", io.github.iacoposb.adodash.api.ChangeType.DELETE, changeTrackingId = 5),
+        )
+        val diffs = mapOf(
+            gateway to ready(gatewayBase, gatewayNew),
+            "/src/payments/RetryPolicy.kt" to ready(emptyList(), List(41) { "line $it" }),
+            "/src/test/payments/GatewayTest.kt" to ready(emptyList(), List(58) { "line $it" }),
+            "/build.gradle.kts" to ready(listOf("a", "version = \"4.1\"", "b"), listOf("a", "version = \"4.2\"", "b")),
+            "/src/payments/LegacyClient.kt" to ready(List(12) { "line $it" }, emptyList()),
+        )
+        // In the design the thread on line 88 has its first comment only; the full one has replies
+        val threads = base.threads.items.map { t ->
+            if (t.id == 5 && !fullThreads) t.copy(comments = t.comments.take(1)) else t
+        } + if (fullThreads) {
+            listOf(
+                io.github.iacoposb.adodash.api.PrThread(
+                    8, "active",
+                    listOf(
+                        io.github.iacoposb.adodash.api.PrComment(
+                            8, 1, marco,
+                            if (italian) "Perché togliere la chiamata diretta?" else "Why drop the direct call?", now.minusSeconds(900),
+                        ),
+                    ),
+                    filePath = gateway, line = 86, leftSide = true,
+                ),
+            )
+        } else {
+            emptyList()
+        }
+        return base.copy(
+            threads = base.threads.copy(items = threads),
+            files = PrFilesState(
+                loaded = true, iteration = io.github.iacoposb.adodash.api.PrIteration(3, "src", "base"),
+                changes = PrFileList.ordered(changes), selected = gateway, diffs = diffs,
+                viewed = setOf("/build.gradle.kts"), sideBySide = sideBySide, newThread = newThread,
+            ),
+            commits = PrCommitsState(
+                loaded = true,
+                items = listOf(
+                    io.github.iacoposb.adodash.api.PrCommit("3f2a91c7d0e4b5a6", if (italian) "Limite di 30 s al backoff" else "Cap the backoff at 30 s", anna.name, now.minusSeconds(1800), "https://x/1"),
+                    io.github.iacoposb.adodash.api.PrCommit("9b81e0d2c3f4a5b6", if (italian) "Test del caso senza tentativi rimasti" else "Test the case with no attempts left", anna.name, now.minusSeconds(5400), "https://x/2"),
+                    io.github.iacoposb.adodash.api.PrCommit("c47d2e19a0b1c2d3", if (italian) "Retry con backoff esponenziale sulle chiamate al gateway" else "Retry with exponential backoff on the gateway calls", anna.name, now.minusSeconds(7200), "https://x/3"),
+                ),
+            ),
+            composers = if (newThread != null) {
+                mapOf(PrScreen.NEW_FILE_THREAD to ComposerState(Draft(if (italian) "Qui serve un tetto" else "This needs a cap"), 1))
+            } else {
+                emptyMap()
+            },
+        )
+    }
+
+    /** The diff scrolled to the thread on Gateway.kt. */
+    private fun prFiles(name: String, screen: PrScreen, dark: Boolean = false, scrollTo: Int = 0) {
+        prPage(name, screen, dark, capture = false)
+        if (scrollTo > 0) {
+            compose.onNodeWithTag(DIFF_TAG, useUnmergedTree = true).performScrollToIndex(scrollTo)
+            compose.waitForIdle()
+        }
+        compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    @Test fun prFiles() = prFiles("pr-files", designFilesScreen())
+
+    @Config(qualifiers = "+it")
+    @Test fun prFilesItalian() = prFiles("pr-files-it", designFilesScreen())
+
+    @Test fun prFilesDark() = prFiles("pr-files-dark", designFilesScreen(), dark = true)
+
+    @Test fun prFilesSideBySide() = prFiles("pr-files-side-by-side", designFilesScreen(sideBySide = true))
+
+    /** The thread with its replies, and one on a deleted line. */
+    @Test fun prFilesInlineThread() = prFiles("pr-files-inline-thread", designFilesScreen(fullThreads = true))
+
+    /** Line 87 long-pressed: the composer under it. */
+    @Test fun prFilesNewThread() = prFiles(
+        "pr-files-new-thread", designFilesScreen(newThread = io.github.iacoposb.adodash.api.FileAnchor("/src/payments/Gateway.kt", 89)),
+    )
+
+    @Test fun prCommits() = prPage("pr-commits", designFilesScreen(tab = PrTab.COMMITS))
+
+    @Config(qualifiers = "+it")
+    @Test fun prCommitsItalian() = prPage("pr-commits-it", designFilesScreen(tab = PrTab.COMMITS))
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun prPhoneFiles() = prFiles("pr-phone-files", designFilesScreen())
 
     @Test fun prLoading() = prPage("pr-loading", PrScreen(311, designPr(), me = Person(me.id, me.name, "")))
 }

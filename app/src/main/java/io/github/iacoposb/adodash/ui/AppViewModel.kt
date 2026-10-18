@@ -226,6 +226,14 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         onOpenBuild = { project, id -> openBuild(project, id) },
         onOpenWorkItem = ::openWorkItem,
         onTargetShown = pullRequests::targetShown,
+        onSelectFile = pullRequests::selectFile,
+        onToggleViewed = pullRequests::toggleViewed,
+        onToggleFolder = pullRequests::toggleFolder,
+        onSetSideBySide = pullRequests::setSideBySide,
+        onExpandGap = pullRequests::expandGap,
+        onRetryFile = pullRequests::retryFile,
+        onStartFileThread = pullRequests::startFileThread,
+        onCancelFileThread = pullRequests::cancelFileThread,
     )
 
     fun closeBuild() {

@@ -141,6 +141,30 @@ interface AdoApi {
     suspend fun setPullRequestThreadStatus(pr: PullRequest, threadId: Int, status: String): PrThread =
         throw AdoException(403, "Not supported")
 
+    /** The pushes to [pr], oldest first. */
+    suspend fun pullRequestIterations(pr: PullRequest): List<PrIteration> = emptyList()
+
+    /** The files [pr] changes as of [iteration] against its base, folders left out. */
+    suspend fun iterationChanges(pr: PullRequest, iteration: Int): List<PrFileChange> = emptyList()
+
+    /** The content of the file at [path] in [commit] of [pr]'s repository. */
+    suspend fun fileContent(pr: PullRequest, path: String, commit: String): FileContent = FileContent.Missing
+
+    /** The commits of [pr], newest first. */
+    suspend fun pullRequestCommits(pr: PullRequest): List<PrCommit> = emptyList()
+
+    /**
+     * A new thread on a line of a file of [pr], active, with [content] as its comment;
+     * [iteration] and [changeTrackingId] tie it to the push it was written on (0 when unknown).
+     */
+    suspend fun createPullRequestFileThread(
+        pr: PullRequest,
+        content: String,
+        anchor: FileAnchor,
+        iteration: Int = 0,
+        changeTrackingId: Int = 0,
+    ): PrThread = throw AdoException(403, "Not supported")
+
     /** Display names of identities by id (those mentioned as `@<id>`); those not found are left out. */
     suspend fun identityNames(ids: Collection<String>): Map<String, String> = emptyMap()
 }

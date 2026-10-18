@@ -506,4 +506,40 @@
     <string name="pr_status_denied">You don\'t have permission to change this thread (a PAT needs Code, Read &amp; write)</string>
     <string name="pr_status_failed">Status not changed: %1$s</string>
     <string name="pr_someone">someone</string>
+    <string name="pr_tab_files">Files</string>
+    <string name="pr_tab_files_count">Files · %1$d</string>
+    <string name="pr_tab_commits">Commits</string>
+    <string name="pr_tab_commits_count">Commits · %1$d</string>
+    <plurals name="pr_files_count">
+        <item quantity="one">%d file</item>
+        <item quantity="other">%d files</item>
+    </plurals>
+    <string name="pr_files_failed">The files can\'t be read: %1$s</string>
+    <string name="pr_files_none">No files changed</string>
+    <string name="pr_file_choose">File</string>
+    <string name="pr_file_added">Added</string>
+    <string name="pr_file_edited">Edited</string>
+    <string name="pr_file_deleted">Deleted</string>
+    <string name="pr_file_renamed">Renamed</string>
+    <string name="pr_file_renamed_from">from %1$s</string>
+    <string name="pr_file_viewed">Viewed</string>
+    <plurals name="pr_file_threads">
+        <item quantity="one">%d thread</item>
+        <item quantity="other">%d threads</item>
+    </plurals>
+    <string name="pr_diff_unified">Unified</string>
+    <string name="pr_diff_side_by_side">Side by side</string>
+    <plurals name="pr_diff_gap">
+        <item quantity="one">⋯ %d unchanged line</item>
+        <item quantity="other">⋯ %d unchanged lines</item>
+    </plurals>
+    <string name="pr_diff_failed">The file can\'t be read: %1$s</string>
+    <string name="pr_diff_too_large">This file is too large to show here (over 1 MB or 20,000 lines)</string>
+    <string name="pr_diff_binary">This is a binary file: it has no lines to compare</string>
+    <string name="pr_diff_no_changes">The content did not change</string>
+    <string name="pr_diff_comment_line">Comment on line %1$d</string>
+    <string name="pr_diff_new_comment">Comment on line %1$d…</string>
+    <string name="pr_diff_elsewhere">On lines no longer in this diff</string>
+    <string name="pr_commits_failed">The commits can\'t be read: %1$s</string>
+    <string name="pr_commits_none">No commits</string>
 </resources>

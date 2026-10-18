@@ -504,4 +504,40 @@
     <string name="pr_status_denied">Non hai il permesso di modificare questo thread (al PAT serve Code, Read &amp; write)</string>
     <string name="pr_status_failed">Stato non cambiato: %1$s</string>
     <string name="pr_someone">qualcuno</string>
+    <string name="pr_tab_files">File</string>
+    <string name="pr_tab_files_count">File · %1$d</string>
+    <string name="pr_tab_commits">Commit</string>
+    <string name="pr_tab_commits_count">Commit · %1$d</string>
+    <plurals name="pr_files_count">
+        <item quantity="one">%d file</item>
+        <item quantity="other">%d file</item>
+    </plurals>
+    <string name="pr_files_failed">I file non si possono leggere: %1$s</string>
+    <string name="pr_files_none">Nessun file modificato</string>
+    <string name="pr_file_choose">File</string>
+    <string name="pr_file_added">Aggiunto</string>
+    <string name="pr_file_edited">Modificato</string>
+    <string name="pr_file_deleted">Eliminato</string>
+    <string name="pr_file_renamed">Rinominato</string>
+    <string name="pr_file_renamed_from">da %1$s</string>
+    <string name="pr_file_viewed">Visto</string>
+    <plurals name="pr_file_threads">
+        <item quantity="one">%d thread</item>
+        <item quantity="other">%d thread</item>
+    </plurals>
+    <string name="pr_diff_unified">Unificata</string>
+    <string name="pr_diff_side_by_side">Affiancata</string>
+    <plurals name="pr_diff_gap">
+        <item quantity="one">⋯ %d riga invariata</item>
+        <item quantity="other">⋯ %d righe invariate</item>
+    </plurals>
+    <string name="pr_diff_failed">Il file non si può leggere: %1$s</string>
+    <string name="pr_diff_too_large">Il file è troppo grande da mostrare qui (oltre 1 MB o 20.000 righe)</string>
+    <string name="pr_diff_binary">È un file binario: non ha righe da confrontare</string>
+    <string name="pr_diff_no_changes">Il contenuto non è cambiato</string>
+    <string name="pr_diff_comment_line">Commenta la riga %1$d</string>
+    <string name="pr_diff_new_comment">Commento alla riga %1$d…</string>
+    <string name="pr_diff_elsewhere">Su righe che non sono più in questo diff</string>
+    <string name="pr_commits_failed">I commit non si possono leggere: %1$s</string>
+    <string name="pr_commits_none">Nessun commit</string>
 </resources>

@@ -91,6 +91,8 @@ internal fun ThreadCard(
     initialStatusMenu: Boolean = false,
     /** A new thread being posted: "Sending…" in place of its age and status. */
     sending: Boolean = false,
+    /** The file and line under the author: not in a diff, where it is under its line. */
+    showPlace: Boolean = true,
 ) {
     val c = AdoTheme.colors
     val shape = RoundedCornerShape(12.dp)
@@ -124,7 +126,7 @@ internal fun ThreadCard(
             }
             if (!sending) StatusMenu(thread, screen, actions, initialStatusMenu)
         }
-        threadPlace(thread)?.let {
+        threadPlace(thread)?.takeIf { showPlace }?.let {
             Text(
                 it, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = c.primary,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,

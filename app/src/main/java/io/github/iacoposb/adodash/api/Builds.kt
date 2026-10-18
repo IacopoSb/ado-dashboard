@@ -140,6 +140,8 @@ data class PrThread(
     val comments: List<PrComment>,
     val filePath: String? = null,
     val line: Int? = null,
+    /** [line] is on the base's side (a deleted line) rather than the pull request's. */
+    val leftSide: Boolean = false,
 ) {
     /** Still to be resolved: what Azure DevOps counts as an active comment. */
     val active get() = (status == "active" || status == "pending") && comments.isNotEmpty()
