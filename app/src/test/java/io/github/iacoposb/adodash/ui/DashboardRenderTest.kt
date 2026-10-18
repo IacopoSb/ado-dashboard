@@ -8,6 +8,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.onRoot
@@ -958,6 +961,22 @@ class DashboardRenderTest {
 
     @Config(qualifiers = PHONE)
     @Test fun viewsPickerPhone() = picker("views-picker-phone")
+
+    private val longBoard = BoardRef("Contoso Enterprise Platform", "Payments and Billing Gateway Team")
+
+    /** A long board name: "Always open" keeps its room, the button's text is cut. */
+    private fun pickerLongName(name: String) {
+        picker(name, views = designViews().openBoard(longBoard))
+        compose.onNode(hasText(context.getString(R.string.picker_always_open)) and isToggleable()).assertWidthIsAtLeast(160.dp)
+    }
+
+    @Config(qualifiers = PHONE)
+    @Test fun viewsPickerPhoneLongName() = pickerLongName("views-picker-phone-long-name")
+
+    @Config(qualifiers = PHONE_IT)
+    @Test fun viewsPickerPhoneLongNameItalian() = pickerLongName("views-picker-phone-long-name-it")
+
+    @Test fun viewsPickerLongName() = pickerLongName("views-picker-long-name")
 
     /** The boards being read for the first time: the card keeps its size, the recent ones are there. */
     @Test fun viewsPickerLoading() = picker("views-picker-loading", boards = null)

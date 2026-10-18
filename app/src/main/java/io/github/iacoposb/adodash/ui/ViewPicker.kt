@@ -141,29 +141,44 @@ fun ViewPickerScreen(
                         PickerBoards(choices, boardSelected, { selected = it.viewId }, Modifier.fillMaxWidth(), fill = false)
                     }
                 }
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Row(
-                        Modifier.weight(1f).toggleable(always, role = Role.Switch) { always = it },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+                val alwaysRow: @Composable (Modifier) -> Unit = { m ->
+                    Row(m.toggleable(always, role = Role.Switch) { always = it }, verticalAlignment = Alignment.CenterVertically) {
                         AdoSwitch(always, null)
                         Spacer(Modifier.width(12.dp))
                         Text(stringResource(R.string.picker_always_open), style = MaterialTheme.typography.bodyMedium, color = c.text)
                     }
-                    Spacer(Modifier.width(16.dp))
+                }
+                val openButton: @Composable (Modifier) -> Unit = { m ->
                     AdoButton(
                         stringResource(R.string.picker_open, viewTitle(chosen)),
                         { onOpen(if (boardSelected == null) chosen.id else null, boardSelected, always) },
+                        m,
                     )
+                }
+                BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 24.dp)) {
+                    if (maxWidth < STACKED_BELOW) {
+                        // A phone: a long view or board name would leave the switch no room beside it
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            alwaysRow(Modifier.fillMaxWidth())
+                            openButton(Modifier.align(Alignment.End))
+                        }
+                    } else {
+                        val half = maxWidth / 2
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            alwaysRow(Modifier.weight(1f))
+                            Spacer(Modifier.width(16.dp))
+                            openButton(Modifier.widthIn(max = half))
+                        }
+                    }
                 }
             }
         }
         editor()
     }
 }
+
+/** Narrower than this, "Always open" and "Open …" go one above the other. */
+private val STACKED_BELOW = 560.dp
 
 @Composable
 private fun PickerLabel(text: String) = Text(
