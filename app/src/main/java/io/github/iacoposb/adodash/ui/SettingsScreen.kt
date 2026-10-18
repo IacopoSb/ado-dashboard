@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
@@ -86,7 +87,7 @@ data class SettingsForm(
 )
 
 /** The settings' sections, in the order of the navigation. */
-enum class SettingsSection { ACCOUNT, FILTERS, SCREEN, ABOUT }
+enum class SettingsSection { ACCOUNT, FILTERS, NOTIFICATIONS, SCREEN, ABOUT }
 
 @Composable
 fun SettingsScreen(
@@ -123,6 +124,9 @@ fun SettingsScreen(
     /** "What do you want to see?" at launch; applied at once. */
     askViewAtLaunch: Boolean = true,
     onAskViewAtLaunchChange: (Boolean) -> Unit = {},
+    /** The app may post notifications: Android 13+ permission granted and notifications on. */
+    notificationsAllowed: Boolean = true,
+    notificationActions: NotificationActions = NotificationActions(),
 ) {
     var organization by rememberSaveable { mutableStateOf(initial.organization) }
     var pat by rememberSaveable { mutableStateOf("") }
@@ -155,7 +159,7 @@ fun SettingsScreen(
                     initiallyExpanded = filtersExpanded, initialQuery = filtersQuery,
                 )
             } else {
-                Columns(wide, left = {
+                SettingsColumns(wide, left = {
                     SectionCard(stringResource(R.string.settings_section_filters)) {
                         Text(
                             stringResource(R.string.filters_sign_in_first),
@@ -165,11 +169,11 @@ fun SettingsScreen(
                 })
             }
             SettingsSection.ACCOUNT -> if (initial.configured) {
-                Columns(wide, left = {
+                SettingsColumns(wide, left = {
                     SignedInCard(initial, busy, onSignOut, buildsDenied, workItemsReadOnly)
                 })
             } else {
-                Columns(
+                SettingsColumns(
                     wide,
                     left = {
                         SectionCard(stringResource(R.string.settings_account)) {
@@ -229,7 +233,8 @@ fun SettingsScreen(
                     },
                 )
             }
-            SettingsSection.SCREEN -> Columns(wide, left = {
+            SettingsSection.NOTIFICATIONS -> NotificationsSection(initial.notifications, notificationsAllowed, notificationActions, wide)
+            SettingsSection.SCREEN -> SettingsColumns(wide, left = {
                 SectionCard(stringResource(R.string.settings_dashboard)) {
                     AdoTextField(
                         poll, { poll = it.filter(Char::isDigit) }, stringResource(R.string.settings_poll),
@@ -252,7 +257,7 @@ fun SettingsScreen(
                     }
                 }
             })
-            SettingsSection.ABOUT -> Columns(wide, left = {
+            SettingsSection.ABOUT -> SettingsColumns(wide, left = {
                 AboutSection(version, update, onCheckUpdates, onDownloadUpdate, onInstallUpdate)
             })
         }
@@ -271,7 +276,11 @@ fun SettingsScreen(
             SettingsBar(
                 title = if (inSection) stringResource(section.title) else stringResource(R.string.settings_title),
                 onBack = if (inSection) ({ sectionOpen = false }) else onBack,
-                subtitle = if (filtersShown) stringResource(R.string.settings_applied_now) else null,
+                subtitle = if (filtersShown || (section == SettingsSection.NOTIFICATIONS && (wide || inSection))) {
+                    stringResource(R.string.settings_applied_now)
+                } else {
+                    null
+                },
             )
             if (wide) {
                 Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -302,6 +311,7 @@ private val SettingsSection.title
     get() = when (this) {
         SettingsSection.ACCOUNT -> R.string.settings_section_account
         SettingsSection.FILTERS -> R.string.settings_section_filters
+        SettingsSection.NOTIFICATIONS -> R.string.settings_section_notifications
         SettingsSection.SCREEN -> R.string.settings_section_screen
         SettingsSection.ABOUT -> R.string.about_title
     }
@@ -310,6 +320,7 @@ private val SettingsSection.icon: ImageVector
     get() = when (this) {
         SettingsSection.ACCOUNT -> Icons.Filled.Person
         SettingsSection.FILTERS -> AdoIcons.FilterList
+        SettingsSection.NOTIFICATIONS -> Icons.Filled.Notifications
         SettingsSection.SCREEN -> Icons.Filled.Refresh
         SettingsSection.ABOUT -> AdoIcons.OpenInNew
     }
@@ -337,12 +348,20 @@ private fun SettingsBar(title: String, onBack: (() -> Unit)?, subtitle: String? 
     }
 }
 
-/** Two columns of cards on wide screens (the right one narrower), one below the other otherwise. */
+/**
+ * Two columns of cards on wide screens (the right one narrower, unless [leftWeight] says
+ * otherwise), one below the other otherwise.
+ */
 @Composable
-private fun Columns(wide: Boolean, left: @Composable ColumnScope.() -> Unit, right: @Composable ColumnScope.() -> Unit = {}) {
+internal fun SettingsColumns(
+    wide: Boolean,
+    left: @Composable ColumnScope.() -> Unit,
+    right: @Composable ColumnScope.() -> Unit = {},
+    leftWeight: Float = 1.45f,
+) {
     if (wide) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1.45f), verticalArrangement = Arrangement.spacedBy(12.dp), content = left)
+            Column(Modifier.weight(leftWeight), verticalArrangement = Arrangement.spacedBy(12.dp), content = left)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp), content = right)
         }
     } else {

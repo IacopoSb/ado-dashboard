@@ -35,6 +35,8 @@ data class Settings(
     val filtersChangedAt: Long = 0,
     /** The organization's views and the one open; another organization starts from the defaults. */
     val views: ViewSet = ViewSet(),
+    /** What to notify, quiet hours and sounds: the device's, kept across accounts. */
+    val notifications: NotificationPrefs = NotificationPrefs(),
 ) {
     val configured get() = organization.isNotBlank() && meId.isNotBlank() &&
         (authMethod == AuthMethod.ENTRA || pat.isNotBlank())
@@ -58,6 +60,7 @@ class SettingsStore(private val context: Context) {
         val filters = stringPreferencesKey("filters")
         val filtersChanged = longPreferencesKey("filters_changed_at")
         val views = stringPreferencesKey("views")
+        val notifications = stringPreferencesKey("notifications")
     }
 
     val settings: Flow<Settings> = context.dataStore.data.map { it.toSettings() }
@@ -79,6 +82,7 @@ class SettingsStore(private val context: Context) {
         filters = Filters.decode(this[K.filters]),
         filtersChangedAt = this[K.filtersChanged] ?: 0,
         views = ViewSet.decode(this[K.views]),
+        notifications = NotificationPrefs.decode(this[K.notifications]),
     )
 
     /** Saving a different account restarts the baseline. */
@@ -118,6 +122,11 @@ class SettingsStore(private val context: Context) {
     /** Changes the views as they are stored now, so that two quick changes never undo each other. */
     suspend fun editViews(change: (ViewSet) -> ViewSet) {
         context.dataStore.edit { it[K.views] = change(ViewSet.decode(it[K.views])).encode() }
+    }
+
+    /** Changes the notification settings as they are stored now (see [editViews]). */
+    suspend fun editNotifications(change: (NotificationPrefs) -> NotificationPrefs) {
+        context.dataStore.edit { it[K.notifications] = change(NotificationPrefs.decode(it[K.notifications])).encode() }
     }
 
     /** Identifiers, not secrets: stored in clear. */

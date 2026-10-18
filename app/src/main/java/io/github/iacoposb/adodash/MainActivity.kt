@@ -3,6 +3,8 @@ package io.github.iacoposb.adodash
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -13,6 +15,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.IntentCompat
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +32,8 @@ import io.github.iacoposb.adodash.ui.AdoTheme
 import io.github.iacoposb.adodash.ui.AppViewModel
 import io.github.iacoposb.adodash.ui.DashboardScreen
 import io.github.iacoposb.adodash.ui.EditorTarget
+import io.github.iacoposb.adodash.ui.NotificationActions
+import io.github.iacoposb.adodash.data.SoundTarget
 import io.github.iacoposb.adodash.ui.SettingsScreen
 import io.github.iacoposb.adodash.ui.ViewEditor
 import io.github.iacoposb.adodash.ui.ViewPickerScreen
@@ -44,7 +51,39 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    /** Asked from the settings' banner, not at launch: a refusal for good opens the system settings. */
+    private var askedFromSettings = false
+
+    private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        refreshNotificationsAllowed()
+        // No dialog shown: the permission was refused for good, only the system settings can grant it
+        if (askedFromSettings && !granted && Build.VERSION.SDK_INT >= 33 &&
+            !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+        ) {
+            openNotificationSettings()
+        }
+        askedFromSettings = false
+    }
+
+    /** The app may post notifications: the settings show a banner otherwise. */
+    private var notificationsAllowed by mutableStateOf(true)
+
+    /** Which sound the system's picker is choosing. */
+    private var pickingSound = SoundTarget.MENTIONS
+
+    private val pickSound = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode != RESULT_OK) return@registerForActivityResult
+        val picked = result.data?.let { IntentCompat.getParcelableExtra(it, RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java) }
+        val sound = when (picked) {
+            null -> ""
+            android.provider.Settings.System.DEFAULT_NOTIFICATION_URI -> null
+            else -> picked.toString()
+        }
+        vm.setSound(pickingSound, sound)
+    }
+
+    /** Sound names by URI: looking one up reads the media store. */
+    private val soundTitles = mutableMapOf<String, String>()
 
     /** Settings scrolled to the update, from the notification or the dashboard banner. */
     private var showUpdate by mutableStateOf(false)
@@ -59,6 +98,8 @@ class MainActivity : ComponentActivity() {
             openPullRequestFrom(intent)
         }
         if (Build.VERSION.SDK_INT >= 33) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+
+        refreshNotificationsAllowed()
 
         setContent {
             AdoTheme {
@@ -110,6 +151,16 @@ class MainActivity : ComponentActivity() {
                         workItemsReadOnly = workItemsReadOnly,
                         askViewAtLaunch = !settings.views.alwaysOpen,
                         onAskViewAtLaunchChange = vm::setAskAtLaunch,
+                        notificationsAllowed = notificationsAllowed,
+                        notificationActions = remember(vm) {
+                            NotificationActions(
+                                onChange = vm::setNotifications,
+                                onAllow = ::allowNotifications,
+                                onPickSound = { pickSound(it, vm.settings.value?.notifications?.sound(it)) },
+                                onOpenSystemSettings = ::openNotificationSettings,
+                                soundTitle = ::soundTitle,
+                            )
+                        },
                     )
                 } else if (!launchChoiceMade && !settings.views.alwaysOpen) {
                     var newView by remember { mutableStateOf<EditorTarget?>(null) }
@@ -178,6 +229,70 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Back from the system settings, maybe with notifications allowed
+        refreshNotificationsAllowed()
+    }
+
+    private fun refreshNotificationsAllowed() {
+        notificationsAllowed = NotificationManagerCompat.from(this).areNotificationsEnabled() && (
+            Build.VERSION.SDK_INT < 33 ||
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            )
+    }
+
+    /** The permission's dialog when it can still be shown, the app's notification settings otherwise. */
+    private fun allowNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            askedFromSettings = true
+            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            openNotificationSettings()
+        }
+    }
+
+    private fun openNotificationSettings() {
+        val intent = Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName)
+        try {
+            startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+        }
+    }
+
+    /** The system's notification sound picker, on [current] (null: the default, "": none). */
+    private fun pickSound(target: SoundTarget, current: String?) {
+        pickingSound = target
+        val existing = when {
+            current == null -> android.provider.Settings.System.DEFAULT_NOTIFICATION_URI
+            current.isEmpty() -> null
+            else -> Uri.parse(current)
+        }
+        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, true)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI, android.provider.Settings.System.DEFAULT_NOTIFICATION_URI)
+            .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, existing)
+            .putExtra(
+                RingtoneManager.EXTRA_RINGTONE_TITLE,
+                getString(if (target == SoundTarget.MENTIONS) R.string.sounds_mentions else R.string.sounds_others),
+            )
+        try {
+            pickSound.launch(intent)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, getString(R.string.no_app_for_url, RingtoneManager.ACTION_RINGTONE_PICKER), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun soundTitle(uri: String): String = soundTitles.getOrPut(uri) {
+        runCatching { RingtoneManager.getRingtone(this, Uri.parse(uri))?.getTitle(this) }.getOrNull() ?: uri.substringAfterLast('/')
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -33,7 +33,8 @@ data class SyncState(
 class SyncRepository(
     private val settings: SettingsStore,
     private val events: EventDao,
-    private val notify: (List<Event>) -> Unit,
+    /** The news of a sync, with the settings it ran with (what to notify, quiet hours, sounds). */
+    private val notify: (List<Event>, Settings) -> Unit,
     private val texts: SyncTexts,
     private val apiFor: (Settings) -> AdoApi,
     /** After each successful sync, with what it read. */
@@ -66,7 +67,7 @@ class SyncRepository(
             val found = Events.from(fetched, if (firstSync) now else Instant.ofEpochMilli(s.baselineAt), texts)
             val (history, news) = Events.splitHistory(found, firstSync, s.lastSyncAt, s.filtersChangedAt)
             if (history.isNotEmpty()) events.insertNew(history.map { it.copy(read = true, hidden = true) })
-            if (!firstSync) notify(store(news))
+            if (!firstSync) notify(store(news), s)
             events.prune(before = now.minus(RETENTION).toEpochMilli())
             if (fetched.snapshot.buildsDenied != buildsDenied) {
                 buildsDenied = fetched.snapshot.buildsDenied

@@ -45,7 +45,7 @@ class Updater(
     private val context: Context,
     private val scope: CoroutineScope,
     /** Called by the automatic check, once per new version. */
-    private val onFound: (Release) -> Unit,
+    private val onFound: suspend (Release) -> Unit,
     private val source: GitHubReleases = GitHubReleases(BuildConfig.UPDATE_REPO),
 ) {
     private val prefs = context.getSharedPreferences("updates", Context.MODE_PRIVATE)

@@ -75,8 +75,6 @@
 
     <!-- Notifications -->
     <string name="channel_mentions">Mentions</string>
-    <string name="channel_work_items">Assigned work items</string>
-    <string name="channel_pull_requests">Pull requests</string>
     <string name="channel_updates">App updates</string>
     <string name="notification_summary" translatable="false">Azure DevOps</string>
     <string name="notification_update_text">Tap to download and install</string>
@@ -583,4 +581,39 @@
     <string name="backlog_remaining">%1$s remaining</string>
     <string name="backlog_hint">Tap a row to open it · arrow for the children</string>
     <string name="backlog_empty">Nothing in this sprint matches the filters</string>
+
+    <!-- Notification settings -->
+    <string name="channel_activity">Activity</string>
+    <string name="channel_silent">Quiet hours</string>
+    <string name="settings_section_notifications">Notifications</string>
+    <string name="notif_what">What to notify</string>
+    <string name="notif_what_hint">Turned off, they still appear in Activity: only the Android notification is left out.</string>
+    <string name="notif_mentions">Mentions</string>
+    <string name="notif_mentions_hint">Work items and pull requests · own sound</string>
+    <string name="notif_assignments">Assignments</string>
+    <string name="notif_reviews">Review requests</string>
+    <string name="notif_votes">Votes on my PRs</string>
+    <string name="notif_pr_comments">Comments on PRs I follow</string>
+    <string name="notif_pr_comments_hint">On my PRs, and in the threads I took part in</string>
+    <string name="notif_builds">Builds failed on my PRs</string>
+    <string name="notif_builds_hint">With a PAT it needs Build (read)</string>
+    <string name="notif_updates">App updates</string>
+    <string name="notif_updates_hint">When a new version is out</string>
+    <string name="notif_permission_off">Notifications are off for this app: none reaches the device.</string>
+    <string name="notif_permission_allow">Allow</string>
+    <string name="quiet_title">Quiet hours</string>
+    <string name="quiet_hint">Notifications still arrive, without sound or vibration.</string>
+    <string name="quiet_enable">Turn on quiet hours</string>
+    <string name="quiet_from">From</string>
+    <string name="quiet_to">To</string>
+    <string name="quiet_days">Days</string>
+    <string name="quiet_mentions">Mentions still make a sound</string>
+    <string name="quiet_mentions_hint">They ignore quiet hours</string>
+    <string name="sounds_title">Sounds</string>
+    <string name="sounds_mentions">Mentions</string>
+    <string name="sounds_others">Other notifications</string>
+    <string name="sound_default">System default</string>
+    <string name="sound_none">None</string>
+    <string name="sounds_system_settings">Open system notification settings</string>
+    <string name="action_ok">OK</string>
 </resources>

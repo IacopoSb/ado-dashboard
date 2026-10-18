@@ -20,6 +20,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -37,7 +39,7 @@ class AdoApp : Application() {
     }
     val sync by lazy {
         SyncRepository(
-            settings, database.events(), notifier::notify, ResourceSyncTexts(this),
+            settings, database.events(), { events, s -> notifier.notify(events, s.notifications) }, ResourceSyncTexts(this),
             apiFor = { AdoClient(it.organization, authorization(it)) },
             onSynced = { s, snapshot ->
                 // Only a convenience for the filters: never a reason for the sync to fail
@@ -57,7 +59,7 @@ class AdoApp : Application() {
     /** For the filters' catalog: many calls in a burst, so one token for all of them. */
     fun catalogApi(s: Settings): AdoApi = AdoClient(s.organization, AdoClient.reused(authorization(s)))
 
-    val updater by lazy { Updater(this, scope, notifier::notifyUpdate) }
+    val updater by lazy { Updater(this, scope, { notifier.notifyUpdate(it, settings.current().notifications) }) }
 
     fun authorization(s: Settings): suspend () -> String = when (s.authMethod) {
         AuthMethod.ENTRA -> AdoClient.bearer(entra::accessToken)
@@ -66,7 +68,10 @@ class AdoApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        notifier.createChannels()
+        // At start (also renaming the channels after a language change) and at every change
+        scope.launch {
+            settings.settings.map { it.notifications }.distinctUntilChanged().collect { notifier.createChannels(it) }
+        }
         SyncWorker.schedule(this)
         scope.launch { updater.checkIfDue() }
     }

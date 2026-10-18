@@ -20,6 +20,8 @@ import io.github.iacoposb.adodash.data.DashboardView
 import io.github.iacoposb.adodash.data.ViewSet
 import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.Filters
+import io.github.iacoposb.adodash.data.NotificationPrefs
+import io.github.iacoposb.adodash.data.SoundTarget
 import io.github.iacoposb.adodash.data.Settings
 import io.github.iacoposb.adodash.errorText
 import io.github.iacoposb.adodash.update.Release
@@ -342,6 +344,26 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     /** From the settings: ask again at the next launch, or not. */
     fun setAskAtLaunch(ask: Boolean) {
         viewModelScope.launch { app.settings.editViews { it.copy(alwaysOpen = !ask) } }
+    }
+
+    /**
+     * What to notify and quiet hours, from the settings; applied at once. The sounds and their
+     * channels stay as stored: only [setSound] changes them.
+     */
+    fun setNotifications(prefs: NotificationPrefs) {
+        viewModelScope.launch {
+            app.settings.editNotifications { stored ->
+                prefs.copy(
+                    mentionsSound = stored.mentionsSound, othersSound = stored.othersSound,
+                    mentionsChannel = stored.mentionsChannel, othersChannel = stored.othersChannel,
+                )
+            }
+        }
+    }
+
+    /** A sound chosen in the system's picker: a new channel for it (see [NotificationPrefs.withSound]). */
+    fun setSound(target: SoundTarget, sound: String?) {
+        viewModelScope.launch { app.settings.editNotifications { it.withSound(target, sound) } }
     }
 
     /** A change of what the sync reads syncs at once; one of the activity only shows. */

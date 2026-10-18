@@ -49,6 +49,9 @@ import io.github.iacoposb.adodash.data.BoardRef
 import io.github.iacoposb.adodash.data.Condition
 import io.github.iacoposb.adodash.data.DashboardView
 import io.github.iacoposb.adodash.data.Filters
+import io.github.iacoposb.adodash.data.NotificationPrefs
+import io.github.iacoposb.adodash.data.NotifyKind
+import io.github.iacoposb.adodash.data.QuietHours
 import io.github.iacoposb.adodash.data.PrScope
 import io.github.iacoposb.adodash.data.PullRequestsPanel
 import io.github.iacoposb.adodash.data.ViewSet
@@ -586,6 +589,40 @@ class DashboardRenderTest {
 
     @Config(qualifiers = "+it")
     @Test fun settingsScreenItalian() = signedIn("settings-screen-it", section = SettingsSection.SCREEN)
+
+    /** As in the design: quiet from 19:00 to 08:00 every day, comments off, a sound of their own for mentions. */
+    private fun notifications(name: String, dark: Boolean = false, allowed: Boolean = true) {
+        val prefs = NotificationPrefs(
+            off = setOf(NotifyKind.PR_COMMENTS),
+            quiet = QuietHours(enabled = true),
+            mentionsSound = "content://media/internal/audio/media/12",
+        )
+        val bell = if (italian) "Campanello (distinto)" else "Bell (distinct)"
+        compose.setContent {
+            AdoTheme(dark = dark, dynamic = false) {
+                SettingsScreen(
+                    Settings(organization = "contoso", meId = "u1", meName = "Iacopo Sbalchiero", notifications = prefs),
+                    busy = false, message = null, {}, { _, _ -> }, {}, {}, onBack = {},
+                    initialSection = SettingsSection.NOTIFICATIONS, notificationsAllowed = allowed,
+                    notificationActions = NotificationActions(soundTitle = { bell }),
+                )
+            }
+        }
+        compose.onRoot().captureRoboImage("$name.png")
+    }
+
+    @Test fun settingsNotifications() = notifications("settings-notifications")
+
+    @Config(qualifiers = "+it")
+    @Test fun settingsNotificationsItalian() = notifications("settings-notifications-it")
+
+    @Test fun settingsNotificationsDark() = notifications("settings-notifications-dark", dark = true)
+
+    /** Android 13+ without the permission: the banner to allow them. */
+    @Test fun settingsNotificationsPermission() = notifications("settings-notifications-permission", allowed = false)
+
+    @Config(qualifiers = "en-w411dp-h891dp-xxhdpi")
+    @Test fun settingsNotificationsPhone() = notifications("settings-notifications-phone")
 
     /** As in the design: Contoso partly selected, Resolved hidden for the Epics. */
     private val designFilters = Filters(areas = Fakes.designAreas, hiddenStates = mapOf("Epic" to setOf("Resolved")))

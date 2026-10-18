@@ -76,8 +76,6 @@
 
     <!-- Notifications -->
     <string name="channel_mentions">Menzioni</string>
-    <string name="channel_work_items">Work item assegnati</string>
-    <string name="channel_pull_requests">Pull request</string>
     <string name="channel_updates">Aggiornamenti dell\'app</string>
     <string name="notification_update_text">Tocca per scaricarlo e installarlo</string>
 
@@ -585,4 +583,39 @@
     <string name="backlog_remaining">%1$s rimanenti</string>
     <string name="backlog_hint">Tocca una riga per aprirla · freccia per i figli</string>
     <string name="backlog_empty">Nessun elemento dello sprint corrisponde ai filtri</string>
+
+    <!-- Impostazioni delle notifiche -->
+    <string name="channel_activity">Attività</string>
+    <string name="channel_silent">Orari di silenzio</string>
+    <string name="settings_section_notifications">Notifiche</string>
+    <string name="notif_what">Cosa notificare</string>
+    <string name="notif_what_hint">Se spente compaiono comunque nell\'attività: manca solo la notifica di Android.</string>
+    <string name="notif_mentions">Menzioni</string>
+    <string name="notif_mentions_hint">Work item e pull request · suono dedicato</string>
+    <string name="notif_assignments">Assegnazioni</string>
+    <string name="notif_reviews">Richieste di revisione</string>
+    <string name="notif_votes">Voti sulle mie PR</string>
+    <string name="notif_pr_comments">Commenti sulle PR che seguo</string>
+    <string name="notif_pr_comments_hint">Sulle mie PR e nei thread in cui ho scritto</string>
+    <string name="notif_builds">Build fallita su una mia PR</string>
+    <string name="notif_builds_hint">Con un PAT richiede il permesso Build (read)</string>
+    <string name="notif_updates">Aggiornamenti dell\'app</string>
+    <string name="notif_updates_hint">Quando esce una nuova versione</string>
+    <string name="notif_permission_off">Le notifiche sono disattivate per l\'app: non ne arriva nessuna.</string>
+    <string name="notif_permission_allow">Consenti</string>
+    <string name="quiet_title">Orari di silenzio</string>
+    <string name="quiet_hint">Le notifiche arrivano lo stesso, ma senza suono né vibrazione.</string>
+    <string name="quiet_enable">Attiva orari di silenzio</string>
+    <string name="quiet_from">Dalle</string>
+    <string name="quiet_to">Alle</string>
+    <string name="quiet_days">Giorni</string>
+    <string name="quiet_mentions">Le menzioni suonano comunque</string>
+    <string name="quiet_mentions_hint">Ignorano gli orari di silenzio</string>
+    <string name="sounds_title">Suoni</string>
+    <string name="sounds_mentions">Menzioni</string>
+    <string name="sounds_others">Altre notifiche</string>
+    <string name="sound_default">Predefinito di sistema</string>
+    <string name="sound_none">Nessuno</string>
+    <string name="sounds_system_settings">Apri le impostazioni di notifica di sistema</string>
+    <string name="action_ok">OK</string>
 </resources>
