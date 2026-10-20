@@ -9,6 +9,7 @@ import io.github.iacoposb.adodash.api.PrFileChange
 import io.github.iacoposb.adodash.api.PrIteration
 import io.github.iacoposb.adodash.api.Person
 import io.github.iacoposb.adodash.api.PolicyEvaluation
+import io.github.iacoposb.adodash.api.PrStatus
 import io.github.iacoposb.adodash.api.PrThread
 import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.PullRequestDetail
@@ -165,6 +166,8 @@ data class PrScreen(
     /** Null while read; [policiesFailed] when they could not be. */
     val policies: List<PolicyEvaluation>? = null,
     val policiesFailed: Boolean = false,
+    /** The latest status each service posted (SonarQube…); empty while read or if they cannot be. */
+    val statuses: List<PrStatus> = emptyList(),
     /** The linked work items, read after the details. */
     val workItems: List<WorkItem>? = null,
     val threads: PrThreadsState = PrThreadsState(),
@@ -311,6 +314,7 @@ class PullRequestController(
             launch { files(api, pr) { iterations.await().getOrThrow() } }
             launch { commits(api, pr) }
             if (pr.projectId.isNotEmpty()) launch { policies(api, pr) }
+            launch { statuses(api, pr) }
             val detail = runCatchingNotCancelled { api.pullRequestDetail(pr) }
             if (detail != null) {
                 update(id) {
@@ -336,6 +340,12 @@ class PullRequestController(
     private suspend fun policies(api: AdoApi, pr: PullRequest) {
         val read = runCatchingNotCancelled { api.policyEvaluations(pr) }
         update(pr.id) { it.copy(policies = read ?: it.policies, policiesFailed = read == null && it.policies == null) }
+    }
+
+    /** Statuses are extra: when they cannot be read, the policies are shown alone. */
+    private suspend fun statuses(api: AdoApi, pr: PullRequest) {
+        val read = runCatchingNotCancelled { api.pullRequestStatuses(pr) } ?: return
+        update(pr.id) { it.copy(statuses = read) }
     }
 
     /**

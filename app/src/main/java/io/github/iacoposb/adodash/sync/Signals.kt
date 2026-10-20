@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import io.github.iacoposb.adodash.api.Build
 import io.github.iacoposb.adodash.api.BuildState
 import io.github.iacoposb.adodash.api.PolicyEvaluation
+import io.github.iacoposb.adodash.api.PrStatus
 import io.github.iacoposb.adodash.api.PrThread
 import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.Vote
@@ -20,6 +21,16 @@ data class PrSignals(
     val activeThreads: Int? = null,
     val conflicts: Boolean = false,
     val readyToComplete: Boolean = false,
+    /** A blocking "Comments must be resolved" policy not met. */
+    val commentsBlocking: Boolean = false,
+    /** A blocking "Linked work items" policy not met. */
+    val workItemsMissing: Boolean = false,
+    /** A blocking reviewer policy not met, or a required reviewer who has not approved. */
+    val approvalsMissing: Boolean = false,
+    /** Names of the checks other than builds that failed: blocking policies and posted statuses. */
+    val failedChecks: List<String> = emptyList(),
+    /** Names of the blocking checks other than builds still waiting or running. */
+    val pendingChecks: List<String> = emptyList(),
 )
 
 /** Derives [PrSignals] from what Azure DevOps says of a pull request. Pure, for the tests. */
@@ -27,18 +38,42 @@ object Signals {
 
     /**
      * [evaluations] null when the policies could not be read, [threads] likewise; [builds] are
-     * the project's latest builds, used only when no build policy tells the build's status.
+     * the project's latest builds, used only when no build policy tells the build's status;
+     * [statuses] the latest each service posted ([PrStatus.latest]), null when not read.
      */
-    fun of(pr: PullRequest, evaluations: List<PolicyEvaluation>?, threads: List<PrThread>?, builds: List<Build>): PrSignals {
+    fun of(
+        pr: PullRequest,
+        evaluations: List<PolicyEvaluation>?,
+        threads: List<PrThread>?,
+        builds: List<Build>,
+        statuses: List<PrStatus>? = null,
+    ): PrSignals {
         val build = buildOf(pr, evaluations, builds)
         val active = threads?.count { it.active }
+        val blocking = evaluations.orEmpty().filter { it.enabled && it.blocking && !passes(it) }
+        fun unmet(type: String) = blocking.any { it.typeId.equals(type, ignoreCase = true) }
+        val other = blocking.filter { e -> !e.isBuild && OWN_SIGNAL.none { e.typeId.equals(it, ignoreCase = true) } }
+        // A status a policy waits for is named once, by the policy
+        val backed = evaluations.orEmpty().filter { it.enabled && it.status != "notApplicable" }.mapNotNull { it.statusKey }.toSet()
+        val failedStatuses = statuses.orEmpty().filter { it.key !in backed && it.state in FAILED_STATUS }.map { it.label }
         return PrSignals(
             build = build,
             activeThreads = active,
             conflicts = pr.hasConflicts,
             readyToComplete = readyToComplete(pr, evaluations, active, build),
+            commentsBlocking = unmet(PolicyEvaluation.COMMENTS_POLICY),
+            workItemsMissing = unmet(PolicyEvaluation.WORK_ITEMS_POLICY),
+            approvalsMissing = !pr.draft && (
+                unmet(PolicyEvaluation.MIN_REVIEWERS_POLICY) || unmet(PolicyEvaluation.REQUIRED_REVIEWERS_POLICY) ||
+                    pr.reviewers.any { it.required && it.vote < Vote.APPROVED_WITH_SUGGESTIONS }
+                ),
+            failedChecks = (other.filter { it.status == "rejected" || it.status == "broken" }.map { it.name } + failedStatuses).distinct(),
+            pendingChecks = other.filter { it.status == "queued" || it.status == "running" }.map { it.name }.distinct(),
         )
     }
+
+    /** Met, or not asked of this pull request; an outdated pass is not met. */
+    private fun passes(e: PolicyEvaluation) = (e.status == "approved" && !e.expired) || e.status == "notApplicable"
 
     /** From the build policies if there are any, otherwise from the pull request's own builds. */
     fun buildOf(pr: PullRequest, evaluations: List<PolicyEvaluation>?, builds: List<Build>): BuildSignal {
@@ -61,9 +96,7 @@ object Signals {
         if (pr.draft || evaluations == null || activeThreads == null || activeThreads > 0) return false
         if (pr.mergeStatus in BLOCKING_MERGE) return false
         if (build == BuildSignal.FAILED || build == BuildSignal.RUNNING) return false
-        val policiesPass = evaluations.filter { it.enabled && it.blocking }.all {
-            (it.status == "approved" && !it.expired) || it.status == "notApplicable"
-        }
+        val policiesPass = evaluations.filter { it.enabled && it.blocking }.all(::passes)
         val reviewersPass = pr.reviewers.filter { it.required }.all { it.vote >= Vote.APPROVED_WITH_SUGGESTIONS } &&
             pr.reviewers.none { it.vote == Vote.REJECTED }
         return policiesPass && reviewersPass
@@ -96,7 +129,17 @@ object Signals {
     /** Policies whose result may still change without a new commit: read them again. */
     fun pending(evaluations: List<PolicyEvaluation>) = evaluations.any { it.status == "running" || it.status == "queued" }
 
+    /** Statuses whose result may still change: read them again. */
+    fun pendingStatuses(statuses: List<PrStatus>) = statuses.any { it.state == "pending" }
+
     private val BLOCKING_MERGE = setOf("conflicts", "failure", "rejectedByPolicy")
+    private val FAILED_STATUS = setOf("failed", "error")
+
+    /** Policies with a signal of their own on the row, not counted among the other checks. */
+    private val OWN_SIGNAL = listOf(
+        PolicyEvaluation.COMMENTS_POLICY, PolicyEvaluation.WORK_ITEMS_POLICY,
+        PolicyEvaluation.MIN_REVIEWERS_POLICY, PolicyEvaluation.REQUIRED_REVIEWERS_POLICY,
+    )
 }
 
 /** The pipeline tile: which builds it shows and how it counts them. Pure, for the tests. */

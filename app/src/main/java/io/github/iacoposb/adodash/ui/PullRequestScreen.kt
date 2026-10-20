@@ -87,6 +87,7 @@ import io.github.iacoposb.adodash.ui.components.AdoIcons
 import io.github.iacoposb.adodash.ui.components.Avatar
 import io.github.iacoposb.adodash.ui.components.Banner
 import io.github.iacoposb.adodash.ui.components.BannerTone
+import io.github.iacoposb.adodash.ui.components.checksText
 import io.github.iacoposb.adodash.ui.components.DropdownOption
 import io.github.iacoposb.adodash.ui.components.FullScreenModalWidth
 import io.github.iacoposb.adodash.ui.components.shortScreen
@@ -485,10 +486,13 @@ private fun PrTabs(screen: PrScreen, pr: PullRequest, actions: PrActions, wide: 
 /** "2 active threads", "Build ok", "Conflicts", "Ready to complete": as on the dashboard row. */
 @Composable
 private fun SignalChips(screen: PrScreen, pr: PullRequest) {
-    val signals = Signals.of(pr, screen.policies, screen.threads.shown.takeIf { screen.threads.loaded }, emptyList())
+    val signals = Signals.of(pr, screen.policies, screen.threads.shown.takeIf { screen.threads.loaded }, emptyList(), screen.statuses)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        signals.activeThreads?.takeIf { it > 0 }?.let {
-            StatusChip(pluralStringResource(R.plurals.pr_active_threads, it, it), tone = Tone.Warning)
+        val active = signals.activeThreads?.takeIf { it > 0 }
+        if (active != null) {
+            StatusChip(pluralStringResource(R.plurals.pr_active_threads, active, active), tone = Tone.Warning)
+        } else if (signals.commentsBlocking) {
+            StatusChip(stringResource(R.string.pr_check_comments), tone = Tone.Warning)
         }
         if (signals.conflicts) StatusChip(stringResource(R.string.pr_conflicts), tone = Tone.Danger)
         when (signals.build) {
@@ -497,6 +501,10 @@ private fun SignalChips(screen: PrScreen, pr: PullRequest) {
             BuildSignal.RUNNING -> StatusChip(stringResource(R.string.pr_build_running), tone = Tone.Info)
             BuildSignal.NONE -> {}
         }
+        checksText(signals.failedChecks, R.string.pr_check_failed, R.plurals.pr_checks_failed)?.let { StatusChip(it, tone = Tone.Danger) }
+        checksText(signals.pendingChecks, R.string.pr_check_pending, R.plurals.pr_checks_pending)?.let { StatusChip(it, tone = Tone.Info) }
+        if (signals.workItemsMissing) StatusChip(stringResource(R.string.pr_check_no_work_items), tone = Tone.Warning)
+        if (signals.approvalsMissing) StatusChip(stringResource(R.string.pr_approval_needed))
         if (signals.readyToComplete && screen.status == "active") StatusChip(stringResource(R.string.pr_ready), tone = Tone.Success)
     }
 }
@@ -690,7 +698,7 @@ private fun Checks(screen: PrScreen, pr: PullRequest, now: Instant, actions: PrA
         return
     }
     val active = screen.threads.activeCount.takeIf { screen.threads.loaded }
-    val rows = PrChecks.of(pr, policies.orEmpty(), active, screen.detail?.workItemIds.orEmpty())
+    val rows = PrChecks.of(pr, policies.orEmpty(), active, screen.detail?.workItemIds.orEmpty(), screen.statuses)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (screen.policiesFailed) {
             Text(stringResource(R.string.pr_checks_failed), style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
@@ -698,8 +706,12 @@ private fun Checks(screen: PrScreen, pr: PullRequest, now: Instant, actions: PrA
             Text(stringResource(R.string.pr_checks_none), style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
         }
         rows.forEach { row ->
-            val build = row.kind as? CheckKind.Build
-            val onClick = build?.buildId?.let { id -> { actions.onOpenBuild(pr.project, id) } }
+            val onClick = when (val kind = row.kind) {
+                is CheckKind.Build -> kind.buildId?.let { id -> { actions.onOpenBuild(pr.project, id) } }
+                // The service's own page: SonarQube's analysis
+                is CheckKind.Status -> kind.url?.let { url -> { actions.onOpenUrl(url) } }
+                else -> null
+            }
             CheckLine(row, now, onClick)
         }
     }
@@ -733,7 +745,7 @@ private fun CheckLine(row: CheckRow, now: Instant, onClick: (() -> Unit)?) {
                 Text("· ${stringResource(R.string.pr_check_optional)}", style = MaterialTheme.typography.bodySmall, color = c.textFaint, maxLines = 1)
             }
         }
-        row.at?.takeIf { row.kind is CheckKind.Build }?.let {
+        row.at?.takeIf { row.kind is CheckKind.Build || row.kind is CheckKind.Status }?.let {
             Spacer(Modifier.width(8.dp))
             Text(ago(it, now), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
         }
@@ -764,6 +776,11 @@ private fun checkText(kind: CheckKind, state: CheckState): String = when (kind) 
         stringResource(R.string.pr_check_no_work_items)
     } else {
         pluralStringResource(R.plurals.pr_check_work_items, kind.ids.size, kind.ids.joinToString(", ") { "#$it" })
+    }
+    is CheckKind.Status -> when {
+        kind.description != null && !kind.description.equals(kind.name, ignoreCase = true) -> "${kind.name} · ${kind.description}"
+        state == CheckState.WAITING -> stringResource(R.string.pr_check_status_waiting, kind.name)
+        else -> kind.name
     }
     is CheckKind.Other -> kind.name
     is CheckKind.Merge -> when (kind.status) {

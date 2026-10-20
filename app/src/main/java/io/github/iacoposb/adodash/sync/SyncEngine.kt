@@ -10,6 +10,7 @@ import io.github.iacoposb.adodash.api.AdoException
 import io.github.iacoposb.adodash.api.Build
 import io.github.iacoposb.adodash.api.BuildState
 import io.github.iacoposb.adodash.api.PolicyEvaluation
+import io.github.iacoposb.adodash.api.PrStatus
 import io.github.iacoposb.adodash.api.PrThread
 import io.github.iacoposb.adodash.api.Comment
 import io.github.iacoposb.adodash.api.Identity
@@ -275,8 +276,13 @@ class SyncEngine(
         val threads = trackedThreads + shownOthers.filter { it.id !in trackedIds }
             .map { pr -> async { pr.id to otherThreads(pr, limit) } }.awaitAll()
         val signalPrs = (tracked + shownOthers).distinctBy { it.id }
+        // Statuses posted by services only for the rows shown
+        val shownIds = (shownReview + shownMine + shownOthers).map { it.id }.toSet()
         val signals = signalPrs.map { pr ->
-            async { pr.id to Signals.of(pr, policies(pr, threads[pr.id], limit), threads[pr.id], builds) }
+            async {
+                val statuses = async { if (pr.id in shownIds) statuses(pr, limit) else null }
+                pr.id to Signals.of(pr, policies(pr, threads[pr.id], limit), threads[pr.id], builds, statuses.await())
+            }
         }.awaitAll().toMap()
 
         // Only a board has a tile: its project's builds
@@ -480,6 +486,21 @@ class SyncEngine(
         return limit.withPermit { runCatching { api.policyEvaluations(pr) }.getOrNull() }
             ?.also { cache.policies[pr.id] = SignalCache.Policies(key, it, now()) }
             ?: cached?.evaluations
+    }
+
+    /**
+     * The statuses services posted on a PR, read again only when its commit changed, when one
+     * was still pending, or after [SIGNALS_TTL]; the last ones read if they cannot be.
+     */
+    private suspend fun statuses(pr: PullRequest, limit: Semaphore): List<PrStatus>? {
+        val key = pr.lastCommit.orEmpty()
+        val cached = cache.statuses[pr.id]
+        if (cached != null && cached.key == key && !Signals.pendingStatuses(cached.statuses) &&
+            Duration.between(cached.at, now()) < SIGNALS_TTL
+        ) return cached.statuses
+        return limit.withPermit { runCatching { api.pullRequestStatuses(pr) }.getOrNull() }
+            ?.also { cache.statuses[pr.id] = SignalCache.Statuses(key, it, now()) }
+            ?: cached?.statuses
     }
 
     /**

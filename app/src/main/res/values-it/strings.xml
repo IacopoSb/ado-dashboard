@@ -300,6 +300,20 @@
     </plurals>
     <string name="pr_conflicts">Conflitti</string>
     <string name="pr_ready">Pronta da completare</string>
+    <!-- Un controllo diverso dalla build, per nome: "SonarQube/quality-gate: non riuscito" -->
+    <string name="pr_check_failed">%1$s: non riuscito</string>
+    <plurals name="pr_checks_failed">
+        <item quantity="one">%d controllo non riuscito</item>
+        <item quantity="many">%d controlli non riusciti</item>
+        <item quantity="other">%d controlli non riusciti</item>
+    </plurals>
+    <string name="pr_check_pending">%1$s: in attesa</string>
+    <plurals name="pr_checks_pending">
+        <item quantity="one">%d controllo in attesa</item>
+        <item quantity="many">%d controlli in attesa</item>
+        <item quantity="other">%d controlli in attesa</item>
+    </plurals>
+    <string name="pr_approval_needed">Manca un\'approvazione</string>
     <!-- Pipeline tile: "1 fallita · 1 in corso · 6 ok" -->
     <string name="pipeline_title">Pipeline</string>
     <plurals name="pipeline_failed">
@@ -481,6 +495,8 @@
     <string name="pr_check_merge_queued">Verifica dei conflitti con %1$s</string>
     <string name="pr_check_merge_failed">Il merge con %1$s non riesce</string>
     <string name="pr_check_optional">facoltativa</string>
+    <!-- Un controllo di stato il cui servizio non ha ancora risposto -->
+    <string name="pr_check_status_waiting">%1$s: in attesa dello stato</string>
     <string name="pr_reviewers">Revisori</string>
     <string name="pr_no_reviewers">Nessun revisore</string>
     <string name="pr_reviewer_you">%1$s (tu)</string>

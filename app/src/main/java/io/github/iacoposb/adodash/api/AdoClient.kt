@@ -420,15 +420,39 @@ class AdoClient(
                 status = it.status,
                 buildId = (context?.get("buildId") as? JsonPrimitive)?.intOrNull,
                 expired = (context?.get("isExpired") as? JsonPrimitive)?.booleanOrNull == true,
-                displayName = ((settings?.get("displayName") as? JsonPrimitive)?.contentOrNull
-                    ?: (context?.get("buildDefinitionName") as? JsonPrimitive)?.contentOrNull)?.takeIf { n -> n.isNotBlank() },
+                // A status check's name, when it was given one, is its "default display name"
+                displayName = settings.text("displayName") ?: settings.text("defaultDisplayName")
+                    ?: context.text("buildDefinitionName"),
                 minApprovers = (settings?.get("minimumApproverCount") as? JsonPrimitive)?.intOrNull,
                 requiredReviewerIds = (settings?.get("requiredReviewerIds") as? JsonArray)
                     ?.mapNotNull { id -> (id as? JsonPrimitive)?.contentOrNull }.orEmpty(),
                 creatorVoteCounts = (settings?.get("creatorVoteCounts") as? JsonPrimitive)?.booleanOrNull == true,
                 completedAt = it.completedDate?.let(::instantOrNull),
+                statusGenre = settings.text("statusGenre"),
+                statusName = settings.text("statusName"),
             )
         }
+    }
+
+    private fun JsonObject?.text(key: String) = (this?.get(key) as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+
+    override suspend fun pullRequestStatuses(pr: PullRequest): List<PrStatus> {
+        val list: ValueList<PrStatusDto> = get(
+            url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "statuses", apiVersion = "7.1-preview.1"),
+        )
+        return PrStatus.latest(
+            list.value.filter { it.context.name.isNotBlank() }.map {
+                PrStatus(
+                    genre = it.context.genre?.takeIf { g -> g.isNotBlank() },
+                    name = it.context.name,
+                    state = it.state,
+                    description = it.description?.takeIf { d -> d.isNotBlank() },
+                    url = it.targetUrl?.takeIf { u -> u.startsWith("https://") || u.startsWith("http://") },
+                    at = (it.updatedDate ?: it.creationDate)?.let(::instantOrNull),
+                    id = it.id,
+                )
+            },
+        )
     }
 
     override suspend fun builds(project: String, top: Int): List<Build> {
@@ -1153,6 +1177,17 @@ private fun ThreadDto.toThread(): PrThread {
     val status: String = "",
     val context: JsonObject? = null,
     val completedDate: String? = null,
+)
+
+@Serializable private data class StatusContextDto(val name: String = "", val genre: String? = null)
+@Serializable private data class PrStatusDto(
+    val id: Int = 0,
+    val state: String = "",
+    val description: String? = null,
+    val context: StatusContextDto = StatusContextDto(),
+    val targetUrl: String? = null,
+    val creationDate: String? = null,
+    val updatedDate: String? = null,
 )
 
 @Serializable private data class NamedRefDto(val id: Int = 0, val name: String = "")

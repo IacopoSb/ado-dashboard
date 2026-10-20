@@ -4,6 +4,7 @@ import io.github.iacoposb.adodash.Fakes
 import io.github.iacoposb.adodash.Fakes.anna
 import io.github.iacoposb.adodash.Fakes.marco
 import io.github.iacoposb.adodash.api.PolicyEvaluation
+import io.github.iacoposb.adodash.api.PrStatus
 import io.github.iacoposb.adodash.api.Reviewer
 import io.github.iacoposb.adodash.api.Vote
 import org.junit.Assert.assertEquals
@@ -129,5 +130,49 @@ class PrChecksTest {
     @Test fun `without names, the reviewers marked required`() {
         val pr = Fakes.pr(311, anna, reviewers = listOf(Reviewer(marco.id, marco.name, Vote.APPROVED, true), Reviewer("luca", "Luca", Vote.NONE, true)))
         assertEquals(CheckKind.RequiredReviewers(1, 2), PrChecks.requiredReviewers(pr, required(emptyList())))
+    }
+
+    private fun statusPolicy(status: String, name: String? = null) = PolicyEvaluation(
+        PolicyEvaluation.STATUS_POLICY, "Status", blocking = true, enabled = true, status = status,
+        displayName = name, statusGenre = "SonarQube", statusName = "quality-gate",
+    )
+
+    @Test fun `statuses join the policies, once each`() {
+        val sonar = PrStatus("sonarqube", "Quality-Gate", "failed", "Quality Gate failed", "https://sonar/x", at = Fakes.now)
+        val lint = PrStatus(null, "lint", "succeeded")
+        val rows = PrChecks.of(
+            pr.copy(mergeStatus = null),
+            listOf(statusPolicy("rejected"), policy(PolicyEvaluation.BUILD_POLICY, "approved", buildId = 1), policy("other-type", "approved")),
+            0, emptyList(), listOf(lint, sonar),
+        )
+        assertEquals(
+            listOf(
+                CheckKind.Build("ci", 1, "approved", false),
+                // The policy's row carries its status; the status is not shown again
+                CheckKind.Status("SonarQube/quality-gate", "Quality Gate failed", "https://sonar/x"),
+                CheckKind.Status("lint"),
+                CheckKind.Other("ci"),
+            ),
+            rows.map { it.kind },
+        )
+        assertEquals(listOf(CheckState.OK, CheckState.FAILED, CheckState.OK, CheckState.OK), rows.map { it.state })
+        // No policy waits for it: it does not block
+        assertEquals(listOf(true, true, false, true), rows.map { it.blocking })
+        assertEquals(Fakes.now, rows[1].at)
+    }
+
+    @Test fun `a status policy's name, and its state while the service works`() {
+        fun row(status: String, posted: PrStatus?, name: String? = null) =
+            PrChecks.of(pr.copy(mergeStatus = null), listOf(statusPolicy(status, name)), 0, emptyList(), listOfNotNull(posted)).single()
+        assertEquals(CheckKind.Status("Sonar gate"), row("queued", null, name = "Sonar gate").kind)
+        assertEquals(CheckState.WAITING, row("queued", null).state)
+        assertEquals(CheckState.RUNNING, row("queued", PrStatus("SonarQube", "quality-gate", "pending")).state)
+        assertEquals(CheckState.OK, row("approved", PrStatus("SonarQube", "quality-gate", "succeeded")).state)
+    }
+
+    @Test fun `status states`() {
+        fun state(s: String) = PrChecks.stateOf(PrStatus(null, "x", s))
+        assertEquals(listOf(CheckState.OK, CheckState.FAILED, CheckState.FAILED, CheckState.RUNNING),
+            listOf("succeeded", "failed", "error", "pending").map(::state))
     }
 }

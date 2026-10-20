@@ -1,6 +1,7 @@
 package io.github.iacoposb.adodash.ui
 
 import io.github.iacoposb.adodash.api.PolicyEvaluation
+import io.github.iacoposb.adodash.api.PrStatus
 import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.Reviewer
 import io.github.iacoposb.adodash.api.Vote
@@ -19,6 +20,11 @@ sealed interface CheckKind {
     /** [active] null when the threads are not read yet. */
     data class Comments(val active: Int?) : CheckKind
     data class WorkItems(val ids: List<Int>) : CheckKind
+    /**
+     * A status posted by a service ("SonarQube/quality-gate"), or a "Status check" policy waiting
+     * for one: [description] and [url] are the status's, null when it has not been posted.
+     */
+    data class Status(val name: String, val description: String? = null, val url: String? = null) : CheckKind
     data class Other(val name: String) : CheckKind
     /** "succeeded", "conflicts", "queued", "failure"… */
     data class Merge(val status: String, val target: String) : CheckKind
@@ -29,11 +35,21 @@ data class CheckRow(val kind: CheckKind, val state: CheckState, val blocking: Bo
 /** The rows of "Checks and policies" from the policies' evaluations. Pure. */
 object PrChecks {
     /**
-     * One row per policy that applies (builds first, then reviewers, comments, work items and
-     * the rest), and the merge's state last.
+     * One row per policy that applies (builds first, then reviewers, comments, work items, status
+     * checks and the rest), one per [statuses] no policy waits for (optional: they do not block),
+     * and the merge's state last.
      */
-    fun of(pr: PullRequest, evaluations: List<PolicyEvaluation>, activeThreads: Int?, workItemIds: List<Int>): List<CheckRow> {
-        val rows = evaluations.filter { it.enabled && it.status != "notApplicable" }.map { e ->
+    fun of(
+        pr: PullRequest,
+        evaluations: List<PolicyEvaluation>,
+        activeThreads: Int?,
+        workItemIds: List<Int>,
+        statuses: List<PrStatus> = emptyList(),
+    ): List<CheckRow> {
+        val byKey = statuses.associateBy { it.key }
+        val applying = evaluations.filter { it.enabled && it.status != "notApplicable" }
+        val rows = applying.map { e ->
+            val status = e.statusKey?.let(byKey::get)
             val kind: CheckKind = when (e.typeId.lowercase()) {
                 PolicyEvaluation.BUILD_POLICY -> CheckKind.Build(e.displayName, e.buildId, e.status, e.expired)
                 PolicyEvaluation.MIN_REVIEWERS_POLICY -> CheckKind.Reviewers(
@@ -43,15 +59,23 @@ object PrChecks {
                 PolicyEvaluation.REQUIRED_REVIEWERS_POLICY -> requiredReviewers(pr, e)
                 PolicyEvaluation.COMMENTS_POLICY -> CheckKind.Comments(activeThreads)
                 PolicyEvaluation.WORK_ITEMS_POLICY -> CheckKind.WorkItems(workItemIds)
-                else -> CheckKind.Other(e.displayName ?: e.typeName)
+                PolicyEvaluation.STATUS_POLICY -> CheckKind.Status(e.name, status?.description, status?.url)
+                else -> CheckKind.Other(e.name)
             }
-            CheckRow(kind, stateOf(kind, e), e.blocking, e.completedAt)
+            // A status policy still waiting while its service says it is at work: running
+            val state = if (e.isStatus && e.status == "queued" && status?.state == "pending") CheckState.RUNNING else stateOf(kind, e)
+            CheckRow(kind, state, e.blocking, status?.at ?: e.completedAt)
+        }
+        // A status a policy waits for is that policy's row
+        val backed = applying.mapNotNull { it.statusKey }.toSet()
+        val unbacked = statuses.filter { it.key !in backed }.map { s ->
+            CheckRow(CheckKind.Status(s.label, s.description, s.url), stateOf(s), blocking = false, at = s.at)
         }
         val order = listOf(
             CheckKind.Build::class, CheckKind.Reviewers::class, CheckKind.RequiredReviewers::class,
-            CheckKind.Comments::class, CheckKind.WorkItems::class,
+            CheckKind.Comments::class, CheckKind.WorkItems::class, CheckKind.Status::class,
         )
-        val sorted = rows.sortedBy { r -> order.indexOf(r.kind::class).let { if (it < 0) order.size else it } }
+        val sorted = (rows + unbacked).sortedBy { r -> order.indexOf(r.kind::class).let { if (it < 0) order.size else it } }
         val merge = when (pr.mergeStatus) {
             "succeeded" -> CheckState.OK
             "conflicts", "failure", "rejectedByPolicy" -> CheckState.FAILED
@@ -85,6 +109,14 @@ object PrChecks {
     /** The author's vote only where the policy lets it count. */
     private fun counts(pr: PullRequest, r: Reviewer, e: PolicyEvaluation) =
         e.creatorVoteCounts || !r.id.equals(pr.author.id, ignoreCase = true)
+
+    /** "error" is the service failing to check: a failure all the same. */
+    fun stateOf(s: PrStatus): CheckState = when (s.state) {
+        "succeeded" -> CheckState.OK
+        "failed", "error" -> CheckState.FAILED
+        "pending" -> CheckState.RUNNING
+        else -> CheckState.WAITING
+    }
 
     private fun stateOf(kind: CheckKind, e: PolicyEvaluation): CheckState = when (kind) {
         is CheckKind.Build -> when (e.status) {

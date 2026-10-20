@@ -77,6 +77,55 @@ class AdoClientBuildsTest {
         )
     }
 
+    @Test fun `a status check policy is named by its status, or by the name it was given`() = runTest {
+        server.enqueue(json("""
+            {"value":[
+              {"configuration":{"isEnabled":true,"isBlocking":true,
+                "type":{"id":"cbdc66da-9728-4af8-aada-9a5a32e4a226","displayName":"Status"},
+                "settings":{"statusName":"quality-gate","statusGenre":"SonarQube","invalidateOnSourceUpdate":true}},
+               "status":"queued"},
+              {"configuration":{"isEnabled":true,"isBlocking":true,
+                "type":{"id":"cbdc66da-9728-4af8-aada-9a5a32e4a226","displayName":"Status"},
+                "settings":{"statusName":"scan","statusGenre":"","defaultDisplayName":"Security scan"}},
+               "status":"approved"}]}
+        """.trimIndent()))
+        val (sonar, scan) = client.policyEvaluations(pr)
+        assertTrue(sonar.isStatus)
+        assertEquals("SonarQube/quality-gate", sonar.name)
+        assertEquals("sonarqube/quality-gate", sonar.statusKey)
+        assertEquals("Security scan", scan.name)
+        assertEquals("scan", scan.statusKey)
+    }
+
+    @Test fun `statuses of a pull request, the latest of each service`() = runTest {
+        server.enqueue(json("""
+            {"count":4,"value":[
+              {"id":1,"state":"pending","description":"Analysis in progress","context":{"name":"quality-gate","genre":"SonarQube"},
+               "creationDate":"2026-10-16T09:40:00Z","updatedDate":"2026-10-16T09:40:00Z"},
+              {"id":2,"state":"failed","description":"Quality Gate failed","context":{"name":"quality-gate","genre":"SonarQube"},
+               "targetUrl":"https://sonar.example.com/dashboard?id=backend&pullRequest=305",
+               "creationDate":"2026-10-16T09:45:00Z","updatedDate":"2026-10-16T09:45:00Z"},
+              {"id":3,"state":"notApplicable","context":{"name":"coverage"},"creationDate":"2026-10-16T09:45:00Z"},
+              {"id":4,"state":"succeeded","context":{"name":"lint","genre":""},"targetUrl":"javascript:alert(1)",
+               "creationDate":"2026-10-16T09:41:00Z","iterationId":1}]}
+        """.trimIndent()))
+        val statuses = client.pullRequestStatuses(pr)
+        assertEquals(
+            listOf(
+                PrStatus(
+                    "SonarQube", "quality-gate", "failed", "Quality Gate failed",
+                    "https://sonar.example.com/dashboard?id=backend&pullRequest=305", Instant.parse("2026-10-16T09:45:00Z"), 2,
+                ),
+                PrStatus(null, "lint", "succeeded", at = Instant.parse("2026-10-16T09:41:00Z"), id = 4),
+            ),
+            statuses,
+        )
+        assertEquals(
+            "/org/My%20Project/_apis/git/repositories/r1/pullRequests/305/statuses?api-version=7.1-preview.1",
+            server.takeRequest().path,
+        )
+    }
+
     private val buildJson = """
         {"id":981,"buildNumber":"20261016.3","status":"completed","result":"failed",
          "queueTime":"2026-10-16T09:40:00.1234567Z","startTime":"2026-10-16T09:41:00Z","finishTime":"2026-10-16T09:47:40Z",

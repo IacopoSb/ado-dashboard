@@ -13,6 +13,7 @@ import io.github.iacoposb.adodash.api.Comment
 import io.github.iacoposb.adodash.api.PolicyEvaluation
 import io.github.iacoposb.adodash.api.PrComment
 import io.github.iacoposb.adodash.api.PrFilter
+import io.github.iacoposb.adodash.api.PrStatus
 import io.github.iacoposb.adodash.api.PrThread
 import io.github.iacoposb.adodash.api.PullRequest
 import io.github.iacoposb.adodash.api.TestRun
@@ -115,6 +116,39 @@ class BuildSyncTest {
         sync(listOf(pr.copy(lastCommit = "c3")))
         sync(listOf(pr.copy(lastCommit = "c3")))
         assertEquals("still running: read at every sync", 5, FakeApiHolder.calls)
+    }
+
+    @Test fun `statuses of the rows shown, read again only when something may have changed`() = runTest {
+        val pr = Fakes.pr(318, me).copy(lastCommit = "a1")
+        var state = "failed"
+        val asked = mutableListOf<Int>()
+        val cache = SignalCache()
+        var clock = now
+        suspend fun sync(prs: List<PullRequest>, view: DashboardView = DashboardView.global) =
+            SyncEngine(
+                object : AdoApi by FakeApi(mine = prs) {
+                    override suspend fun pullRequestStatuses(pr: PullRequest): List<PrStatus> {
+                        asked += pr.id
+                        return listOf(PrStatus("SonarQube", "quality-gate", state))
+                    }
+                },
+                texts = Fakes.Texts, now = { clock }, cache = cache,
+            ).fetch(me, since = since, view = view).snapshot.signals
+        assertEquals(listOf("SonarQube/quality-gate"), sync(listOf(pr))[318]?.failedChecks)
+        sync(listOf(pr))
+        assertEquals("unchanged: from the cache", listOf(318), asked)
+        sync(listOf(pr.copy(lastCommit = "b2")))
+        assertEquals("a new commit", 2, asked.size)
+        clock = clock.plus(SyncEngine.SIGNALS_TTL)
+        state = "pending"
+        sync(listOf(pr.copy(lastCommit = "b2")))
+        sync(listOf(pr.copy(lastCommit = "b2")))
+        assertEquals("too old, then still pending", 4, asked.size)
+        // My PRs not shown: signals without statuses, none read
+        val hidden = DashboardView.global.let { it.copy(pullRequests = it.pullRequests.copy(enabled = false)) }
+        asked.clear()
+        assertEquals(emptyList<String>(), sync(listOf(pr.copy(lastCommit = "c3")), hidden)[318]?.failedChecks)
+        assertEquals(emptyList<Int>(), asked)
     }
 
     /** Counts policy calls across engines sharing a cache. */

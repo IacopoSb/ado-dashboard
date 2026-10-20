@@ -144,7 +144,7 @@ class DashboardRenderTest {
     private val signals = mapOf(
         311 to PrSignals(BuildSignal.SUCCEEDED, activeThreads = 2),
         305 to PrSignals(BuildSignal.FAILED, activeThreads = 1, conflicts = true),
-        318 to PrSignals(BuildSignal.SUCCEEDED, activeThreads = 1),
+        318 to PrSignals(BuildSignal.SUCCEEDED, activeThreads = 1, failedChecks = listOf("SonarQube/quality-gate")),
         320 to PrSignals(BuildSignal.SUCCEEDED, activeThreads = 0, readyToComplete = true),
     )
 
@@ -519,6 +519,15 @@ class DashboardRenderTest {
                 PrSignals(BuildSignal.FAILED, activeThreads = 12, conflicts = true)),
             Triple(Fakes.pr(331, me, "Split the notification worker", reviewers), false,
                 PrSignals(BuildSignal.RUNNING, activeThreads = 3, conflicts = true)),
+            // Checks other than the build: a failed status, blocking comments, no work item
+            Triple(Fakes.pr(332, me, "Export the activity to CSV", reviewers), false,
+                PrSignals(
+                    BuildSignal.SUCCEEDED, activeThreads = 1, commentsBlocking = true, workItemsMissing = true,
+                    failedChecks = listOf("SonarQube/quality-gate"),
+                )),
+            // Checks still pending, approvals missing
+            Triple(Fakes.pr(333, anna, "Cache the exchange rates", reviewer), true,
+                PrSignals(BuildSignal.RUNNING, activeThreads = 0, approvalsMissing = true, pendingChecks = listOf("SonarQube/quality-gate", "Checkmarx/scan"))),
         )
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
@@ -1411,6 +1420,20 @@ class DashboardRenderTest {
             io.github.iacoposb.adodash.api.PolicyEvaluation(
                 io.github.iacoposb.adodash.api.PolicyEvaluation.WORK_ITEMS_POLICY, "Work item linking", blocking = false, enabled = true, status = "approved",
             ),
+            io.github.iacoposb.adodash.api.PolicyEvaluation(
+                io.github.iacoposb.adodash.api.PolicyEvaluation.STATUS_POLICY, "Status", blocking = true, enabled = true, status = "rejected",
+                statusGenre = "SonarQube", statusName = "quality-gate",
+            ),
+        )
+        // The quality gate backs its policy; the coverage has none: optional
+        val statuses = listOf(
+            io.github.iacoposb.adodash.api.PrStatus(
+                "SonarQube", "quality-gate", "failed", if (it) "Quality Gate non superato" else "Quality Gate failed",
+                "https://sonar.example.com/dashboard?id=payments&pullRequest=311", now.minusSeconds(180),
+            ),
+            io.github.iacoposb.adodash.api.PrStatus(
+                null, "coverage", "succeeded", if (it) "Copertura 84%" else "Coverage 84%", null, now.minusSeconds(200),
+            ),
         )
         val description = if (it) {
             "Aggiunge retry con **backoff esponenziale** sulle chiamate al gateway. Il numero massimo di tentativi arriva da `RetryPolicy`.\n\n- Retry solo sugli errori 5xx\n- Log di ogni tentativo\n\nChiude #4812."
@@ -1422,6 +1445,7 @@ class DashboardRenderTest {
             pr = pr,
             detail = io.github.iacoposb.adodash.api.PullRequestDetail(pr, description, labels = listOf("payments"), workItemIds = listOf(4812)),
             policies = policies,
+            statuses = statuses,
             workItems = listOf(
                 Fakes.workItem(4812, "Bug", if (it) "Il login con SSO fallisce dopo il rinnovo del token" else "SSO sign-in fails after the token is renewed", "Active", 1),
             ),

@@ -2,6 +2,7 @@ package io.github.iacoposb.adodash.sync
 
 import io.github.iacoposb.adodash.api.DayRange
 import io.github.iacoposb.adodash.api.PolicyEvaluation
+import io.github.iacoposb.adodash.api.PrStatus
 import io.github.iacoposb.adodash.api.PrThread
 import java.time.DayOfWeek
 import java.time.Instant
@@ -18,8 +19,12 @@ class SignalCache {
     /** Threads of a pull request that is neither mine nor to review, read for [key] at [at]. */
     data class Threads(val key: String, val threads: List<PrThread>, val at: Instant)
 
+    /** Statuses services posted on a pull request, read for [key] (its commit) at [at]. */
+    data class Statuses(val key: String, val statuses: List<PrStatus>, val at: Instant)
+
     val policies = ConcurrentHashMap<Int, Policies>()
     val threads = ConcurrentHashMap<Int, Threads>()
+    val statuses = ConcurrentHashMap<Int, Statuses>()
     /** Project to its repositories' default branches. */
     val defaultBranches = ConcurrentHashMap<String, Map<String, String>>()
     /** Failed tests of a finished build: it never changes. */
@@ -36,6 +41,7 @@ class SignalCache {
     fun clear() {
         policies.clear()
         threads.clear()
+        statuses.clear()
         defaultBranches.clear()
         failedTests.clear()
         workingDays.clear()

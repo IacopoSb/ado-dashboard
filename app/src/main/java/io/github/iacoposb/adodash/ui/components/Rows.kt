@@ -1,5 +1,7 @@
 package io.github.iacoposb.adodash.ui.components
 
+import androidx.annotation.PluralsRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -200,12 +203,33 @@ private fun signalItems(s: PrSignals): List<SignalItem> {
             BuildSignal.RUNNING -> add(SignalItem(Icons.Filled.PlayArrow, stringResource(R.string.pr_build_running), c.primary, c.textMuted))
             BuildSignal.NONE -> {}
         }
-        s.activeThreads?.takeIf { it > 0 }?.let {
-            add(SignalItem(AdoIcons.ChatBubble, pluralStringResource(R.plurals.pr_active_threads, it, it), c.textMuted, c.textMuted))
+        checksText(s.failedChecks, R.string.pr_check_failed, R.plurals.pr_checks_failed)?.let {
+            add(SignalItem(AdoIcons.Cancel, it, c.danger, c.danger))
         }
+        checksText(s.pendingChecks, R.string.pr_check_pending, R.plurals.pr_checks_pending)?.let {
+            add(SignalItem(AdoIcons.Hourglass, it, c.warning, c.textMuted))
+        }
+        // Threads that block completion get the warning's color
+        val threadsTint = if (s.commentsBlocking) c.warning else c.textMuted
+        val active = s.activeThreads?.takeIf { it > 0 }
+        if (active != null) {
+            add(SignalItem(AdoIcons.ChatBubble, pluralStringResource(R.plurals.pr_active_threads, active, active), threadsTint, c.textMuted))
+        } else if (s.commentsBlocking) {
+            add(SignalItem(AdoIcons.ChatBubble, stringResource(R.string.pr_check_comments), threadsTint, c.textMuted))
+        }
+        if (s.workItemsMissing) add(SignalItem(Icons.Filled.Warning, stringResource(R.string.pr_check_no_work_items), c.warning, c.textMuted))
+        if (s.approvalsMissing) add(SignalItem(AdoIcons.RateReview, stringResource(R.string.pr_approval_needed), c.textMuted, c.textMuted))
         if (s.conflicts) add(SignalItem(AdoIcons.MergeType, stringResource(R.string.pr_conflicts), c.danger, c.danger))
         if (s.readyToComplete) add(SignalItem(AdoIcons.CheckCircle, stringResource(R.string.pr_ready), c.success, c.success))
     }
+}
+
+/** One check by name ("SonarQube/quality-gate failed"), several by count; null for none. */
+@Composable
+fun checksText(names: List<String>, @StringRes one: Int, @PluralsRes several: Int): String? = when (names.size) {
+    0 -> null
+    1 -> stringResource(one, names.single())
+    else -> pluralStringResource(several, names.size, names.size)
 }
 
 @Composable

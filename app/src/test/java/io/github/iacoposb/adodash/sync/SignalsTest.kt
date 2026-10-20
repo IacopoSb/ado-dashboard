@@ -7,6 +7,7 @@ import io.github.iacoposb.adodash.Fakes.me
 import io.github.iacoposb.adodash.Fakes.now
 import io.github.iacoposb.adodash.api.BuildState
 import io.github.iacoposb.adodash.api.PolicyEvaluation
+import io.github.iacoposb.adodash.api.PrStatus
 import io.github.iacoposb.adodash.api.PrThread
 import io.github.iacoposb.adodash.api.Reviewer
 import io.github.iacoposb.adodash.api.TimelineRecord
@@ -107,6 +108,95 @@ class SignalsTest {
         assertEquals(Pipelines.Counts(failed = 1, running = 1, ok = 1), Pipelines.counts(tile))
         val onlyRepo2 = Pipelines.tile(builds, emptyList(), mapOf("repo-1" to "main", "repo-2" to "master")) { it.repoId == "repo-2" }
         assertEquals(listOf(4), onlyRepo2.map { it.id })
+    }
+
+    private fun typed(type: String, status: String, blocking: Boolean = true, name: String? = null) =
+        PolicyEvaluation(type, "Type", blocking, true, status, displayName = name)
+
+    private fun sonarPolicy(status: String, blocking: Boolean = true) = PolicyEvaluation(
+        PolicyEvaluation.STATUS_POLICY, "Status", blocking, true, status, statusGenre = "SonarQube", statusName = "quality-gate",
+    )
+
+    @Test fun `blocking checks other than builds have their own signals`() {
+        val s = Signals.of(
+            approvedPr,
+            listOf(
+                buildPolicy("approved"),
+                typed(PolicyEvaluation.COMMENTS_POLICY, "rejected"),
+                typed(PolicyEvaluation.WORK_ITEMS_POLICY, "rejected"),
+                typed(PolicyEvaluation.MIN_REVIEWERS_POLICY, "queued"),
+                sonarPolicy("rejected"),
+                typed("custom", "queued", name = "Security scan"),
+                // Not blocking: no signal
+                typed("optional", "rejected", blocking = false, name = "Lint"),
+            ),
+            listOf(thread(1, "active")), emptyList(),
+        )
+        assertEquals(BuildSignal.SUCCEEDED, s.build)
+        assertTrue(s.commentsBlocking)
+        assertTrue(s.workItemsMissing)
+        assertTrue(s.approvalsMissing)
+        assertEquals(listOf("SonarQube/quality-gate"), s.failedChecks)
+        assertEquals(listOf("Security scan"), s.pendingChecks)
+        assertFalse(s.readyToComplete)
+    }
+
+    @Test fun `nothing to say when the checks pass`() {
+        val s = Signals.of(
+            approvedPr,
+            listOf(
+                typed(PolicyEvaluation.COMMENTS_POLICY, "approved"), typed(PolicyEvaluation.WORK_ITEMS_POLICY, "notApplicable"),
+                typed(PolicyEvaluation.REQUIRED_REVIEWERS_POLICY, "approved"), sonarPolicy("approved"),
+            ),
+            emptyList(), emptyList(), statuses = listOf(PrStatus("SonarQube", "quality-gate", "succeeded")),
+        )
+        assertEquals(PrSignals(BuildSignal.NONE, activeThreads = 0, readyToComplete = true), s)
+    }
+
+    @Test fun `a required reviewer who has not approved is missing, not in a draft`() {
+        val pr = approvedPr.copy(reviewers = listOf(Reviewer(anna.id, anna.name, Vote.WAITING, true)))
+        assertTrue(Signals.of(pr, emptyList(), emptyList(), emptyList()).approvalsMissing)
+        assertFalse(Signals.of(pr.copy(draft = true), emptyList(), emptyList(), emptyList()).approvalsMissing)
+    }
+
+    @Test fun `a failed status is named once, by its policy if one waits for it`() {
+        val statuses = listOf(
+            PrStatus("SonarQube", "quality-gate", "failed"),
+            PrStatus("Checkmarx", "scan", "error"),
+            PrStatus(null, "coverage", "pending"),
+            PrStatus(null, "docs", "succeeded"),
+        )
+        val withPolicy = Signals.of(approvedPr, listOf(sonarPolicy("rejected")), emptyList(), emptyList(), statuses)
+        assertEquals(listOf("SonarQube/quality-gate", "Checkmarx/scan"), withPolicy.failedChecks)
+        // A pending status no policy waits for does not hold the pull request back
+        assertEquals(emptyList<String>(), withPolicy.pendingChecks)
+        val alone = Signals.of(approvedPr, emptyList(), emptyList(), emptyList(), statuses)
+        assertEquals(listOf("SonarQube/quality-gate", "Checkmarx/scan"), alone.failedChecks)
+        // Statuses unread: only the policies speak
+        assertEquals(emptyList<String>(), Signals.of(approvedPr, emptyList(), emptyList(), emptyList(), null).failedChecks)
+    }
+
+    @Test fun `a status policy waiting for its service is pending`() {
+        val s = Signals.of(approvedPr, listOf(sonarPolicy("queued")), emptyList(), emptyList(), emptyList())
+        assertEquals(listOf("SonarQube/quality-gate"), s.pendingChecks)
+        assertFalse(s.readyToComplete)
+    }
+
+    @Test fun `the latest status of each service, those that do not apply left out`() {
+        fun status(genre: String?, name: String, state: String, at: Long, id: Int) =
+            PrStatus(genre, name, state, at = now.minusSeconds(at), id = id)
+        val latest = PrStatus.latest(
+            listOf(
+                status("SonarQube", "quality-gate", "pending", 600, 1),
+                status("sonarqube", "Quality-Gate", "failed", 300, 2),
+                status("SonarQube", "quality-gate", "succeeded", 900, 3),
+                status(null, "coverage", "succeeded", 600, 4),
+                status(null, "coverage", "notApplicable", 60, 5),
+                status("ci", "lint", "notSet", 60, 6),
+            ),
+        )
+        assertEquals(listOf(2), latest.map { it.id })
+        assertTrue(Signals.pendingStatuses(listOf(status(null, "x", "pending", 1, 1))))
     }
 
     private fun record(id: String, type: String, name: String, order: Int, parent: String? = null, state: BuildState = BuildState.SUCCEEDED) =

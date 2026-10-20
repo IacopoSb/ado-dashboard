@@ -60,6 +60,9 @@ interface AdoApi {
     /** The status of each policy of [pr]; needs [PullRequest.projectId]. */
     suspend fun policyEvaluations(pr: PullRequest): List<PolicyEvaluation> = emptyList()
 
+    /** The latest status each service posted on [pr] ([PrStatus.latest]). */
+    suspend fun pullRequestStatuses(pr: PullRequest): List<PrStatus> = emptyList()
+
     /**
      * The project's latest builds, most recently queued first. Throws [AdoException] 401 or 403
      * when the credentials cannot read builds (a PAT without Build (read)).

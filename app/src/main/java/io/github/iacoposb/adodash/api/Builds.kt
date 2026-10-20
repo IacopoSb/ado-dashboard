@@ -125,8 +125,20 @@ data class PolicyEvaluation(
     val creatorVoteCounts: Boolean = false,
     /** When it was last evaluated, for "4 min ago". */
     val completedAt: Instant? = null,
+    /** The status a "Status check" policy waits for: "SonarQube" and "quality-gate". */
+    val statusGenre: String? = null,
+    val statusName: String? = null,
 ) {
     val isBuild get() = typeId.equals(BUILD_POLICY, ignoreCase = true)
+    val isStatus get() = typeId.equals(STATUS_POLICY, ignoreCase = true)
+
+    /** The [PrStatus.key] of the status a "Status check" policy waits for; null for other policies. */
+    val statusKey: String? get() = statusName?.takeIf { isStatus && it.isNotBlank() }?.let { PrStatus.key(statusGenre, it) }
+
+    /** The name to show: the policy's own, the status it waits for, or its type's. */
+    val name: String get() = displayName
+        ?: statusName?.takeIf { isStatus && it.isNotBlank() }?.let { PrStatus.label(statusGenre, it) }
+        ?: typeName
 
     companion object {
         const val BUILD_POLICY = "0609b952-1397-4640-95ec-e00a01b2c241"
@@ -134,6 +146,40 @@ data class PolicyEvaluation(
         const val REQUIRED_REVIEWERS_POLICY = "fd2167ab-b0be-447a-8ec8-39368250530e"
         const val COMMENTS_POLICY = "c6a1889d-b943-4856-b76f-9e46bb6b0df2"
         const val WORK_ITEMS_POLICY = "40e92b44-2fe1-4dd6-b3d8-74a9c21d0c6e"
+        const val STATUS_POLICY = "cbdc66da-9728-4af8-aada-9a5a32e4a226"
+    }
+}
+
+/**
+ * A status posted on a pull request by a service (SonarQube's quality gate, a scanner…), with or
+ * without a policy that waits for it. [state]: "pending", "succeeded", "failed", "error".
+ */
+data class PrStatus(
+    val genre: String?,
+    val name: String,
+    val state: String,
+    val description: String? = null,
+    val url: String? = null,
+    val at: Instant? = null,
+    val id: Int = 0,
+) {
+    /** What tells two services apart: a newer status with the same key replaces the older. */
+    val key get() = key(genre, name)
+    val label get() = label(genre, name)
+
+    companion object {
+        fun key(genre: String?, name: String) = label(genre, name).lowercase()
+        fun label(genre: String?, name: String) = listOfNotNull(genre?.takeIf { it.isNotBlank() }, name).joinToString("/")
+
+        /**
+         * The latest status of each service among all those posted (Azure DevOps keeps them all),
+         * in the order they were first posted; a service whose latest says it does not apply, or
+         * says nothing, is left out.
+         */
+        fun latest(statuses: List<PrStatus>): List<PrStatus> =
+            statuses.groupBy { it.key }.values
+                .map { posts -> posts.maxWith(compareBy<PrStatus>({ it.at }, { it.id })) }
+                .filter { it.state != "notApplicable" && it.state != "notSet" && it.state.isNotBlank() }
     }
 }
 

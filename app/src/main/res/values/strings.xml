@@ -307,6 +307,18 @@
     </plurals>
     <string name="pr_conflicts">Conflicts</string>
     <string name="pr_ready">Ready to complete</string>
+    <!-- A check other than the build, by name: "SonarQube/quality-gate failed" -->
+    <string name="pr_check_failed">%1$s failed</string>
+    <plurals name="pr_checks_failed">
+        <item quantity="one">%d check failed</item>
+        <item quantity="other">%d checks failed</item>
+    </plurals>
+    <string name="pr_check_pending">%1$s pending</string>
+    <plurals name="pr_checks_pending">
+        <item quantity="one">%d check pending</item>
+        <item quantity="other">%d checks pending</item>
+    </plurals>
+    <string name="pr_approval_needed">Approval needed</string>
     <!-- Pipeline tile: "1 failed · 1 running · 6 ok" -->
     <string name="pipeline_title">Pipeline</string>
     <plurals name="pipeline_failed">
@@ -483,6 +495,8 @@
     <string name="pr_check_merge_queued">Checking for conflicts with %1$s</string>
     <string name="pr_check_merge_failed">The merge with %1$s fails</string>
     <string name="pr_check_optional">optional</string>
+    <!-- A status check whose service has not posted yet: "SonarQube/quality-gate: waiting for the status" -->
+    <string name="pr_check_status_waiting">%1$s: waiting for the status</string>
     <string name="pr_reviewers">Reviewers</string>
     <string name="pr_no_reviewers">No reviewers</string>
     <string name="pr_reviewer_you">%1$s (you)</string>
