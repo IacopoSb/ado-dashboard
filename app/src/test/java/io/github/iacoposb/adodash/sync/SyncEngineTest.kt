@@ -176,7 +176,7 @@ class SyncEngineTest {
         assertEquals(listOf("pr:30:review"), events.filter { it.key.endsWith(":review") }.map { it.key })
     }
 
-    @Test fun `a board shows the team's areas and the project's pull requests`() = runTest {
+    @Test fun `a board shows the team's areas and the pull requests of its repositories`() = runTest {
         val items = listOf(
             Fakes.workItem(1, area = "Contoso\\Backend"),
             Fakes.workItem(2, area = "Contoso\\Backend\\Gateway"),
@@ -186,21 +186,46 @@ class SyncEngineTest {
         val board = BoardRef("Contoso", "Backend")
         val api = FakeApi(
             items, categories,
-            toReview = listOf(Fakes.pr(10, Fakes.anna), Fakes.pr(11, Fakes.anna, project = "Clienti")),
-            mine = listOf(Fakes.pr(12, Fakes.me, project = "Clienti")),
+            toReview = listOf(
+                Fakes.pr(10, Fakes.anna), Fakes.pr(11, Fakes.anna, project = "Clienti"), Fakes.pr(13, Fakes.anna).copy(repoName = "payments"),
+            ),
+            mine = listOf(Fakes.pr(12, Fakes.me, project = "Clienti"), Fakes.pr(14, Fakes.me), Fakes.pr(15, Fakes.me).copy(repoName = "payments")),
+            all = listOf(Fakes.pr(16, Fakes.marco), Fakes.pr(17, Fakes.marco).copy(repoName = "payments")),
             areas = listOf(TeamArea("Contoso\\Backend", includeChildren = true)),
         )
         val cache = mutableMapOf<BoardRef, List<TeamArea>>()
         val engine = SyncEngine(api, teamAreas = cache, texts = Fakes.Texts)
-        val fetched = engine.fetch(Fakes.me, since = null, view = DashboardView.forBoard(board))
+        val view = DashboardView.forBoard(board).let {
+            it.copy(pullRequests = it.pullRequests.copy(show = PrScope.entries.toSet(), repositories = setOf("Backend")))
+        }
+        val fetched = engine.fetch(Fakes.me, since = null, view = view)
         val shown = fetched.snapshot.shown!!
         assertEquals(listOf(1, 2), shown.workItems.map { it.id }.sorted())
-        assertEquals(listOf(10), shown.reviewPrs.map { it.id })
-        assertTrue(shown.myPrs.isEmpty())
+        assertEquals("the board's repositories only, in every scope", listOf(10), shown.reviewPrs.map { it.id })
+        assertEquals(listOf(14), shown.myPrs.map { it.id })
+        assertEquals(listOf(16), shown.otherPrs.map { it.id })
+        assertEquals("only the board's project", listOf("Contoso"), api.allProjects)
         assertEquals("my own items still all there", 4, fetched.snapshot.workItems.size)
+        assertEquals("the notifications still see all my PRs", listOf(12, 14, 15), fetched.snapshot.myPrs.map { it.id }.sorted())
         assertEquals(1, api.wiqls.size)
-        engine.fetch(Fakes.me, since = null, view = DashboardView.forBoard(board))
+        engine.fetch(Fakes.me, since = null, view = view)
         assertEquals("team areas are cached across syncs", 1, api.teamAreaCalls)
+    }
+
+    @Test fun `a board without repositories shows no pull requests and reads no more of them`() = runTest {
+        val api = FakeApi(
+            items, categories,
+            toReview = listOf(Fakes.pr(10, Fakes.anna)), mine = listOf(Fakes.pr(11, Fakes.me)), all = listOf(Fakes.pr(12, Fakes.marco)),
+        )
+        val view = DashboardView.forBoard(BoardRef("Contoso", "Backend")).let {
+            it.copy(pullRequests = it.pullRequests.copy(show = PrScope.entries.toSet()))
+        }
+        val fetched = SyncEngine(api, texts = Fakes.Texts).fetch(Fakes.me, since = null, view = view)
+        val shown = fetched.snapshot.shown!!
+        assertTrue(shown.reviewPrs.isEmpty() && shown.myPrs.isEmpty() && shown.otherPrs.isEmpty())
+        assertTrue("the project's PRs are not read", api.allProjects.isEmpty())
+        assertEquals("the notifications are unchanged", listOf(10), fetched.snapshot.reviewPrs.map { it.id })
+        assertEquals(listOf(11), fetched.snapshot.myPrs.map { it.id })
     }
 
     @Test fun `a team field other than the area path shows the whole project`() = runTest {

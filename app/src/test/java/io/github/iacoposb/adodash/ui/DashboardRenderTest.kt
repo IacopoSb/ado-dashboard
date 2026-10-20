@@ -939,6 +939,11 @@ class DashboardRenderTest {
         ProjectBoards("Zeta", listOf(TeamInfo("Zeta Team"))),
     )
 
+    /** Contoso's repositories: enough for the board's menu to have a search. */
+    private val contosoRepositories = listOf(
+        "backend", "billing-api", "docs", "frontend", "gateway", "infra-terraform", "mobile-app", "notifications", "payments", "reporting",
+    )
+
     private fun choices(views: ViewSet = designViews(), boards: List<ProjectBoards>? = designBoards) = ViewChoices(
         views, boards,
         EditorOptions(
@@ -946,8 +951,13 @@ class DashboardRenderTest {
             states = listOf("New", "Active", "Resolved"),
             people = listOf(anna.name, marco.name),
             repositories = listOf("backend", "payments"),
+            projectRepositories = mapOf("Contoso" to contosoRepositories, "Interno" to listOf("infra")),
         ),
     )
+
+    /** A board opened with its repositories chosen, as the design shows it. */
+    private fun ViewSet.openDesignBoard(ref: BoardRef) =
+        put(board(ref).let { it.copy(pullRequests = it.pullRequests.copy(repositories = setOf("backend", "payments"))) })
 
     private fun picker(name: String, boards: List<ProjectBoards>? = designBoards, views: ViewSet = designViews()) {
         compose.setContent {
@@ -1016,7 +1026,7 @@ class DashboardRenderTest {
     /** On a board, with many others: the recent ones, then the projects, only the open board's expanded. */
     private fun switcher(name: String, query: String = "", boards: List<ProjectBoards>? = manyBoards) {
         val board = BoardRef("Contoso", "Backend")
-        val views = designViews().openBoard(BoardRef("Payments", "Gateway")).openBoard(BoardRef("Interno", "Infrastruttura")).openBoard(board)
+        val views = designViews().openBoard(BoardRef("Payments", "Gateway")).openBoard(BoardRef("Interno", "Infrastruttura")).openDesignBoard(board)
         val state = SyncState(snapshot.copy(shown = Shown(views.current.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs)))
         viewsDashboard(name, views = views, switcher = true, state = state, boards = boards, query = query)
     }
@@ -1070,9 +1080,65 @@ class DashboardRenderTest {
     @Config(qualifiers = "+it")
     @Test fun viewsEditorDeleteConfirmationItalian() = deleteViewDialog("views-editor-delete-confirmation-it")
 
+    /** A board whose repositories are still to be chosen: no pull requests, no pipelines tile. */
+    private fun boardWithoutRepositories(name: String) {
+        val views = designViews().openBoard(BoardRef("Contoso", "Backend"))
+        val state = SyncState(
+            snapshot.copy(shown = Shown(views.current.queryKey, snapshot.workItems, emptyList(), emptyList(), sprint = designSprint())),
+        )
+        viewsDashboard(name, views = views, state = state)
+    }
+
+    @Test fun dashboardBoardNoRepositories() = boardWithoutRepositories("dashboard-board-no-repositories")
+
+    @Config(qualifiers = "+it")
+    @Test fun dashboardBoardNoRepositoriesItalian() = boardWithoutRepositories("dashboard-board-no-repositories-it")
+
+    @Config(qualifiers = PHONE)
+    @Test fun dashboardBoardNoRepositoriesPhone() {
+        val views = designViews().openBoard(BoardRef("Contoso", "Backend"))
+        val state = SyncState(snapshot.copy(shown = Shown(views.current.queryKey, snapshot.workItems, emptyList(), emptyList())))
+        compose.setContent {
+            AdoTheme(dark = false, dynamic = false) {
+                DashboardScreen("contoso", state, events(), {}, {}, {}, {}, {}, now = now, choices = choices(views))
+            }
+        }
+        compose.onNodeWithText(context.getString(R.string.tab_pull_requests, 0)).performClick()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("dashboard-board-no-repositories-phone.png")
+    }
+
+    /** "Choose repositories" tapped: the editor at the board's repositories, their menu open. */
+    private fun boardRepositoriesPicker(name: String, chosen: Set<String> = emptySet()) {
+        val board = designViews().openBoard(BoardRef("Contoso", "Backend")).current
+        val view = board.copy(pullRequests = board.pullRequests.copy(repositories = chosen))
+        viewsDashboard(
+            name, views = designViews().put(view),
+            state = SyncState(snapshot.copy(shown = Shown(view.queryKey, snapshot.workItems, emptyList(), emptyList()))),
+            editor = EditorTarget(view, focus = ViewPanel.REPOSITORIES, pickRepositories = true),
+        )
+    }
+
+    @Test fun viewsEditorBoardRepositories() = boardRepositoriesPicker("views-editor-board-repositories")
+
+    @Config(qualifiers = "+it")
+    @Test fun viewsEditorBoardRepositoriesItalian() = boardRepositoriesPicker("views-editor-board-repositories-it")
+
+    @Test fun viewsEditorBoardRepositoriesChosen() =
+        boardRepositoriesPicker("views-editor-board-repositories-chosen", chosen = setOf("backend", "payments"))
+
+    @Config(qualifiers = PHONE)
+    @Test fun viewsEditorBoardRepositoriesPhone() = boardRepositoriesPicker("views-editor-board-repositories-phone")
+
+    /** The editor of a board, closed menu: the repositories' section above the panels. */
+    @Test fun viewsEditorBoard() {
+        val view = designViews().openDesignBoard(BoardRef("Contoso", "Backend")).current
+        viewsDashboard("views-editor-board", views = designViews().put(view), editor = EditorTarget(view))
+    }
+
     @Test fun dashboardBoardView() {
         val board = BoardRef("Contoso", "Backend")
-        val views = designViews().openBoard(board)
+        val views = designViews().openDesignBoard(board)
         val view = views.current
         val state = SyncState(
             snapshot.copy(
@@ -1239,7 +1305,7 @@ class DashboardRenderTest {
         build: BuildDetail? = null,
         dark: Boolean = false,
     ) {
-        val views = designViews().openBoard(BoardRef("Contoso", "Backend"))
+        val views = designViews().openDesignBoard(BoardRef("Contoso", "Backend"))
         val shown = Shown(views.current.queryKey, snapshot.workItems, snapshot.reviewPrs, snapshot.myPrs, pipeline = pipeline, pipelineProject = "Contoso")
         compose.setContent {
             AdoTheme(dark = dark, dynamic = false) {
@@ -1601,7 +1667,7 @@ class DashboardRenderTest {
 
     /** Contoso › Backend with its sprint and its builds. */
     private fun boardView(name: String, sprintName: String? = null) {
-        val views = designViews().openBoard(BoardRef("Contoso", "Backend"))
+        val views = designViews().openDesignBoard(BoardRef("Contoso", "Backend"))
         val sprint = designSprint().let { s -> sprintName?.let { s.copy(iteration = s.iteration.copy(name = it)) } ?: s }
         val state = SyncState(
             snapshot.copy(

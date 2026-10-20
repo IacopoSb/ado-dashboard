@@ -233,7 +233,7 @@
     <string name="editor_title_new">New view</string>
     <string name="editor_subtitle">Choose what each panel shows. Conditions combine with AND.</string>
     <string name="editor_name">View name</string>
-    <string name="editor_board_hint">A board shows only the team\'s area paths and the project\'s pull requests and activity.</string>
+    <string name="editor_board_hint">A board shows only the team\'s area paths, the pull requests of the repositories chosen below and the project\'s activity.</string>
     <string name="editor_field">Field</string>
     <string name="editor_operator">Operator</string>
     <string name="editor_values">Values</string>
@@ -241,6 +241,12 @@
     <string name="editor_sort_by">Sort by</string>
     <string name="editor_show">Show</string>
     <string name="editor_repository">Repository</string>
+    <string name="editor_board_repositories">Repositories</string>
+    <string name="editor_board_repositories_hint">This board\'s pull requests and pipelines come only from these repositories of %1$s.</string>
+    <string name="editor_search_repositories">Search repositories</string>
+    <string name="editor_repositories_loading">Loading repositories…</string>
+    <string name="editor_no_repositories">No repositories found</string>
+    <string name="editor_no_repositories_match">No repositories match</string>
     <string name="editor_include_drafts">Include drafts</string>
     <string name="action_remove_condition">Remove condition</string>
     <string name="action_delete_view">Delete view</string>
@@ -261,6 +267,8 @@
     <string name="value_closed">Closed states</string>
     <string name="value_any">Any</string>
     <string name="value_all">All</string>
+    <!-- A board's repositories before any is chosen: it shows no pull requests -->
+    <string name="value_none_chosen">None chosen</string>
     <string name="order_priority">Priority, then changed date</string>
     <string name="order_changed">Changed date</string>
     <string name="pr_show_to_review">To review</string>
@@ -659,6 +667,9 @@
     <string name="empty_view_text">Nothing matches this view\'s conditions.</string>
     <string name="empty_pull_requests_title">No reviews waiting</string>
     <string name="empty_pull_requests_text">Pull requests where you\'re a reviewer, and yours, will appear here.</string>
+    <string name="empty_board_repositories_title">Choose this board\'s repositories</string>
+    <string name="empty_board_repositories_text">The board shows the pull requests and pipelines of the repositories you choose.</string>
+    <string name="action_choose_repositories">Choose repositories</string>
     <string name="empty_activity_title">No news</string>
     <string name="empty_activity_text">Mentions, assignments and votes will appear here.</string>
     <string name="empty_no_data_title">No data yet</string>

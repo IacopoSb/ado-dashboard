@@ -29,7 +29,14 @@ import io.github.iacoposb.adodash.ui.AdoTheme
  * centered in [modifier]'s space. Not a placeholder: what loads shows [SkeletonRows].
  */
 @Composable
-fun EmptyState(icon: ImageVector, title: String, text: String, modifier: Modifier = Modifier) {
+fun EmptyState(
+    icon: ImageVector,
+    title: String,
+    text: String,
+    modifier: Modifier = Modifier,
+    /** What to do about it, below the text. */
+    action: (@Composable () -> Unit)? = null,
+) {
     val c = AdoTheme.colors
     Box(modifier.padding(24.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -46,6 +53,10 @@ fun EmptyState(icon: ImageVector, title: String, text: String, modifier: Modifie
                 text, Modifier.widthIn(max = 280.dp), style = MaterialTheme.typography.bodySmall,
                 color = c.textMuted, textAlign = TextAlign.Center,
             )
+            if (action != null) {
+                Spacer(Modifier.height(16.dp))
+                action()
+            }
         }
     }
 }

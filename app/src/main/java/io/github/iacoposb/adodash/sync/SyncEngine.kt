@@ -173,7 +173,9 @@ class SyncEngine(
         val limit = Semaphore(4)
         val warnings: MutableList<String> = Collections.synchronizedList(mutableListOf())
         val needs = view.needs()
-        val scope = view.board?.let { BoardScope(it.project, if (needs.teamAreas) areasOf(it, warnings) else emptyList()) }
+        val scope = view.board?.let {
+            BoardScope(it.project, if (needs.teamAreas) areasOf(it, warnings) else emptyList(), view.pullRequests.repositories)
+        }
         val panel = view.workItems
 
         val assignedComplete = AtomicBoolean(false)
@@ -242,7 +244,7 @@ class SyncEngine(
         val prPanel = view.pullRequests
         fun List<PullRequest>.forView(scopeOf: PrScope) =
             if (!prPanel.enabled || scopeOf !in prPanel.show) emptyList()
-            else filter { (scope == null || scope.accepts(it)) && prPanel.accepts(it) }
+            else filter { (scope == null || scope.accepts(it)) && view.acceptsPullRequest(it) }
         val shownReview = reviewPrs.forView(PrScope.TO_REVIEW)
         val shownMine = myPrs.forView(PrScope.MINE)
         val listed = (shownReview + shownMine).map { it.id }.toSet()
@@ -250,9 +252,11 @@ class SyncEngine(
             .forView(PrScope.ALL).sortedByDescending { it.createdAt }
 
         // My PRs' projects for the notifications, whatever the view, and the projects of the
-        // other PRs with signals; a board's project too for its tile (the global view has none)
+        // other PRs with signals; a board's project too for its tile (the global view has none,
+        // nor a board whose repositories are still to be chosen)
         val tracked = (reviewPrs + myPrs).distinctBy { it.id }
-        val boardProject = scope?.let { s -> projects.firstOrNull { it.equals(s.project, ignoreCase = true) } }
+        val boardProject = scope?.takeIf { !view.needsRepositories }
+            ?.let { s -> projects.firstOrNull { it.equals(s.project, ignoreCase = true) } }
         val buildProjects = (listOfNotNull(boardProject) + (tracked + shownOthers).map { it.project }).distinctBy { it.lowercase() }
         val buildsRead = async { readBuilds(buildProjects, limit, branchesOf = boardProject) }
         // My PRs' and my reviews' threads: read at every sync, for the comments and the active ones
@@ -282,7 +286,7 @@ class SyncEngine(
             cache.defaultBranches[pipelineProject].orEmpty(),
             acceptsRepo = { b ->
                 filters.includesProject(b.project) && b.project.equals(pipelineProject, ignoreCase = true) &&
-                    (prPanel.repositories.isEmpty() || prPanel.repositories.any { it.equals(b.repoName, ignoreCase = true) })
+                    scope.acceptsRepository(b.repoName)
             },
         )
         val failedPrBuilds = failedBuildsOfMine(builds, myPrs, since, limit)

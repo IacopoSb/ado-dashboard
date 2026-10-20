@@ -10,10 +10,11 @@ import io.github.iacoposb.adodash.data.WiOrder
 import io.github.iacoposb.adodash.data.WorkItemsPanel
 
 /**
- * Where a board view looks: its project and the team's area paths. No [areas] (unknown, or a
- * team field other than the area path) is the whole project.
+ * Where a board view looks: its project, the team's area paths and the repositories chosen
+ * for it. No [areas] (unknown, or a team field other than the area path) is the whole
+ * project; no [repositories] is no pull requests at all, not the whole project's.
  */
-data class BoardScope(val project: String, val areas: List<TeamArea> = emptyList()) {
+data class BoardScope(val project: String, val areas: List<TeamArea> = emptyList(), val repositories: Set<String> = emptySet()) {
 
     fun accepts(wi: WorkItem): Boolean {
         if (!wi.project.equals(project, ignoreCase = true)) return false
@@ -22,7 +23,10 @@ data class BoardScope(val project: String, val areas: List<TeamArea> = emptyList
         return areas.any { if (it.includeChildren) Filters.isUnder(path, it.path) else path.equals(it.path, ignoreCase = true) }
     }
 
-    fun accepts(pr: PullRequest): Boolean = pr.project.equals(project, ignoreCase = true)
+    fun accepts(pr: PullRequest): Boolean = pr.project.equals(project, ignoreCase = true) && acceptsRepository(pr.repoName)
+
+    /** One of the board's repositories, by name: none until they are chosen. */
+    fun acceptsRepository(repo: String): Boolean = repositories.any { it.equals(repo, ignoreCase = true) }
 
     fun wiqlConditions(): String = buildString {
         append(" AND [System.TeamProject] = ${quote(project)}")

@@ -33,7 +33,17 @@ data class EditorOptions(
     val states: List<String> = emptyList(),
     val people: List<String> = emptyList(),
     val repositories: List<String> = emptyList(),
-)
+    /** Each project's repositories, which a board chooses from. */
+    val projectRepositories: Map<String, List<String>> = emptyMap(),
+    /** The catalog that has them is being read for the first time. */
+    val repositoriesLoading: Boolean = false,
+) {
+    /** A board's project's repositories, those of every project in reach for the other views. */
+    fun repositoriesFor(view: DashboardView): List<String> = when (val board = view.board) {
+        null -> repositories
+        else -> projectRepositories.entries.firstOrNull { it.key.equals(board.project, ignoreCase = true) }?.value.orEmpty()
+    }
+}
 
 /** Everything the view pickers and the editor choose from. */
 data class ViewChoices(
@@ -67,6 +77,13 @@ fun viewChoices(views: ViewSet, catalogState: CatalogState, filters: Filters, sn
     val items = snapshot?.workItems.orEmpty() + shown?.workItems.orEmpty()
     val prs = snapshot?.reviewPrs.orEmpty() + snapshot?.myPrs.orEmpty() + shown?.otherPrs.orEmpty()
     fun List<String>.clean() = filter { it.isNotBlank() }.distinctBy { it.lowercase() }
+    // A board's project's repositories: the catalog's, and those seen in its pull requests
+    val catalogRepositories = catalog?.repositories?.filterKeys(filters::includesProject).orEmpty()
+    val projectRepositories = (catalogRepositories.keys + prs.map { it.project }).distinctBy { it.lowercase() }.associateWith { project ->
+        (catalogRepositories.entries.filter { it.key.equals(project, ignoreCase = true) }.flatMap { it.value } +
+            prs.filter { it.project.equals(project, ignoreCase = true) }.map { it.repoName })
+            .clean().sortedBy { it.lowercase() }
+    }
     val types = catalog?.types?.filter { t -> t.projects.any(filters::includesProject) }?.map { it.name }.orEmpty()
     val states = catalog?.types?.flatMap { it.states }.orEmpty()
     val me = snapshot?.me?.name
@@ -80,9 +97,9 @@ fun viewChoices(views: ViewSet, catalogState: CatalogState, filters: Filters, sn
             states = (states + items.map { it.state }).clean(),
             people = (items.mapNotNull { it.assignedTo } + prs.flatMap { pr -> listOf(pr.author.name) + pr.reviewers.map { it.name } })
                 .clean().filterNot { it.equals(me, ignoreCase = true) }.sortedBy { it.lowercase() },
-            repositories = (
-                catalog?.repositories?.filterKeys(filters::includesProject)?.values?.flatten().orEmpty() + prs.map { it.repoName }
-                ).clean().sortedBy { it.lowercase() },
+            repositories = (catalogRepositories.values.flatten() + prs.map { it.repoName }).clean().sortedBy { it.lowercase() },
+            projectRepositories = projectRepositories,
+            repositoriesLoading = catalog == null && catalogState.loading,
         ),
     )
 }

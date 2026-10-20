@@ -95,12 +95,19 @@ enum class PrScope { TO_REVIEW, MINE, ALL }
 data class PullRequestsPanel(
     val enabled: Boolean = true,
     val show: Set<PrScope> = setOf(PrScope.TO_REVIEW, PrScope.MINE),
-    /** Repository names; empty for all of them. */
+    /** Repository names; empty for all of them, or for none on a board ([chosenOnly]). */
     val repositories: Set<String> = emptySet(),
     val drafts: Boolean = true,
 ) {
-    fun accepts(pr: PullRequest): Boolean =
-        (drafts || !pr.draft) && (repositories.isEmpty() || repositories.any { it.equals(pr.repoName, ignoreCase = true) })
+    /**
+     * Whether [repo] is among the panel's repositories. None chosen is all of them, except
+     * with [chosenOnly] (a board, whose repositories are chosen by hand): then it is none.
+     */
+    fun includesRepository(repo: String, chosenOnly: Boolean = false): Boolean =
+        if (repositories.isEmpty()) !chosenOnly else repositories.any { it.equals(repo, ignoreCase = true) }
+
+    fun accepts(pr: PullRequest, chosenOnly: Boolean = false): Boolean =
+        (drafts || !pr.draft) && includesRepository(pr.repoName, chosenOnly)
 }
 
 /** The kinds of activity a view can show. */
@@ -143,8 +150,8 @@ data class BoardRef(val project: String, val team: String) {
 
 /**
  * What the dashboard shows. A saved view has a name and its own panels; a board view
- * ([board] not null) shows the same panels limited to the team's area paths, the project's
- * repositories and the project's activity. The global filters always apply first: a view only
+ * ([board] not null) shows the same panels limited to the team's area paths, the
+ * repositories chosen for it (none until chosen) and the project's activity. The global filters always apply first: a view only
  * narrows what they include (or reads more of it, such as other people's work items).
  */
 @Serializable
@@ -165,6 +172,18 @@ data class DashboardView(
     /** What the sync reads for this view; the activity only filters stored events. */
     val queryKey: String get() = json.encodeToString(serializer(), copy(id = "", name = "", activity = ActivityPanel()))
 
+    /**
+     * A board whose repositories are still to be chosen: it shows no pull requests nor builds,
+     * rather than the whole project's.
+     */
+    val needsRepositories: Boolean get() = board != null && pullRequests.repositories.isEmpty()
+
+    /** A repository whose pull requests and builds this view shows: on a board, only the chosen ones. */
+    fun acceptsRepository(repo: String): Boolean = pullRequests.includesRepository(repo, chosenOnly = board != null)
+
+    /** A pull request the panel shows, as far as its repository and drafts go. */
+    fun acceptsPullRequest(pr: PullRequest): Boolean = pullRequests.accepts(pr, chosenOnly = board != null)
+
     /** The project's activity for a board view, any for the others, both by [activity]'s kinds. */
     fun acceptsEvent(event: Event): Boolean {
         if (!activity.kinds.contains(ActivityKind.of(event.kind))) return false
@@ -173,7 +192,7 @@ data class DashboardView(
 
     fun needs() = ViewNeeds(
         workItemQuery = workItems.enabled && !workItems.withinMine,
-        allPullRequests = pullRequests.enabled && PrScope.ALL in pullRequests.show,
+        allPullRequests = pullRequests.enabled && PrScope.ALL in pullRequests.show && !needsRepositories,
         teamAreas = board != null && workItems.enabled,
     )
 
@@ -196,7 +215,7 @@ data class DashboardView(
 data class ViewNeeds(
     /** Work items other than my open ones: a WIQL query of their own. */
     val workItemQuery: Boolean,
-    /** Every active PR of the repositories in reach, not only reviews and mine. */
+    /** Every active PR of the repositories in reach, not only reviews and mine; none for a board without them. */
     val allPullRequests: Boolean,
     /** The team's area paths (Team field values). */
     val teamAreas: Boolean,

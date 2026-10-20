@@ -60,7 +60,12 @@ class ViewQueryTest {
         assertFalse(scope.accepts(Fakes.workItem(4, area = "Contoso\\Frontend")))
         assertFalse(scope.accepts(Fakes.workItem(5, area = "Interno\\Backend")))
         assertTrue("no areas known: the whole project", BoardScope("contoso").accepts(Fakes.workItem(6, area = "Contoso\\Frontend")))
-        assertTrue(scope.accepts(Fakes.pr(7, Fakes.anna)))
-        assertFalse(scope.accepts(Fakes.pr(8, Fakes.anna, project = "Interno")))
+        assertFalse("no repositories chosen: no pull requests", scope.accepts(Fakes.pr(7, Fakes.anna)))
+        val withRepos = scope.copy(repositories = setOf("Backend"))
+        assertTrue(withRepos.accepts(Fakes.pr(7, Fakes.anna)))
+        assertFalse(withRepos.accepts(Fakes.pr(8, Fakes.anna, project = "Interno")))
+        assertFalse(withRepos.accepts(Fakes.pr(9, Fakes.anna).copy(repoName = "payments")))
+        assertTrue(withRepos.acceptsRepository("BACKEND"))
+        assertFalse(scope.acceptsRepository("backend"))
     }
 }

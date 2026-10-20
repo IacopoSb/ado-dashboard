@@ -70,7 +70,9 @@ import io.github.iacoposb.adodash.data.Event
 import io.github.iacoposb.adodash.data.PrScope
 import io.github.iacoposb.adodash.sync.BacklogFilter
 import io.github.iacoposb.adodash.sync.SyncState
+import io.github.iacoposb.adodash.ui.components.AdoButton
 import io.github.iacoposb.adodash.ui.components.AdoIcons
+import io.github.iacoposb.adodash.ui.components.ButtonStyle
 import io.github.iacoposb.adodash.ui.components.Banner
 import io.github.iacoposb.adodash.ui.components.EmptyState
 import io.github.iacoposb.adodash.ui.components.BannerTone
@@ -109,7 +111,7 @@ fun DashboardScreen(
     onOpenBoard: (BoardRef) -> Unit = {},
     onSaveView: (DashboardView) -> Unit = {},
     onDeleteView: (DashboardView) -> Unit = {},
-    /** The switcher opened: it lists the boards. */
+    /** The switcher or the editor opened: they list the boards and their projects' repositories. */
     onLoadBoards: () -> Unit = {},
     /** For the screenshots: the switcher or the editor open from the start. */
     initialSwitcher: Boolean = false,
@@ -160,7 +162,8 @@ fun DashboardScreen(
     // Kept across a rotation, as what is open over the dashboard
     var switcher by rememberSaveable { mutableStateOf(initialSwitcher) }
     var editor by rememberSaveable(stateSaver = editorTargetSaver) { mutableStateOf(initialEditor) }
-    LaunchedEffect(switcher) { if (switcher) onLoadBoards() }
+    // The editor too: a board's repositories are chosen among its project's
+    LaunchedEffect(switcher, editor != null) { if (switcher || editor != null) onLoadBoards() }
     // The backlog of the board's sprint: only while the board shows one
     var backlog by rememberSaveable(view.id) { mutableStateOf(initialBacklog) }
     val sprint = state.snapshot?.shownFor(view)?.sprint?.takeIf { view.board != null }
@@ -187,7 +190,7 @@ fun DashboardScreen(
             )
             Panels(
                 state, status, events, view, now, updateVersion, onUpdate, onDismissUpdate, onRefresh, onSignIn, onOpen, onEventOpen,
-                onMarkAllRead, onEdit = { editor = EditorTarget(view, focus = it) },
+                onMarkAllRead, onEdit = { editor = EditorTarget(view, focus = it, pickRepositories = it == ViewPanel.REPOSITORIES) },
                 onOpenWorkItem = onOpenWorkItem ?: { onOpen(it.url) },
                 onOpenPullRequest = onOpenPullRequest ?: { onOpen(it.url) },
             )
@@ -316,6 +319,10 @@ private fun Panels(
     } else {
         EmptyTexts(stringResource(R.string.empty_pull_requests_title), stringResource(R.string.empty_pull_requests_text))
     }
+    val chooseRepositories = EmptyTexts(
+        stringResource(R.string.empty_board_repositories_title), stringResource(R.string.empty_board_repositories_text),
+    )
+    val chooseRepositoriesAction = stringResource(R.string.action_choose_repositories)
     val emptyActivity = EmptyTexts(stringResource(R.string.empty_activity_title), stringResource(R.string.empty_activity_text))
     val toReview = stringResource(R.string.section_to_review)
     val noReviews = stringResource(R.string.empty_to_review)
@@ -347,6 +354,15 @@ private fun Panels(
             action = { TextAction(pullRequestsSummary(view.pullRequests), { onEdit(ViewPanel.PULL_REQUESTS) }) },
         ) {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = bottom) {
+                // A board shows only the repositories chosen for it: none yet, nothing to wait for
+                if (view.needsRepositories) {
+                    item(key = "choose-repositories") {
+                        EmptyState(
+                            AdoIcons.MergeType, chooseRepositories.title, chooseRepositories.text, Modifier.fillParentMaxSize(),
+                        ) { AdoButton(chooseRepositoriesAction, { onEdit(ViewPanel.REPOSITORIES) }, style = ButtonStyle.Tonal) }
+                    }
+                    return@LazyColumn
+                }
                 if (loading) {
                     skeleton(syncing)
                     return@LazyColumn

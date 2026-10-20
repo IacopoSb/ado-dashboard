@@ -228,7 +228,7 @@
     <string name="editor_title_new">Nuova vista</string>
     <string name="editor_subtitle">Scegli cosa mostra ogni pannello. Le condizioni si combinano con E.</string>
     <string name="editor_name">Nome della vista</string>
-    <string name="editor_board_hint">Una board mostra solo le aree del team e le pull request e l\'attività del progetto.</string>
+    <string name="editor_board_hint">Una board mostra solo le aree del team, le pull request dei repository scelti qui sotto e l\'attività del progetto.</string>
     <string name="editor_field">Campo</string>
     <string name="editor_operator">Operatore</string>
     <string name="editor_values">Valori</string>
@@ -236,6 +236,12 @@
     <string name="editor_sort_by">Ordina per</string>
     <string name="editor_show">Mostra</string>
     <string name="editor_repository">Repository</string>
+    <string name="editor_board_repositories">Repository</string>
+    <string name="editor_board_repositories_hint">Le pull request e le pipeline di questa board vengono solo da questi repository di %1$s.</string>
+    <string name="editor_search_repositories">Cerca repository</string>
+    <string name="editor_repositories_loading">Caricamento dei repository…</string>
+    <string name="editor_no_repositories">Nessun repository trovato</string>
+    <string name="editor_no_repositories_match">Nessun repository corrisponde</string>
     <string name="editor_include_drafts">Includi le bozze</string>
     <string name="action_remove_condition">Rimuovi condizione</string>
     <string name="action_delete_view">Elimina vista</string>
@@ -255,6 +261,8 @@
     <string name="value_closed">Stati chiusi</string>
     <string name="value_any">Qualsiasi</string>
     <string name="value_all">Tutti</string>
+    <!-- A board's repositories before any is chosen: it shows no pull requests -->
+    <string name="value_none_chosen">Nessuno scelto</string>
     <string name="order_priority">Priorità, poi data di modifica</string>
     <string name="order_changed">Data di modifica</string>
     <string name="pr_show_to_review">Da revisionare</string>
@@ -658,6 +666,9 @@
     <string name="empty_view_text">Niente corrisponde alle condizioni di questa vista.</string>
     <string name="empty_pull_requests_title">Nessuna revisione in attesa</string>
     <string name="empty_pull_requests_text">Le PR in cui sei revisore e le tue compariranno qui.</string>
+    <string name="empty_board_repositories_title">Scegli i repository di questa board</string>
+    <string name="empty_board_repositories_text">La board mostra le pull request e le pipeline dei repository che scegli.</string>
+    <string name="action_choose_repositories">Scegli i repository</string>
     <string name="empty_activity_title">Nessuna novità</string>
     <string name="empty_activity_text">Menzioni, assegnazioni e voti compariranno qui.</string>
     <string name="empty_no_data_title">Ancora nessun dato</string>

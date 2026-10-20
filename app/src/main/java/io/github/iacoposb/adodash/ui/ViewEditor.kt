@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,6 +35,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,14 +68,23 @@ import io.github.iacoposb.adodash.ui.components.ButtonStyle
 import io.github.iacoposb.adodash.ui.components.DropdownField
 import io.github.iacoposb.adodash.ui.components.DropdownOption
 import io.github.iacoposb.adodash.ui.components.ModalOverlay
+import io.github.iacoposb.adodash.ui.components.SearchField
 import io.github.iacoposb.adodash.ui.components.SwitchRow
 import io.github.iacoposb.adodash.ui.components.TextAction
 
-/** A panel of a view, to open the editor on it. */
-enum class ViewPanel { WORK_ITEMS, PULL_REQUESTS, ACTIVITY }
+/** A panel of a view, to open the editor on it; [REPOSITORIES] is a board's own section. */
+enum class ViewPanel { WORK_ITEMS, PULL_REQUESTS, ACTIVITY, REPOSITORIES }
 
-/** The editor open on a view: [isNew] for one still to be saved, [focus] the panel to scroll to. */
-data class EditorTarget(val view: DashboardView, val isNew: Boolean = false, val focus: ViewPanel? = null)
+/**
+ * The editor open on a view: [isNew] for one still to be saved, [focus] the panel to scroll to,
+ * [pickRepositories] with the repositories' menu open (a board's, from its empty panel).
+ */
+data class EditorTarget(
+    val view: DashboardView,
+    val isNew: Boolean = false,
+    val focus: ViewPanel? = null,
+    val pickRepositories: Boolean = false,
+)
 
 /** A view as its JSON, so that what is being edited survives a rotation. */
 internal val viewSaver: Saver<DashboardView, String> = Saver(
@@ -137,10 +148,13 @@ fun ViewEditor(
 
         val scroll = rememberScrollState()
         val positions = remember { mutableStateMapOf<ViewPanel, Int>() }
+        var pickOpen by remember { mutableStateOf(target.pickRepositories && target.focus == null) }
         LaunchedEffect(target.focus) {
             val focus = target.focus ?: return@LaunchedEffect
             withFrameNanos {}
             positions[focus]?.let { scroll.scrollTo(it) }
+            // Opened once in place: a menu opened before the scroll would stay where the field was
+            pickOpen = target.pickRepositories
         }
         fun Modifier.at(panel: ViewPanel) = onGloballyPositioned { positions[panel] = it.positionInParent().y.toInt() }
 
@@ -154,6 +168,21 @@ fun ViewEditor(
                 enabled = view.board == null,
                 hint = if (view.board != null) stringResource(R.string.editor_board_hint) else null,
             )
+            // A board's repositories: its pull requests and its pipelines, whatever the panels show
+            draft.board?.let { board ->
+                Column(
+                    Modifier.at(ViewPanel.REPOSITORIES).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(AdoTheme.colors.surfaceAlt)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(stringResource(R.string.editor_board_repositories), style = MaterialTheme.typography.titleMedium, color = c.text)
+                    Text(
+                        stringResource(R.string.editor_board_repositories_hint, board.project),
+                        style = MaterialTheme.typography.bodySmall, color = c.textMuted,
+                    )
+                    RepositoryCondition(draft, options, initiallyOpen = pickOpen) { draft = it }
+                }
+            }
             EditorSection(
                 stringResource(R.string.panel_work_items), draft.workItems.enabled,
                 { draft = draft.copy(workItems = draft.workItems.copy(enabled = it)) }, Modifier.at(ViewPanel.WORK_ITEMS),
@@ -384,26 +413,82 @@ private fun PullRequestSettings(draft: DashboardView, options: EditorOptions, on
             AdoFilterChip(stringResource(label), on, { set(panel.copy(show = if (on) panel.show - scope else panel.show + scope)) })
         }
     }
+    // A board chooses its repositories in a section of its own, above
+    if (draft.board == null) RepositoryCondition(draft, options, initiallyOpen = false, onChange)
+    SwitchRow(stringResource(R.string.editor_include_drafts), panel.drafts, { set(panel.copy(drafts = it)) })
+}
+
+/**
+ * "Repository is one of": none is all of them, or none at all on a board, whose choices are
+ * its project's repositories. A long list has a search.
+ */
+@Composable
+private fun RepositoryCondition(
+    draft: DashboardView,
+    options: EditorOptions,
+    initiallyOpen: Boolean,
+    onChange: (DashboardView) -> Unit,
+) {
+    val c = AdoTheme.colors
+    val panel = draft.pullRequests
+    fun set(repositories: Set<String>) = onChange(draft.copy(pullRequests = panel.copy(repositories = repositories)))
+    val none = stringResource(if (draft.board != null) R.string.value_none_chosen else R.string.value_all)
     ConditionRow(
         first = { m -> StaticField(stringResource(R.string.editor_repository), m) },
         second = { m -> StaticField(stringResource(R.string.op_is_one_of), m) },
         third = { m ->
-            val text = panel.repositories.sorted().joinToString(", ").ifEmpty { stringResource(R.string.value_all) }
-            DropdownField(text, stringResource(R.string.editor_repository), m) {
-                val choices = options.repositories + panel.repositories.filter { r -> options.repositories.none { it.equals(r, true) } }
-                if (choices.isEmpty()) DropdownOption(stringResource(R.string.value_all), true) {}
-                choices.forEach { repo ->
-                    val on = panel.repositories.any { it.equals(repo, ignoreCase = true) }
-                    DropdownOption(repo, on) {
-                        set(panel.copy(repositories = if (on) panel.repositories.filterNot { it.equals(repo, true) }.toSet() else panel.repositories + repo))
+            val text = panel.repositories.sortedBy { it.lowercase() }.joinToString(", ").ifEmpty { none }
+            // Recreated when asked to open, which happens once the editor has scrolled to it
+            key(initiallyOpen) { DropdownField(text, stringResource(R.string.editor_repository), m, initiallyOpen = initiallyOpen) {
+                val offered = options.repositoriesFor(draft)
+                val choices = offered + panel.repositories.filter { r -> offered.none { it.equals(r, true) } }.sortedBy { it.lowercase() }
+                var query by remember { mutableStateOf("") }
+                Column(Modifier.width(REPOSITORY_MENU_WIDTH)) {
+                    if (choices.size > REPOSITORY_SEARCH_FROM) {
+                        SearchField(
+                            query, { query = it }, stringResource(R.string.editor_search_repositories),
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
+                    }
+                    val shown = choices.filter { query.isBlank() || it.contains(query.trim(), ignoreCase = true) }
+                    when {
+                        choices.isEmpty() && options.repositoriesLoading -> Row(
+                            Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(Modifier.size(18.dp), color = c.primary, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Text(stringResource(R.string.editor_repositories_loading), style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
+                        }
+                        choices.isEmpty() && draft.board == null -> DropdownOption(none, true) {}
+                        shown.isEmpty() -> Text(
+                            stringResource(if (choices.isEmpty()) R.string.editor_no_repositories else R.string.editor_no_repositories_match),
+                            Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            style = MaterialTheme.typography.bodyMedium, color = c.textMuted,
+                        )
+                    }
+                    // The list scrolls under the search, and the menu fits below its field
+                    Column(Modifier.heightIn(max = REPOSITORY_LIST_MAX).verticalScroll(rememberScrollState())) {
+                        shown.forEach { repo ->
+                            val on = panel.repositories.any { it.equals(repo, ignoreCase = true) }
+                            DropdownOption(repo, on) {
+                                set(if (on) panel.repositories.filterNot { it.equals(repo, true) }.toSet() else panel.repositories + repo)
+                            }
+                        }
                     }
                 }
-            }
+            } }
         },
-        onRemove = if (panel.repositories.isEmpty()) null else ({ set(panel.copy(repositories = emptySet())) }),
+        onRemove = if (panel.repositories.isEmpty()) null else ({ set(emptySet()) }),
     )
-    SwitchRow(stringResource(R.string.editor_include_drafts), panel.drafts, { set(panel.copy(drafts = it)) })
 }
+
+/** More repositories than this and their menu has a search. */
+private const val REPOSITORY_SEARCH_FROM = 8
+
+private val REPOSITORY_MENU_WIDTH = 320.dp
+
+/** About seven repositories, then the list scrolls. */
+private val REPOSITORY_LIST_MAX = 340.dp
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

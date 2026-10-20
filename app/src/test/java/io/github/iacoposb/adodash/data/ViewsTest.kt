@@ -96,6 +96,10 @@ class ViewsTest {
         val all = DashboardView("all", "All", pullRequests = PullRequestsPanel(show = setOf(PrScope.ALL)))
         assertEquals(ViewNeeds(workItemQuery = false, allPullRequests = true, teamAreas = false), all.needs())
         assertEquals(ViewNeeds(workItemQuery = false, allPullRequests = false, teamAreas = true), DashboardView.forBoard(board).needs())
+        val boardAll = DashboardView.forBoard(board).copy(pullRequests = PullRequestsPanel(show = setOf(PrScope.ALL)))
+        assertFalse("a board without repositories reads no other PRs", boardAll.needs().allPullRequests)
+        val chosen = boardAll.copy(pullRequests = boardAll.pullRequests.copy(repositories = setOf("backend")))
+        assertTrue(chosen.needs().allPullRequests)
         val closedToo = DashboardView("c", "Closed too", workItems = WorkItemsPanel(conditions = listOf(Condition.assignedTo(Condition.ME))))
         assertTrue("closed ones are not among those read anyway", closedToo.needs().workItemQuery)
         val anna = DashboardView("a", "Anna", workItems = WorkItemsPanel(conditions = listOf(Condition.assignedTo("Anna Verdi"), Condition.notClosed)))
@@ -162,6 +166,32 @@ class ViewsTest {
         assertTrue(panel.accepts(Fakes.pr(1, Fakes.anna)))
         assertFalse(panel.accepts(Fakes.pr(2, Fakes.anna, draft = true)))
         assertFalse(panel.accepts(Fakes.pr(3, Fakes.anna).copy(repoName = "payments")))
+    }
+
+    @Test fun `a board shows only the repositories chosen for it, none until then`() {
+        val fresh = DashboardView.forBoard(board)
+        assertTrue(fresh.needsRepositories)
+        assertFalse(fresh.acceptsRepository("backend"))
+        assertFalse(fresh.acceptsPullRequest(Fakes.pr(1, Fakes.anna)))
+        // Every scope: to review, mine and all go through the same check
+        val chosen = fresh.copy(pullRequests = fresh.pullRequests.copy(repositories = setOf("Backend")))
+        assertFalse(chosen.needsRepositories)
+        assertTrue(chosen.acceptsRepository("backend"))
+        assertFalse(chosen.acceptsRepository("payments"))
+        assertTrue(chosen.acceptsPullRequest(Fakes.pr(2, Fakes.anna)))
+        assertFalse(chosen.acceptsPullRequest(Fakes.pr(3, Fakes.anna).copy(repoName = "payments")))
+        // Global and saved views as before: none chosen is all of them
+        assertFalse(DashboardView.global.needsRepositories)
+        assertTrue(DashboardView.global.acceptsRepository("anything"))
+        assertTrue(DashboardView.global.acceptsPullRequest(Fakes.pr(4, Fakes.anna).copy(repoName = "payments")))
+    }
+
+    @Test fun `a board saved before its repositories were chosen asks for them`() {
+        // As stored by 0.1.0: a board with its pull requests panel and no repositories
+        val stored = ViewSet().openBoard(board).encode()
+        val view = ViewSet.decode(stored).board(board)
+        assertTrue(view.pullRequests.repositories.isEmpty())
+        assertTrue(view.needsRepositories)
     }
 
     @Test fun `events by kind and, for a board, by project`() {

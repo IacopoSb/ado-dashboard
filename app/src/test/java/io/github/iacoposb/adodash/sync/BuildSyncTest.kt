@@ -77,6 +77,10 @@ class BuildSyncTest {
 
     private val since: Instant = now.minusSeconds(300)
 
+    /** A board with its repositories chosen: the tile shows their builds. */
+    private fun boardOf(project: String, team: String, vararg repositories: String = arrayOf("backend")) =
+        DashboardView.forBoard(BoardRef(project, team)).let { it.copy(pullRequests = it.pullRequests.copy(repositories = repositories.toSet())) }
+
     @Test fun `signals come with the snapshot`() = runTest {
         val review = Fakes.pr(311, anna).copy(mergeStatus = "conflicts")
         val mine = Fakes.pr(318, me).copy(mergeStatus = "succeeded")
@@ -137,7 +141,7 @@ class BuildSyncTest {
         )
         val cache = SignalCache()
         val engine = SyncEngine(api, texts = Fakes.Texts, now = { now }, cache = cache)
-        val board = DashboardView.forBoard(BoardRef("Contoso", "Backend"))
+        val board = boardOf("Contoso", "Backend")
         val snapshot = engine.fetch(me, since = null, view = board).snapshot
         assertEquals(listOf(2, 1), snapshot.shown!!.pipeline.map { it.id })
         assertEquals("Contoso", snapshot.shown!!.pipelineProject)
@@ -175,10 +179,33 @@ class BuildSyncTest {
             ),
         )
         val fetched = SyncEngine(api, texts = Fakes.Texts, now = { now })
-            .fetch(me, since = since, view = DashboardView.forBoard(BoardRef("Clienti", "Team")))
+            .fetch(me, since = since, view = boardOf("Clienti", "Team"))
         assertEquals(listOf(3), fetched.snapshot.shown!!.pipeline.map { it.id })
         assertEquals("Clienti", fetched.snapshot.shown!!.pipelineProject)
         assertEquals("views do not change notifications", listOf(2), fetched.failedPrBuilds.map { it.build.id })
+    }
+
+    @Test fun `a board's tile has only the builds of its repositories`() = runTest {
+        val api = FakeApi(
+            builds = mapOf(
+                "Contoso" to listOf(
+                    Fakes.build(1, BuildState.SUCCEEDED),
+                    Fakes.build(2, BuildState.FAILED, repoId = "repo-1").copy(repoName = "payments"),
+                ),
+            ),
+        )
+        val shown = SyncEngine(api, texts = Fakes.Texts, now = { now }).fetch(me, since = null, view = boardOf("Contoso", "Backend")).snapshot.shown!!
+        assertEquals(listOf(1), shown.pipeline.map { it.id })
+    }
+
+    @Test fun `a board without repositories has no tile and reads no builds for it`() = runTest {
+        val api = FakeApi(builds = mapOf("Contoso" to listOf(Fakes.build(1, BuildState.SUCCEEDED))))
+        val shown = SyncEngine(api, texts = Fakes.Texts, now = { now })
+            .fetch(me, since = null, view = DashboardView.forBoard(BoardRef("Contoso", "Backend"))).snapshot.shown!!
+        assertTrue(shown.pipeline.isEmpty())
+        assertEquals(null, shown.pipelineProject)
+        assertEquals(0, api.buildCalls)
+        assertEquals(0, api.branchCalls)
     }
 
     @Test fun `the widgets count the failed builds of all my PRs, also from another project's board`() = runTest {
