@@ -36,8 +36,8 @@ data class CheckRow(val kind: CheckKind, val state: CheckState, val blocking: Bo
 object PrChecks {
     /**
      * One row per policy that applies (builds first, then reviewers, comments, work items, status
-     * checks and the rest), one per [statuses] no policy waits for (optional: they do not block),
-     * and the merge's state last.
+     * checks, only when failed, and the rest), one per failed [statuses] no policy waits for
+     * (optional: they do not block), and the merge's state last.
      */
     fun of(
         pr: PullRequest,
@@ -62,9 +62,7 @@ object PrChecks {
                 PolicyEvaluation.STATUS_POLICY -> CheckKind.Status(e.name, status?.description, status?.url)
                 else -> CheckKind.Other(e.name)
             }
-            // A status policy still waiting while its service says it is at work: running
-            val state = if (e.isStatus && e.status == "queued" && status?.state == "pending") CheckState.RUNNING else stateOf(kind, e)
-            CheckRow(kind, state, e.blocking, status?.at ?: e.completedAt)
+            CheckRow(kind, stateOf(kind, e), e.blocking, status?.at ?: e.completedAt)
         }
         // A status a policy waits for is that policy's row
         val backed = applying.mapNotNull { it.statusKey }.toSet()
@@ -75,7 +73,9 @@ object PrChecks {
             CheckKind.Build::class, CheckKind.Reviewers::class, CheckKind.RequiredReviewers::class,
             CheckKind.Comments::class, CheckKind.WorkItems::class, CheckKind.Status::class,
         )
-        val sorted = (rows + unbacked).sortedBy { r -> order.indexOf(r.kind::class).let { if (it < 0) order.size else it } }
+        // Status checks only when they failed: the passing ones are noise (long service names)
+        val shown = (rows + unbacked).filter { it.kind !is CheckKind.Status || it.state == CheckState.FAILED }
+        val sorted = shown.sortedBy { r -> order.indexOf(r.kind::class).let { if (it < 0) order.size else it } }
         val merge = when (pr.mergeStatus) {
             "succeeded" -> CheckState.OK
             "conflicts", "failure", "rejectedByPolicy" -> CheckState.FAILED

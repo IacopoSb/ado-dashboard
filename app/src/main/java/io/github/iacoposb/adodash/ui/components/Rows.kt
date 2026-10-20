@@ -218,7 +218,6 @@ private fun signalItems(s: PrSignals): List<SignalItem> {
             add(SignalItem(AdoIcons.ChatBubble, stringResource(R.string.pr_check_comments), threadsTint, c.textMuted))
         }
         if (s.workItemsMissing) add(SignalItem(Icons.Filled.Warning, stringResource(R.string.pr_check_no_work_items), c.warning, c.textMuted))
-        if (s.approvalsMissing) add(SignalItem(AdoIcons.RateReview, stringResource(R.string.pr_approval_needed), c.textMuted, c.textMuted))
         if (s.conflicts) add(SignalItem(AdoIcons.MergeType, stringResource(R.string.pr_conflicts), c.danger, c.danger))
         if (s.readyToComplete) add(SignalItem(AdoIcons.CheckCircle, stringResource(R.string.pr_ready), c.success, c.success))
     }

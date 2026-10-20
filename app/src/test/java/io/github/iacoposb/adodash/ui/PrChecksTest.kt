@@ -139,7 +139,7 @@ class PrChecksTest {
 
     @Test fun `statuses join the policies, once each`() {
         val sonar = PrStatus("sonarqube", "Quality-Gate", "failed", "Quality Gate failed", "https://sonar/x", at = Fakes.now)
-        val lint = PrStatus(null, "lint", "succeeded")
+        val lint = PrStatus(null, "lint", "failed")
         val rows = PrChecks.of(
             pr.copy(mergeStatus = null),
             listOf(statusPolicy("rejected"), policy(PolicyEvaluation.BUILD_POLICY, "approved", buildId = 1), policy("other-type", "approved")),
@@ -155,19 +155,23 @@ class PrChecksTest {
             ),
             rows.map { it.kind },
         )
-        assertEquals(listOf(CheckState.OK, CheckState.FAILED, CheckState.OK, CheckState.OK), rows.map { it.state })
+        assertEquals(listOf(CheckState.OK, CheckState.FAILED, CheckState.FAILED, CheckState.OK), rows.map { it.state })
         // No policy waits for it: it does not block
         assertEquals(listOf(true, true, false, true), rows.map { it.blocking })
         assertEquals(Fakes.now, rows[1].at)
     }
 
-    @Test fun `a status policy's name, and its state while the service works`() {
-        fun row(status: String, posted: PrStatus?, name: String? = null) =
-            PrChecks.of(pr.copy(mergeStatus = null), listOf(statusPolicy(status, name)), 0, emptyList(), listOfNotNull(posted)).single()
-        assertEquals(CheckKind.Status("Sonar gate"), row("queued", null, name = "Sonar gate").kind)
-        assertEquals(CheckState.WAITING, row("queued", null).state)
-        assertEquals(CheckState.RUNNING, row("queued", PrStatus("SonarQube", "quality-gate", "pending")).state)
-        assertEquals(CheckState.OK, row("approved", PrStatus("SonarQube", "quality-gate", "succeeded")).state)
+    @Test fun `status checks show only when they failed`() {
+        fun rows(status: String, posted: PrStatus?, name: String? = null) =
+            PrChecks.of(pr.copy(mergeStatus = null), listOf(statusPolicy(status, name)), 0, emptyList(), listOfNotNull(posted))
+        assertEquals(CheckKind.Status("Sonar gate"), rows("rejected", null, name = "Sonar gate").single().kind)
+        assertEquals(emptyList<CheckRow>(), rows("queued", null))
+        assertEquals(emptyList<CheckRow>(), rows("queued", PrStatus("SonarQube", "quality-gate", "pending")))
+        assertEquals(emptyList<CheckRow>(), rows("approved", PrStatus("SonarQube", "quality-gate", "succeeded")))
+        // Without a policy too
+        val unbacked = PrChecks.of(pr.copy(mergeStatus = null), emptyList(), 0, emptyList(),
+            listOf(PrStatus(null, "lint", "succeeded"), PrStatus(null, "cov", "pending"), PrStatus(null, "sec", "error")))
+        assertEquals(listOf(CheckKind.Status("sec")), unbacked.map { it.kind })
     }
 
     @Test fun `status states`() {
