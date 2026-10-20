@@ -112,6 +112,26 @@ class AdoClientSprintTest {
         assertTrue(fields.containsAll(listOf("Microsoft.VSTS.Common.StackRank", "Microsoft.VSTS.Common.BacklogPriority", "System.Parent")))
     }
 
+    @Test fun `a reorder patches the iteration's order and returns the new ranks`() = runTest {
+        route { json("""{"count":1,"value":[{"id":4812,"order":1999.75}]}""") }
+        val ranks = client.reorderSprintItems(
+            "Contoso", "Backend Team", "it-42", BacklogReorder(listOf(4812), "Contoso\\Sprint 42", parentId = 0, previousId = 4790, nextId = 4777),
+        )
+        assertEquals(mapOf(4812 to 1999.75), ranks)
+        val request = requests.single()
+        assertEquals("PATCH", request.method)
+        assertEquals(
+            "/org/Contoso/Backend%20Team/_apis/work/iterations/it-42/workitemsorder?api-version=7.1-preview.1",
+            request.path,
+        )
+        val body = Json.parseToJsonElement(request.body.readUtf8()).jsonObject
+        assertEquals(listOf(4812), body["ids"]!!.jsonArray.map { it.jsonPrimitive.content.toInt() })
+        assertEquals("Contoso\\Sprint 42", body["iterationPath"]!!.jsonPrimitive.content)
+        assertEquals("0", body["parentId"]!!.jsonPrimitive.content)
+        assertEquals("4790", body["previousId"]!!.jsonPrimitive.content)
+        assertEquals("4777", body["nextId"]!!.jsonPrimitive.content)
+    }
+
     @Test fun `a server without the rank fields is asked again without them`() = runTest {
         route { r ->
             val body = r.body.readUtf8()

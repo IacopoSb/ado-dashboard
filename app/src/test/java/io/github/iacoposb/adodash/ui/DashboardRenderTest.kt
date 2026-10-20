@@ -1231,6 +1231,8 @@ class DashboardRenderTest {
         expanded: Set<Int> = setOf(4790),
         dark: Boolean = false,
         hours: Boolean = false,
+        rowMenu: Int? = null,
+        edit: BacklogEditState = BacklogEditState(),
     ) {
         val views = designViews().openBoard(BoardRef("Contoso", "Backend"))
         val shown = Shown(
@@ -1242,10 +1244,11 @@ class DashboardRenderTest {
                 DashboardScreen(
                     "contoso", SyncState(snapshot.copy(shown = shown)), events(), {}, {}, {}, {}, {}, now = now,
                     choices = choices(views), initialBacklog = true, backlogFilter = filter, backlogExpanded = expanded,
+                    backlogRowMenu = rowMenu, backlogEdit = edit,
                 )
             }
         }
-        compose.onRoot().captureRoboImage("$name.png")
+        if (rowMenu != null) captureScreenRoboImage("$name.png") else compose.onRoot().captureRoboImage("$name.png")
     }
 
     /** A team that does not track hours, with long states: no "Remaining" column, states in full. */
@@ -1266,6 +1269,29 @@ class DashboardRenderTest {
 
     @Config(qualifiers = PHONE_IT)
     @Test fun sprintPhone() = backlog("sprint-phone")
+
+    /** A row's handle tapped: the moves, the first one off for the top row's child. */
+    @Test fun sprintBacklogRowMenu() = backlog("sprint-backlog-row-menu", rowMenu = 4791)
+
+    @Config(qualifiers = "+it")
+    @Test fun sprintBacklogRowMenuItalian() = backlog("sprint-backlog-row-menu-it", rowMenu = 4812)
+
+    /** "Mine" hides siblings: no reordering, the handle's menu says why. */
+    @Test fun sprintBacklogReorderOff() =
+        backlog("sprint-backlog-reorder-off", BacklogFilter(mine = true), expanded = emptySet(), rowMenu = 4812)
+
+    @Config(qualifiers = PHONE)
+    @Test fun sprintPhoneRowMenu() = backlog("sprint-phone-row-menu", rowMenu = 4777)
+
+    /** A move refused: the row back in its place and why. */
+    @Test fun sprintBacklogReorderFailed() = backlog(
+        "sprint-backlog-reorder-failed", edit = BacklogEditState(reorderError = ReorderError(4812, SaveProblem.DENIED)),
+    )
+
+    @Config(qualifiers = "+it")
+    @Test fun sprintBacklogReorderFailedItalian() = backlog(
+        "sprint-backlog-reorder-failed-it", edit = BacklogEditState(reorderError = ReorderError(4812, SaveProblem.OTHER, "HTTP 500")),
+    )
 
     /** A view of reviews only: the work items panel is off, the others share the width. */
     @Test fun dashboardReviewsOnly() {

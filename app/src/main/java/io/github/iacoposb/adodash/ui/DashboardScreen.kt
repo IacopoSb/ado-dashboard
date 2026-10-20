@@ -151,6 +151,11 @@ fun DashboardScreen(
     initialBacklog: Boolean = false,
     backlogFilter: BacklogFilter = BacklogFilter(),
     backlogExpanded: Set<Int> = emptySet(),
+    /** For the screenshots: the menu of a row's handle open. */
+    backlogRowMenu: Int? = null,
+    /** The sprint backlog's changes being saved, and how they went. */
+    backlogEdit: BacklogEditState = BacklogEditState(),
+    backlogEditActions: BacklogEditActions = BacklogEditActions(),
     /** The device has a network: otherwise the offline banner, over what was saved. */
     online: Boolean = true,
     /** "Sign in" on the expired session's banner. */
@@ -224,10 +229,14 @@ fun DashboardScreen(
                         onBack = { backlog = false },
                         onRefresh = onRefresh,
                         onOpen = onOpenWorkItem ?: { onOpen(it.url) },
+                        onReorder = { backlogEditActions.onReorder(sprint, it) },
+                        onDismissReorderError = backlogEditActions.onDismissReorderError,
                     ),
                     boardTitle = viewTitle(view),
+                    edit = backlogEdit,
                     initialFilter = backlogFilter,
                     initialExpanded = backlogExpanded,
+                    initialRowMenu = backlogRowMenu,
                 )
             }
         }

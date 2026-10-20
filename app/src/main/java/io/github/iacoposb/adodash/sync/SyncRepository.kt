@@ -258,6 +258,19 @@ class SyncRepository(
         _state.update { s -> s.snapshot?.let { s.copy(snapshot = it.replacing(item, sprintChange)) } ?: s }
     }
 
+    /**
+     * A change of [board]'s sprint backlog made from the app (its order): shown at once, until
+     * the next sync reads it from Azure DevOps.
+     */
+    fun applyOwnSprint(board: BoardRef, change: (Sprint) -> Sprint) {
+        _state.update { s ->
+            val snapshot = s.snapshot ?: return@update s
+            val shown = snapshot.shown ?: return@update s
+            val sprint = shown.sprint?.takeIf { it.board == board } ?: return@update s
+            s.copy(snapshot = snapshot.copy(shown = shown.copy(sprint = change(sprint))))
+        }
+    }
+
     /** A comment I posted from the app: never notified back to me (see [Events.ownComment]). */
     suspend fun applyOwnComment(item: WorkItem, comment: Comment) {
         val s = settings.current()

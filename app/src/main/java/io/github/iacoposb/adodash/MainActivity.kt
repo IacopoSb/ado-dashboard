@@ -123,6 +123,7 @@ class MainActivity : ComponentActivity() {
                 val workItem by vm.workItem.collectAsStateWithLifecycle()
                 val workItemsReadOnly by vm.workItemsReadOnly.collectAsStateWithLifecycle()
                 val pullRequest by vm.pullRequest.collectAsStateWithLifecycle()
+                val backlogEdit by vm.backlogEdit.collectAsStateWithLifecycle()
                 val online by vm.online.collectAsStateWithLifecycle()
                 val choices = viewChoices(settings.views, catalog, settings.filters, sync.snapshot)
                 var editing by rememberSaveable { mutableStateOf(false) }
@@ -249,6 +250,8 @@ class MainActivity : ComponentActivity() {
                         onOpenPullRequest = vm::openPullRequest,
                         pullRequest = pullRequest,
                         prActions = remember(vm) { vm.prActions(::openUrl) },
+                        backlogEdit = backlogEdit,
+                        backlogEditActions = remember(vm) { vm.backlogEditActions() },
                         online = online,
                         onSignIn = signIn,
                     )

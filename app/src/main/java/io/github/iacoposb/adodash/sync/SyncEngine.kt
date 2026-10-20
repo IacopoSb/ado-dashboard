@@ -450,12 +450,12 @@ class SyncEngine(
         }.onFailure(warn).getOrNull() ?: return@coroutineScope null
         val (links, read) = items
         loadCategories(read.map { it.item }, warnings)
-        val sprintItems = read.map { b ->
-            SprintItem(b.item, b.assigneeId, b.remainingWork, b.rank, categoryOf(b.item))
-        }
         // The sprint's own hierarchy first, the parent field for what it leaves out
         val fromField = read.mapNotNull { b -> b.parentId?.let { b.item.id to it } }.toMap()
         val parents = fromField + links.mapNotNull { l -> l.parentId?.let { l.id to it } }.toMap()
+        val sprintItems = read.map { b ->
+            SprintItem(b.item, b.assigneeId, b.remainingWork, b.rank, categoryOf(b.item), parentId = parents[b.item.id])
+        }
         Sprint(
             board, iteration, Backlog.build(sprintItems, parents),
             workingDays = days.await() ?: Sprint.DEFAULT_WORKING_DAYS,

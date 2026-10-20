@@ -19,6 +19,19 @@ data class TeamIteration(
     val finish: Instant? = null,
 )
 
+/**
+ * A move in a team's sprint backlog, as the web's drag and drop sends it: [ids] go between
+ * [previousId] and [nextId] (0: none, at that end) among the children of [parentId] (0: the
+ * top level). Azure DevOps works out their new Stack Rank or Backlog Priority.
+ */
+data class BacklogReorder(
+    val ids: List<Int>,
+    val iterationPath: String,
+    val parentId: Int = 0,
+    val previousId: Int = 0,
+    val nextId: Int = 0,
+)
+
 /** A work item of a sprint, with its parent when that is in the sprint too. */
 data class IterationLink(val id: Int, val parentId: Int? = null)
 

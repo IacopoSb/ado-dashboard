@@ -24,9 +24,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,23 +49,32 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -71,11 +85,17 @@ import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.sync.Backlog
 import io.github.iacoposb.adodash.sync.BacklogFilter
 import io.github.iacoposb.adodash.sync.BacklogGroup
+import io.github.iacoposb.adodash.sync.BacklogMove
+import io.github.iacoposb.adodash.sync.BacklogOrder
+import io.github.iacoposb.adodash.sync.Shift
 import io.github.iacoposb.adodash.sync.Sprint
+import io.github.iacoposb.adodash.sync.SprintGroup
 import io.github.iacoposb.adodash.sync.SprintItem
 import io.github.iacoposb.adodash.ui.components.AdoFilterChip
 import io.github.iacoposb.adodash.ui.components.AdoIcons
 import io.github.iacoposb.adodash.ui.components.Avatar
+import io.github.iacoposb.adodash.ui.components.Banner
+import io.github.iacoposb.adodash.ui.components.BannerTone
 import io.github.iacoposb.adodash.ui.components.FullScreenModalWidth
 import io.github.iacoposb.adodash.ui.components.StatusChip
 import io.github.iacoposb.adodash.ui.components.TextAction
@@ -160,13 +180,23 @@ class BacklogActions(
     val onRefresh: () -> Unit = {},
     /** A row tapped: the work item's details over the backlog. */
     val onOpen: (WorkItem) -> Unit = {},
+    /** A row dragged or moved from its menu: shown at once, then saved. */
+    val onReorder: (BacklogMove) -> Unit = {},
+    val onDismissReorderError: () -> Unit = {},
+)
+
+/** The backlog's changes, from the dashboard: they need the sprint they are made in. */
+class BacklogEditActions(
+    val onReorder: (Sprint, BacklogMove) -> Unit = { _, _ -> },
+    val onDismissReorderError: () -> Unit = {},
 )
 
 /**
  * The current sprint's backlog on the whole screen: its top-level items in backlog order with
  * their children folding under them; "Mine" or the whole team, types, "Hide closed" and
- * "Expand all". On tablets a table with columns, on narrow screens a list. System back closes
- * it. The initial values are for the screenshots.
+ * "Expand all". Rows are reordered among their siblings by their handle, dragged or from its
+ * menu. On tablets a table with columns, on narrow screens a list. System back closes it. The
+ * initial values are for the screenshots.
  */
 @Composable
 fun SprintBacklogScreen(
@@ -177,19 +207,25 @@ fun SprintBacklogScreen(
     actions: BacklogActions,
     /** "Contoso › Backend". */
     boardTitle: String,
+    edit: BacklogEditState = BacklogEditState(),
     initialFilter: BacklogFilter = BacklogFilter(),
     initialExpanded: Set<Int> = emptySet(),
+    /** The row whose handle's menu is open. */
+    initialRowMenu: Int? = null,
 ) {
     BackHandler(onBack = actions.onBack)
     val c = AdoTheme.colors
     var filter by remember(sprint.board) { mutableStateOf(initialFilter) }
     var expanded by remember(sprint.board) { mutableStateOf(initialExpanded) }
+    val list = rememberLazyListState()
+    val drag = remember(list) { BacklogDrag(list) }
     val types = Backlog.types(sprint.groups)
-    val rows = Backlog.filter(sprint.groups, filter, me)
+    val rows = dragged(Backlog.filter(sprint.groups, filter, me), drag)
     val expandable = rows.filter { it.children.isNotEmpty() }.map { it.parent.id }.toSet()
     val allExpanded = expandable.isNotEmpty() && expanded.containsAll(expandable)
     val state = BacklogState(
         rows, expanded, types, filter, allExpanded,
+        reorder = BacklogOrder.canReorder(filter), list = list, drag = drag, rowMenu = initialRowMenu,
         onFilter = { filter = it },
         onToggle = { id -> expanded = if (id in expanded) expanded - id else expanded + id },
         onToggleAll = { expanded = if (allExpanded) expanded - expandable else expanded + expandable },
@@ -201,12 +237,43 @@ fun SprintBacklogScreen(
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
         val title = "${sprint.iteration.name} · $boardTitle"
-        if (maxWidth >= FullScreenModalWidth) {
+        val wide = maxWidth >= FullScreenModalWidth
+        if (wide) {
             WideBacklog(sprint, title, now, syncing, actions, state)
         } else {
             NarrowBacklog(sprint, title, now, syncing, actions, state)
         }
+        edit.reorderError?.let { error ->
+            val text = if (error.problem == SaveProblem.DENIED) {
+                stringResource(R.string.backlog_reorder_denied)
+            } else {
+                stringResource(R.string.backlog_reorder_failed, error.id, error.message)
+            }
+            Banner(
+                text, BannerTone.Error,
+                // Over the table's footer on tablets
+                Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = if (wide) 56.dp else 16.dp)
+                    .widthIn(max = 720.dp),
+            ) { TextAction(stringResource(R.string.action_ok), actions.onDismissReorderError) }
+        }
     }
+}
+
+/** The rows in the order of the drag going on, if any: the dragged parent without its children. */
+private fun dragged(rows: List<BacklogGroup>, drag: BacklogDrag): List<BacklogGroup> {
+    val id = drag.id ?: return rows
+    val order = drag.order
+    val group = drag.group
+    return if (group == null) {
+        val byId = rows.associateBy { it.parent.id }
+        order.mapNotNull { byId[it] } + rows.filter { it.parent.id !in order }
+    } else {
+        rows.map { row ->
+            if (row.parent.id != group) return@map row
+            val byId = row.children.associateBy { it.id }
+            row.copy(children = order.mapNotNull { byId[it] } + row.children.filter { it.id !in order })
+        }
+    }.let { shown -> if (group == null) shown.map { if (it.parent.id == id) it.copy(children = emptyList()) else it } else shown }
 }
 
 /** The rows shown and what the screen's own controls change. */
@@ -216,6 +283,11 @@ private class BacklogState(
     val types: List<String>,
     val filter: BacklogFilter,
     val allExpanded: Boolean,
+    /** Rows can be reordered (see [BacklogOrder.canReorder]). */
+    val reorder: Boolean,
+    val list: LazyListState,
+    val drag: BacklogDrag,
+    val rowMenu: Int?,
     val onFilter: (BacklogFilter) -> Unit,
     val onToggle: (Int) -> Unit,
     val onToggleAll: () -> Unit,
@@ -223,6 +295,129 @@ private class BacklogState(
     fun toggleType(type: String) {
         val on = filter.types.any { it.equals(type, ignoreCase = true) }
         onFilter(filter.copy(types = if (on) filter.types.filterNot { it.equals(type, ignoreCase = true) }.toSet() else filter.types + type))
+    }
+
+    /** The ids a row moves among: the top-level rows shown, or its parent's children shown. */
+    fun siblings(row: BacklogGroup?): List<Int> = row?.children?.map { it.id } ?: rows.map { it.parent.id }
+}
+
+/**
+ * A row's handle at its start: dragged it moves the row among its siblings, tapped it opens a
+ * menu with the same moves (also as accessibility actions). Faint, with a hint in its menu,
+ * when the filters do not allow reordering. [row] is the parent's group for a child, null for a
+ * top-level row.
+ */
+@Composable
+private fun Handle(item: SprintItem, row: BacklogGroup?, state: BacklogState, actions: BacklogActions, width: Dp) {
+    val c = AdoTheme.colors
+    val id = item.id
+    val group = row?.parent?.id
+    val parentId = BacklogOrder.parentOf(item, row?.group)
+    val siblings = state.siblings(row)
+    var menu by remember(id) { mutableStateOf(state.rowMenu == id) }
+    val currentSiblings by rememberUpdatedState(siblings)
+    val currentActions by rememberUpdatedState(actions)
+    val drag = state.drag
+    val moves = Shift.entries.associateWith { if (state.reorder) BacklogOrder.shift(siblings, id, it, parentId) else null }
+    val labels = mapOf(
+        Shift.TOP to stringResource(R.string.backlog_move_top),
+        Shift.UP to stringResource(R.string.backlog_move_up),
+        Shift.DOWN to stringResource(R.string.backlog_move_down),
+        Shift.BOTTOM to stringResource(R.string.backlog_move_bottom),
+    )
+    val description = stringResource(R.string.backlog_handle, item.item.title)
+    Box(Modifier.width(width), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(width, 40.dp).clip(RoundedCornerShape(8.dp))
+                .then(
+                    if (state.reorder) {
+                        Modifier.pointerInput(id, group) {
+                            detectVerticalDragGestures(
+                                onDragStart = { drag.start(id, group, currentSiblings) },
+                                onDragEnd = {
+                                    drag.end()?.let { order -> currentActions.onReorder(BacklogOrder.at(order, id, parentId)) }
+                                },
+                                onDragCancel = { drag.end() },
+                                onVerticalDrag = { change, dy ->
+                                    change.consume()
+                                    drag.drag(dy)
+                                },
+                            )
+                        }
+                    } else {
+                        Modifier
+                    },
+                )
+                .clickable(role = Role.Button) { menu = true }
+                .semantics {
+                    contentDescription = description
+                    customActions = moves.mapNotNull { (shift, move) ->
+                        move?.let { m -> CustomAccessibilityAction(labels.getValue(shift)) { actions.onReorder(m); true } }
+                    }
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(AdoIcons.DragIndicator, null, Modifier.size(20.dp), tint = if (state.reorder) c.textMuted else c.textFaint)
+        }
+        DropdownMenu(menu, { menu = false }, containerColor = c.surface) {
+            if (state.reorder) {
+                Shift.entries.forEach { shift ->
+                    val move = moves[shift]
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                labels.getValue(shift), style = MaterialTheme.typography.bodyMedium,
+                                color = if (move != null) c.text else c.textFaint,
+                            )
+                        },
+                        onClick = { menu = false; move?.let(actions.onReorder) },
+                        enabled = move != null,
+                    )
+                }
+            } else {
+                Text(
+                    stringResource(R.string.backlog_reorder_off), Modifier.widthIn(max = 280.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+                    style = MaterialTheme.typography.bodyMedium, color = c.textMuted,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A row in the list: while one is dragged it floats over the others, which slide to make room.
+ */
+@Composable
+private fun LazyItemScope.DragRow(id: Int, group: Int?, drag: BacklogDrag, content: @Composable () -> Unit) {
+    val c = AdoTheme.colors
+    val dragging = drag.isDragging(id, group)
+    val modifier = when {
+        dragging -> Modifier.zIndex(1f).graphicsLayer {
+            translationY = drag.translation()
+            shadowElevation = 8.dp.toPx()
+        }.background(c.surface)
+        drag.id != null -> Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null)
+        else -> Modifier
+    }
+    Box(modifier) { content() }
+}
+
+/** While a row is held near the top or the bottom, the list scrolls that way. */
+@Composable
+private fun AutoScroll(state: BacklogState) {
+    val drag = state.drag
+    val density = LocalDensity.current
+    val edge = with(density) { 56.dp.toPx() }
+    val speed = with(density) { 12.dp.toPx() }
+    LaunchedEffect(drag.id) {
+        while (drag.id != null) {
+            val step = drag.edgeSpeed(edge, speed)
+            if (step != 0f) {
+                state.list.scrollBy(step)
+                drag.settle()
+            }
+            withFrameNanos {}
+        }
     }
 }
 
@@ -240,6 +435,8 @@ private fun RefreshButton(syncing: Boolean, onRefresh: () -> Unit) {
 
 /** Column widths of the table, so that header and rows line up. */
 private object Col {
+    /** The handle. */
+    val lead = 36.dp
     val chevron = 40.dp
     val type = 112.dp
     val id = 48.dp
@@ -333,16 +530,26 @@ private fun WideBacklog(sprint: Sprint, title: String, now: Instant, syncing: Bo
                 TextAction(stringResource(if (state.allExpanded) R.string.backlog_collapse_all else R.string.backlog_expand_all), state.onToggleAll)
             }
             HeaderRow(cols)
-            LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+            AutoScroll(state)
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = state.list) {
                 if (state.rows.isEmpty()) empty()
                 state.rows.forEach { row ->
                     val open = row.parent.id in state.expanded && row.children.isNotEmpty()
                     item(key = row.parent.id) {
-                        WideRow(row.parent, child = false, row = row, open = open, cols = cols, onToggle = { state.onToggle(row.parent.id) }, onOpen = actions.onOpen)
+                        DragRow(row.parent.id, null, state.drag) {
+                            WideRow(
+                                row.parent, child = false, row = row, open = open, cols = cols,
+                                onToggle = { state.onToggle(row.parent.id) }, onOpen = actions.onOpen,
+                            ) { Handle(row.parent, null, state, actions, Col.lead) }
+                        }
                     }
                     if (open) {
                         items(row.children, key = { "${row.parent.id}/${it.id}" }) {
-                            WideRow(it, child = true, row = null, open = false, cols = cols, onToggle = {}, onOpen = actions.onOpen)
+                            DragRow(it.id, row.parent.id, state.drag) {
+                                WideRow(it, child = true, row = null, open = false, cols = cols, onToggle = {}, onOpen = actions.onOpen) {
+                                    Handle(it, row, state, actions, Col.lead)
+                                }
+                            }
                         }
                     }
                 }
@@ -350,7 +557,10 @@ private fun WideBacklog(sprint: Sprint, title: String, now: Instant, syncing: Bo
             HorizontalDivider(color = c.outline)
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(totalsText(state.rows, cols.remaining), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
-                Text(stringResource(R.string.backlog_hint), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
+                Text(
+                    stringResource(if (state.reorder) R.string.backlog_hint else R.string.backlog_reorder_off),
+                    style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1,
+                )
             }
         }
     }
@@ -393,10 +603,10 @@ private fun ScopeToggle(mine: Boolean, onChange: (Boolean) -> Unit) {
 private fun HeaderRow(cols: BacklogColumns) {
     val c = AdoTheme.colors
     Row(
-        Modifier.fillMaxWidth().height(28.dp).background(c.surfaceAlt).padding(horizontal = 12.dp),
+        Modifier.fillMaxWidth().height(28.dp).background(c.surfaceAlt).padding(start = 4.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Spacer(Modifier.width(Col.chevron))
+        Spacer(Modifier.width(Col.lead + Col.chevron))
         HeaderCell(stringResource(R.string.backlog_col_type), Col.type, TextAlign.Start, Modifier.padding(start = 10.dp))
         HeaderCell(stringResource(R.string.backlog_col_id), Col.id, TextAlign.End)
         Text(
@@ -432,14 +642,17 @@ private fun WideRow(
     cols: BacklogColumns,
     onToggle: () -> Unit,
     onOpen: (WorkItem) -> Unit,
+    /** The handle. */
+    lead: @Composable () -> Unit,
 ) {
     val c = AdoTheme.colors
     val wi = item.item
     Column {
         Row(
-            Modifier.fillMaxWidth().height(48.dp).clickable { onOpen(wi) }.padding(horizontal = 12.dp),
+            Modifier.fillMaxWidth().height(48.dp).clickable { onOpen(wi) }.padding(start = 4.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            lead()
             Box(Modifier.width(Col.chevron), contentAlignment = Alignment.CenterStart) {
                 if (row != null && row.children.isNotEmpty()) Chevron(open, onToggle)
             }
@@ -546,13 +759,24 @@ private fun NarrowBacklog(sprint: Sprint, title: String, now: Instant, syncing: 
                 state.onFilter(state.filter.copy(hideClosed = !state.filter.hideClosed))
             })
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().background(c.surface), contentPadding = PaddingValues(bottom = 12.dp)) {
+        AutoScroll(state)
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().background(c.surface), state = state.list, contentPadding = PaddingValues(bottom = 12.dp)) {
             if (state.rows.isEmpty()) empty()
             state.rows.forEach { row ->
                 val open = row.parent.id in state.expanded && row.children.isNotEmpty()
-                item(key = row.parent.id) { NarrowRow(row.parent, row, open, { state.onToggle(row.parent.id) }, actions.onOpen) }
+                item(key = row.parent.id) {
+                    DragRow(row.parent.id, null, state.drag) {
+                        NarrowRow(row.parent, row, open, { state.onToggle(row.parent.id) }, actions.onOpen) {
+                            Handle(row.parent, null, state, actions, NARROW_LEAD)
+                        }
+                    }
+                }
                 if (open) {
-                    items(row.children, key = { "${row.parent.id}/${it.id}" }) { NarrowRow(it, null, false, {}, actions.onOpen) }
+                    items(row.children, key = { "${row.parent.id}/${it.id}" }) {
+                        DragRow(it.id, row.parent.id, state.drag) {
+                            NarrowRow(it, null, false, {}, actions.onOpen) { Handle(it, row, state, actions, NARROW_LEAD) }
+                        }
+                    }
                 }
             }
         }
@@ -589,19 +813,33 @@ private fun FilterMenu(state: BacklogState) {
     }
 }
 
-/** A row of the phone list: chevron, type bar, title and "Type · id · 1/3 children", state. */
+/** The handle's width on phones. */
+private val NARROW_LEAD = 32.dp
+
+/** A row of the phone list: handle, chevron, type bar, title and "Type · id · 1/3 children", state. */
 @Composable
-private fun NarrowRow(item: SprintItem, row: BacklogGroup?, open: Boolean, onToggle: () -> Unit, onOpen: (WorkItem) -> Unit) {
+private fun NarrowRow(
+    item: SprintItem,
+    row: BacklogGroup?,
+    open: Boolean,
+    onToggle: () -> Unit,
+    onOpen: (WorkItem) -> Unit,
+    lead: @Composable () -> Unit,
+) {
     val c = AdoTheme.colors
     val wi = item.item
     val child = row == null
     Column {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable { onOpen(wi) }
-                .padding(start = if (child) 72.dp else 0.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+                .padding(start = 4.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (!child) {
+            lead()
+            if (child) {
+                // Further in than the parent's type bar
+                Spacer(Modifier.width(64.dp))
+            } else {
                 Box(Modifier.width(40.dp), contentAlignment = Alignment.Center) {
                     if (row.children.isNotEmpty()) Chevron(open, onToggle)
                 }

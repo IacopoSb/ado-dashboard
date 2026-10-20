@@ -24,6 +24,8 @@ data class SprintItem(
     /** Backlog order: lower first; null after the ranked ones. */
     val rank: Double? = null,
     val category: String? = null,
+    /** Its parent's id, wherever that is: what a reorder among its siblings names. */
+    val parentId: Int? = null,
 ) {
     val id get() = item.id
 

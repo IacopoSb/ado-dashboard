@@ -205,6 +205,20 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         onTargetShown = workItems::targetShown,
     )
 
+    /** The sprint backlog's changes: its order. */
+    private val backlogEdits = BacklogEditController(
+        viewModelScope,
+        api = { app.api(app.settings.current()) },
+        onSprint = app.sync::applyOwnSprint,
+        errorText = app::errorText,
+    )
+    val backlogEdit = backlogEdits.state
+
+    fun backlogEditActions() = BacklogEditActions(
+        onReorder = backlogEdits::reorder,
+        onDismissReorderError = backlogEdits::dismissReorderError,
+    )
+
     /** The pull request page, over the dashboard. */
     private val pullRequests = PullRequestController(
         viewModelScope,

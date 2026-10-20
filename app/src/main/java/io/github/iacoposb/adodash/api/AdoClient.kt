@@ -582,6 +582,20 @@ class AdoClient(
         }.groupBy { it.id }.map { (_, links) -> links.firstOrNull { it.parentId != null } ?: links.first() }
     }
 
+    override suspend fun reorderSprintItems(project: String, team: String, iterationId: String, move: BacklogReorder): Map<Int, Double> {
+        // The Work API's "Reorder Iteration Work Items", only as a preview
+        val body = buildJsonObject {
+            putJsonArray("ids") { move.ids.forEach { add(JsonPrimitive(it)) } }
+            put("iterationPath", move.iterationPath)
+            put("parentId", move.parentId)
+            put("previousId", move.previousId)
+            put("nextId", move.nextId)
+        }
+        val url = url(project, team, "_apis", "work", "iterations", iterationId, "workitemsorder", apiVersion = REORDER_API)
+        val result: ValueList<ReorderResultDto> = call(Request.Builder().url(url).patch(body.toString().toRequestBody(JSON)))
+        return result.value.associate { it.id to it.order }
+    }
+
     override suspend fun backlogItems(ids: List<Int>): List<BacklogItem> = ids.chunked(200).flatMap { chunk ->
         // Stack Rank and Backlog Priority exist in every organization; a server without one of
         // them refuses the call: read again with the dashboard's fields only
@@ -891,6 +905,8 @@ class AdoClient(
         const val API_VERSION = "7.1"
         /** Work item comments exist only as a preview API. */
         const val COMMENTS_API = "7.1-preview.4"
+        /** Reordering the backlog exists only as a preview API. */
+        const val REORDER_API = "7.1-preview.1"
         private val JSON = "application/json".toMediaType()
         private val JSON_PATCH = "application/json-patch+json".toMediaType()
         private const val PR_ARTIFACT = "vstfs:///Git/PullRequestId/"
@@ -997,6 +1013,7 @@ class AdoClient(
     val target: WorkItemRefDto? = null,
 )
 @Serializable private data class IterationWorkItemsDto(val workItemRelations: List<IterationRelationDto> = emptyList())
+@Serializable private data class ReorderResultDto(val id: Int, val order: Double = 0.0)
 @Serializable private data class TeamSettingsDto(val workingDays: List<String> = emptyList())
 @Serializable private data class DayOffDto(val start: String = "", val end: String = "")
 @Serializable private data class TeamDaysOffDto(val daysOff: List<DayOffDto> = emptyList())

@@ -604,8 +604,16 @@
     </plurals>
     <string name="backlog_hours">%1$s h</string>
     <string name="backlog_remaining">%1$s remaining</string>
-    <string name="backlog_hint">Tap a row to open it · arrow for the children</string>
+    <string name="backlog_hint">Tap a row to open it · drag the handle to reorder</string>
     <string name="backlog_empty">Nothing in this sprint matches the filters</string>
+    <string name="backlog_handle">Reorder %1$s</string>
+    <string name="backlog_move_top">Move to top</string>
+    <string name="backlog_move_up">Move up</string>
+    <string name="backlog_move_down">Move down</string>
+    <string name="backlog_move_bottom">Move to bottom</string>
+    <string name="backlog_reorder_off">To reorder, show the whole team and all types</string>
+    <string name="backlog_reorder_failed">#%1$d wasn\'t moved: %2$s</string>
+    <string name="backlog_reorder_denied">You don\'t have permission to reorder this backlog</string>
 
     <!-- Notification settings -->
     <string name="channel_activity">Activity</string>

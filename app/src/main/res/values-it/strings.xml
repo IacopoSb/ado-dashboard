@@ -608,8 +608,16 @@
     </plurals>
     <string name="backlog_hours">%1$s h</string>
     <string name="backlog_remaining">%1$s rimanenti</string>
-    <string name="backlog_hint">Tocca una riga per aprirla · freccia per i figli</string>
+    <string name="backlog_hint">Tocca una riga per aprirla · trascina la maniglia per riordinare</string>
     <string name="backlog_empty">Nessun elemento dello sprint corrisponde ai filtri</string>
+    <string name="backlog_handle">Riordina %1$s</string>
+    <string name="backlog_move_top">Sposta in cima</string>
+    <string name="backlog_move_up">Sposta su</string>
+    <string name="backlog_move_down">Sposta giù</string>
+    <string name="backlog_move_bottom">Sposta in fondo</string>
+    <string name="backlog_reorder_off">Per riordinare mostra tutto il team e tutti i tipi</string>
+    <string name="backlog_reorder_failed">#%1$d non è stato spostato: %2$s</string>
+    <string name="backlog_reorder_denied">Non hai il permesso di riordinare questo backlog</string>
 
     <!-- Impostazioni delle notifiche -->
     <string name="channel_activity">Attività</string>

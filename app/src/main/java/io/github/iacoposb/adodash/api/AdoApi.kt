@@ -113,6 +113,13 @@ interface AdoApi {
      */
     suspend fun iterationWorkItems(project: String, team: String, iterationId: String): List<IterationLink> = emptyList()
 
+    /**
+     * Reorders work items in a team's sprint backlog (see [BacklogReorder]); returns the new
+     * backlog order (rank) of the work items it moved, by id.
+     */
+    suspend fun reorderSprintItems(project: String, team: String, iterationId: String, move: BacklogReorder): Map<Int, Double> =
+        throw AdoException(403, "Not supported")
+
     /** Work items with what the sprint backlog shows: remaining work, backlog rank, parent. */
     suspend fun backlogItems(ids: List<Int>): List<BacklogItem> = workItems(ids).map { BacklogItem(it) }
 
