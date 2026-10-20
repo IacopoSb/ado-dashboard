@@ -604,7 +604,7 @@
     </plurals>
     <string name="backlog_hours">%1$s h</string>
     <string name="backlog_remaining">%1$s remaining</string>
-    <string name="backlog_hint">Tap a row to open it · drag the handle to reorder</string>
+    <string name="backlog_hint">Tap a row to open it · long-press to select · drag the handle to reorder</string>
     <string name="backlog_empty">Nothing in this sprint matches the filters</string>
     <string name="backlog_handle">Reorder %1$s</string>
     <string name="backlog_move_top">Move to top</string>
@@ -614,6 +614,25 @@
     <string name="backlog_reorder_off">To reorder, show the whole team and all types</string>
     <string name="backlog_reorder_failed">#%1$d wasn\'t moved: %2$s</string>
     <string name="backlog_reorder_denied">You don\'t have permission to reorder this backlog</string>
+    <string name="backlog_select">Select</string>
+    <string name="backlog_select_hint">Tap rows to select them · then change them all from the bar</string>
+    <string name="backlog_select_close">Close the selection</string>
+    <plurals name="backlog_selected">
+        <item quantity="one">%d selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
+    <string name="backlog_batch_no_common_state">The selected types have no state in common</string>
+    <string name="backlog_batch_next_sprint">Next sprint: %1$s</string>
+    <string name="backlog_batch_progress">Updating %1$d of %2$d work items…</string>
+    <plurals name="backlog_batch_done">
+        <item quantity="one">%d work item updated</item>
+        <item quantity="other">%d work items updated</item>
+    </plurals>
+    <string name="backlog_batch_partial">%1$d updated, %2$d failed</string>
+    <string name="backlog_batch_denied">You don\'t have permission to edit some of these work items (a PAT needs Work Items, Read &amp; write)</string>
+    <string name="backlog_batch_failure_denied">no permission</string>
+    <string name="backlog_batch_failure_conflict">changed by someone else meanwhile</string>
+    <string name="backlog_batch_more">and %1$d more</string>
 
     <!-- Notification settings -->
     <string name="channel_activity">Activity</string>

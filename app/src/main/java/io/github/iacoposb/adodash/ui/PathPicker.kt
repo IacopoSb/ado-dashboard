@@ -119,7 +119,7 @@ private fun RowScope.PathText(segments: List<String>, enabled: Boolean) {
 
 /** The tree in the field's menu: search on top, then the nodes, scrolled to the current one. */
 @Composable
-private fun PathPicker(root: PathNode?, selected: String, now: Instant?, searchHint: String, initialQuery: String, onPick: (String) -> Unit) {
+internal fun PathPicker(root: PathNode?, selected: String, now: Instant?, searchHint: String, initialQuery: String, onPick: (String) -> Unit) {
     val c = AdoTheme.colors
     Column(Modifier.width(380.dp)) {
         var query by remember { mutableStateOf(initialQuery) }

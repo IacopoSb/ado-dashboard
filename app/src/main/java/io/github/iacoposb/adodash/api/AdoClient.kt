@@ -562,13 +562,18 @@ class AdoClient(
         val list: ValueList<TeamIterationDto> = get(
             url(project, team, "_apis", "work", "teamsettings", "iterations") { addQueryParameter("\$timeframe", "current") },
         )
-        return list.value.firstOrNull()?.let {
-            TeamIteration(
-                it.id, it.name, it.path.ifEmpty { it.name },
-                it.attributes?.startDate?.let(::instantOrNull), it.attributes?.finishDate?.let(::instantOrNull),
-            )
-        }
+        return list.value.firstOrNull()?.toIteration()
     }
+
+    override suspend fun teamIterations(project: String, team: String): List<TeamIteration> {
+        val list: ValueList<TeamIterationDto> = get(url(project, team, "_apis", "work", "teamsettings", "iterations"))
+        return list.value.map { it.toIteration() }
+    }
+
+    private fun TeamIterationDto.toIteration() = TeamIteration(
+        id, name, path.ifEmpty { name },
+        attributes?.startDate?.let(::instantOrNull), attributes?.finishDate?.let(::instantOrNull),
+    )
 
     override suspend fun iterationWorkItems(project: String, team: String, iterationId: String): List<IterationLink> {
         val result: IterationWorkItemsDto = get(

@@ -205,18 +205,31 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         onTargetShown = workItems::targetShown,
     )
 
-    /** The sprint backlog's changes: its order. */
+    /** The sprint backlog's changes: its order, and a field of all the selected work items. */
     private val backlogEdits = BacklogEditController(
         viewModelScope,
         api = { app.api(app.settings.current()) },
         onSprint = app.sync::applyOwnSprint,
         errorText = app::errorText,
+        catalog = { app.catalog.state.value.catalog },
+        me = { settings.value?.takeIf { it.meId.isNotEmpty() }?.let { Person(it.meId, it.meName, "") } },
+        onSaved = { item, mine -> app.sync.applyOwnChange(item, mine) },
+        onBatchDone = ::refresh,
     )
     val backlogEdit = backlogEdits.state
 
     fun backlogEditActions() = BacklogEditActions(
         onReorder = backlogEdits::reorder,
         onDismissReorderError = backlogEdits::dismissReorderError,
+        onLoadOptions = {
+            // The areas come from the saved catalog
+            loadBoards()
+            backlogEdits.loadOptions(it)
+        },
+        onSearchPeople = { sprint, query -> backlogEdits.searchPeople(sprint.board, query) },
+        onBatch = backlogEdits::runBatch,
+        onRetryBatch = backlogEdits::retryBatch,
+        onDismissBatch = backlogEdits::dismissBatch,
     )
 
     /** The pull request page, over the dashboard. */

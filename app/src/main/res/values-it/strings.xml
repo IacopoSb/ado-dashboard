@@ -608,7 +608,7 @@
     </plurals>
     <string name="backlog_hours">%1$s h</string>
     <string name="backlog_remaining">%1$s rimanenti</string>
-    <string name="backlog_hint">Tocca una riga per aprirla · trascina la maniglia per riordinare</string>
+    <string name="backlog_hint">Tocca una riga per aprirla · tieni premuto per selezionare · trascina la maniglia per riordinare</string>
     <string name="backlog_empty">Nessun elemento dello sprint corrisponde ai filtri</string>
     <string name="backlog_handle">Riordina %1$s</string>
     <string name="backlog_move_top">Sposta in cima</string>
@@ -618,6 +618,27 @@
     <string name="backlog_reorder_off">Per riordinare mostra tutto il team e tutti i tipi</string>
     <string name="backlog_reorder_failed">#%1$d non è stato spostato: %2$s</string>
     <string name="backlog_reorder_denied">Non hai il permesso di riordinare questo backlog</string>
+    <string name="backlog_select">Seleziona</string>
+    <string name="backlog_select_hint">Tocca le righe per selezionarle · poi modificale tutte dalla barra</string>
+    <string name="backlog_select_close">Chiudi la selezione</string>
+    <plurals name="backlog_selected">
+        <item quantity="one">%d selezionato</item>
+        <item quantity="many">%d selezionati</item>
+        <item quantity="other">%d selezionati</item>
+    </plurals>
+    <string name="backlog_batch_no_common_state">I tipi selezionati non hanno stati in comune</string>
+    <string name="backlog_batch_next_sprint">Sprint successivo: %1$s</string>
+    <string name="backlog_batch_progress">Aggiornamento di %1$d su %2$d work item…</string>
+    <plurals name="backlog_batch_done">
+        <item quantity="one">%d work item aggiornato</item>
+        <item quantity="many">%d work item aggiornati</item>
+        <item quantity="other">%d work item aggiornati</item>
+    </plurals>
+    <string name="backlog_batch_partial">%1$d aggiornati, %2$d non riusciti</string>
+    <string name="backlog_batch_denied">Non hai il permesso di modificare alcuni di questi work item (un PAT richiede Work Items, Read &amp; write)</string>
+    <string name="backlog_batch_failure_denied">permesso negato</string>
+    <string name="backlog_batch_failure_conflict">modificato da qualcun altro nel frattempo</string>
+    <string name="backlog_batch_more">e altri %1$d</string>
 
     <!-- Impostazioni delle notifiche -->
     <string name="channel_activity">Attività</string>

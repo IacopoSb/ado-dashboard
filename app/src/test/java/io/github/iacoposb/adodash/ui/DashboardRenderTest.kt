@@ -1233,6 +1233,8 @@ class DashboardRenderTest {
         hours: Boolean = false,
         rowMenu: Int? = null,
         edit: BacklogEditState = BacklogEditState(),
+        selection: Set<Int>? = null,
+        batchMenu: BatchKind? = null,
     ) {
         val views = designViews().openBoard(BoardRef("Contoso", "Backend"))
         val shown = Shown(
@@ -1244,11 +1246,11 @@ class DashboardRenderTest {
                 DashboardScreen(
                     "contoso", SyncState(snapshot.copy(shown = shown)), events(), {}, {}, {}, {}, {}, now = now,
                     choices = choices(views), initialBacklog = true, backlogFilter = filter, backlogExpanded = expanded,
-                    backlogRowMenu = rowMenu, backlogEdit = edit,
+                    backlogRowMenu = rowMenu, backlogEdit = edit, backlogSelection = selection, backlogBatchMenu = batchMenu,
                 )
             }
         }
-        if (rowMenu != null) captureScreenRoboImage("$name.png") else compose.onRoot().captureRoboImage("$name.png")
+        if (rowMenu != null || batchMenu != null) captureScreenRoboImage("$name.png") else compose.onRoot().captureRoboImage("$name.png")
     }
 
     /** A team that does not track hours, with long states: no "Remaining" column, states in full. */
@@ -1286,6 +1288,86 @@ class DashboardRenderTest {
     /** A move refused: the row back in its place and why. */
     @Test fun sprintBacklogReorderFailed() = backlog(
         "sprint-backlog-reorder-failed", edit = BacklogEditState(reorderError = ReorderError(4812, SaveProblem.DENIED)),
+    )
+
+    /** The selection's menus as read: the states of the sprint's types, the iterations, the areas. */
+    private val batchEdit = run {
+        fun states(vararg names: String) = names.map { StateInfo(it, "") }
+        BacklogEditState(
+            options = BatchOptions(
+                states = mapOf(
+                    "user story" to states("New", "Active", "Resolved", "Closed", "Removed"),
+                    "bug" to states("New", "Active", "Blocked", "Resolved", "Closed"),
+                    "task" to states("New", "Active", "Closed", "Removed"),
+                    "chore" to states("New", "Active", "Closed"),
+                    "documentation" to states("New", "Active", "Closed"),
+                ),
+                iterations = designIterations,
+                areas = io.github.iacoposb.adodash.api.AreaNode(
+                    "Contoso", "Contoso",
+                    listOf(
+                        io.github.iacoposb.adodash.api.AreaNode("Backend", "Contoso\\Backend"),
+                        io.github.iacoposb.adodash.api.AreaNode("Frontend", "Contoso\\Frontend"),
+                    ),
+                ),
+                nextSprint = designIterations.first { it.name == "Sprint 43" },
+            ),
+            me = Person(me.id, me.name, "iacopo@contoso.com"),
+        )
+    }
+
+    /** A long press: selecting, a story and a bug selected, the changes in the bar. */
+    @Test fun sprintBacklogSelection() = backlog("sprint-backlog-selection", selection = setOf(4790, 4812, 4792), edit = batchEdit)
+
+    @Config(qualifiers = "+it")
+    @Test fun sprintBacklogSelectionItalian() =
+        backlog("sprint-backlog-selection-it", selection = setOf(4790, 4812, 4792), edit = batchEdit)
+
+    /** A story, a bug and a task: only the states all three have. */
+    @Test fun sprintBacklogBatchStates() =
+        backlog("sprint-backlog-batch-states", selection = setOf(4790, 4812, 4792), edit = batchEdit, batchMenu = BatchKind.STATE)
+
+    /** "Next sprint" first, then the tree. */
+    @Test fun sprintBacklogBatchIteration() =
+        backlog("sprint-backlog-batch-iteration", selection = setOf(4790, 4812), edit = batchEdit, batchMenu = BatchKind.ITERATION)
+
+    @Config(qualifiers = "+it")
+    @Test fun sprintBacklogBatchIterationItalian() =
+        backlog("sprint-backlog-batch-iteration-it", selection = setOf(4790, 4812), edit = batchEdit, batchMenu = BatchKind.ITERATION)
+
+    @Test fun sprintBacklogBatchAssign() =
+        backlog("sprint-backlog-batch-assign", selection = setOf(4790, 4812), edit = batchEdit, batchMenu = BatchKind.ASSIGN)
+
+    @Config(qualifiers = PHONE)
+    @Test fun sprintPhoneSelection() = backlog("sprint-phone-selection", selection = setOf(4790, 4812), edit = batchEdit)
+
+    @Config(qualifiers = PHONE_IT)
+    @Test fun sprintPhoneBatchStates() =
+        backlog("sprint-phone-batch-states", selection = setOf(4790, 4812), edit = batchEdit, batchMenu = BatchKind.STATE)
+
+    @Test fun sprintBacklogBatchProgress() =
+        backlog("sprint-backlog-batch-progress", edit = batchEdit.copy(progress = BatchProgress(3, 7)))
+
+    /** Some failed, one for lack of permission: listed, with "Retry". */
+    @Test fun sprintBacklogBatchFailed() = backlog("sprint-backlog-batch-failed", edit = batchFailed())
+
+    @Config(qualifiers = "+it")
+    @Test fun sprintBacklogBatchFailedItalian() = backlog("sprint-backlog-batch-failed-it", edit = batchFailed())
+
+    @Config(qualifiers = PHONE)
+    @Test fun sprintPhoneBatchFailed() = backlog("sprint-phone-batch-failed", edit = batchFailed())
+
+    @Test fun sprintBacklogBatchDone() =
+        backlog("sprint-backlog-batch-done", edit = batchEdit.copy(result = BatchResult(FieldChange.Priority(1), 7)))
+
+    private fun batchFailed() = batchEdit.copy(
+        result = BatchResult(
+            FieldChange.State("Resolved"), 5,
+            listOf(
+                BatchFailure(Fakes.workItem(4812, "Bug", "SSO sign-in fails after the token is renewed"), SaveProblem.DENIED),
+                BatchFailure(Fakes.workItem(4801, "Bug", "Infinite retry when the gateway answers 503"), SaveProblem.OTHER, "HTTP 500: Internal error"),
+            ),
+        ),
     )
 
     @Config(qualifiers = "+it")

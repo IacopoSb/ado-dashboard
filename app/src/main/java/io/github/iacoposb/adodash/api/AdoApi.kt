@@ -107,6 +107,9 @@ interface AdoApi {
     /** The team's current sprint with its id and dates; null when it has none. */
     suspend fun currentIteration(project: String, team: String): TeamIteration? = null
 
+    /** The sprints the team works in, past and future, with their dates. */
+    suspend fun teamIterations(project: String, team: String): List<TeamIteration> = emptyList()
+
     /**
      * The work items of a team's sprint, each with its parent when that is in the sprint too
      * (the hierarchy as the sprint backlog shows it).

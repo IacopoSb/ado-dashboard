@@ -1,8 +1,10 @@
 package io.github.iacoposb.adodash.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -74,12 +76,14 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
+import io.github.iacoposb.adodash.api.FieldChange
 import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.api.WorkItem
 import io.github.iacoposb.adodash.sync.Backlog
@@ -91,6 +95,7 @@ import io.github.iacoposb.adodash.sync.Shift
 import io.github.iacoposb.adodash.sync.Sprint
 import io.github.iacoposb.adodash.sync.SprintGroup
 import io.github.iacoposb.adodash.sync.SprintItem
+import io.github.iacoposb.adodash.ui.components.AdoCheckbox
 import io.github.iacoposb.adodash.ui.components.AdoFilterChip
 import io.github.iacoposb.adodash.ui.components.AdoIcons
 import io.github.iacoposb.adodash.ui.components.Avatar
@@ -183,20 +188,34 @@ class BacklogActions(
     /** A row dragged or moved from its menu: shown at once, then saved. */
     val onReorder: (BacklogMove) -> Unit = {},
     val onDismissReorderError: () -> Unit = {},
+    /** The selection started: its menus' options read. */
+    val onLoadOptions: () -> Unit = {},
+    val onSearchPeople: (String) -> Unit = {},
+    /** A change made to all the selected work items. */
+    val onBatch: (List<WorkItem>, FieldChange) -> Unit = { _, _ -> },
+    val onRetryBatch: () -> Unit = {},
+    val onDismissBatch: () -> Unit = {},
 )
 
 /** The backlog's changes, from the dashboard: they need the sprint they are made in. */
 class BacklogEditActions(
     val onReorder: (Sprint, BacklogMove) -> Unit = { _, _ -> },
     val onDismissReorderError: () -> Unit = {},
+    val onLoadOptions: (Sprint) -> Unit = {},
+    val onSearchPeople: (Sprint, String) -> Unit = { _, _ -> },
+    val onBatch: (List<WorkItem>, FieldChange) -> Unit = { _, _ -> },
+    val onRetryBatch: () -> Unit = {},
+    val onDismissBatch: () -> Unit = {},
 )
 
 /**
  * The current sprint's backlog on the whole screen: its top-level items in backlog order with
  * their children folding under them; "Mine" or the whole team, types, "Hide closed" and
  * "Expand all". Rows are reordered among their siblings by their handle, dragged or from its
- * menu. On tablets a table with columns, on narrow screens a list. System back closes it. The
- * initial values are for the screenshots.
+ * menu. A long press (or "Select") selects rows, to change their state, assignee, iteration,
+ * area or priority all at once. On tablets a table with columns, on narrow screens a list.
+ * System back closes the selection, then the backlog. The initial values are for the
+ * screenshots.
  */
 @Composable
 fun SprintBacklogScreen(
@@ -212,23 +231,42 @@ fun SprintBacklogScreen(
     initialExpanded: Set<Int> = emptySet(),
     /** The row whose handle's menu is open. */
     initialRowMenu: Int? = null,
+    /** Selecting, with these rows selected; null when not selecting. */
+    initialSelection: Set<Int>? = null,
+    /** The selection's change whose menu is open. */
+    initialBatchMenu: BatchKind? = null,
 ) {
     BackHandler(onBack = actions.onBack)
     val c = AdoTheme.colors
     var filter by remember(sprint.board) { mutableStateOf(initialFilter) }
     var expanded by remember(sprint.board) { mutableStateOf(initialExpanded) }
+    var selection by remember(sprint.board) { mutableStateOf(initialSelection) }
+    // Registered after the backlog's own: back closes the selection first
+    BackHandler(enabled = selection != null) { selection = null }
+    val selecting = selection != null
+    val currentActions by rememberUpdatedState(actions)
+    LaunchedEffect(selecting) { if (selecting) currentActions.onLoadOptions() }
     val list = rememberLazyListState()
     val drag = remember(list) { BacklogDrag(list) }
     val types = Backlog.types(sprint.groups)
     val rows = dragged(Backlog.filter(sprint.groups, filter, me), drag)
     val expandable = rows.filter { it.children.isNotEmpty() }.map { it.parent.id }.toSet()
     val allExpanded = expandable.isNotEmpty() && expanded.containsAll(expandable)
+    val selected = selection.orEmpty()
     val state = BacklogState(
         rows, expanded, types, filter, allExpanded,
-        reorder = BacklogOrder.canReorder(filter), list = list, drag = drag, rowMenu = initialRowMenu,
+        reorder = BacklogOrder.canReorder(filter) && !selecting, list = list, drag = drag, rowMenu = initialRowMenu,
+        selection = selection,
+        selectedItems = sprint.items.filter { it.id in selected },
+        batchMenu = initialBatchMenu,
         onFilter = { filter = it },
         onToggle = { id -> expanded = if (id in expanded) expanded - id else expanded + id },
         onToggleAll = { expanded = if (allExpanded) expanded - expandable else expanded + expandable },
+        onSelect = { selection = it },
+        onBatch = { change ->
+            actions.onBatch(sprint.items.filter { it.id in selected }.map { it.item }, change)
+            selection = null
+        },
     )
     BoxWithConstraints(
         Modifier.fillMaxSize().background(c.bg)
@@ -239,9 +277,9 @@ fun SprintBacklogScreen(
         val title = "${sprint.iteration.name} · $boardTitle"
         val wide = maxWidth >= FullScreenModalWidth
         if (wide) {
-            WideBacklog(sprint, title, now, syncing, actions, state)
+            WideBacklog(sprint, title, now, syncing, actions, state, edit)
         } else {
-            NarrowBacklog(sprint, title, now, syncing, actions, state)
+            NarrowBacklog(sprint, title, now, syncing, actions, state, edit)
         }
         edit.reorderError?.let { error ->
             val text = if (error.problem == SaveProblem.DENIED) {
@@ -256,6 +294,11 @@ fun SprintBacklogScreen(
                     .widthIn(max = 720.dp),
             ) { TextAction(stringResource(R.string.action_ok), actions.onDismissReorderError) }
         }
+        BatchStatus(
+            edit, actions.onRetryBatch, actions.onDismissBatch,
+            Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = if (wide) 56.dp else 16.dp)
+                .widthIn(max = 720.dp),
+        )
     }
 }
 
@@ -288,10 +331,52 @@ private class BacklogState(
     val list: LazyListState,
     val drag: BacklogDrag,
     val rowMenu: Int?,
+    /** The rows selected; null when not selecting. */
+    val selection: Set<Int>?,
+    val selectedItems: List<SprintItem>,
+    val batchMenu: BatchKind?,
     val onFilter: (BacklogFilter) -> Unit,
     val onToggle: (Int) -> Unit,
     val onToggleAll: () -> Unit,
+    /** Selecting with these rows selected, or no longer (null). */
+    val onSelect: (Set<Int>?) -> Unit,
+    val onBatch: (FieldChange) -> Unit,
 ) {
+    val selecting get() = selection != null
+
+    /** The ids of the rows on screen: the top-level ones and the children shown under them. */
+    val visibleIds: List<Int>
+        get() = rows.flatMap { r ->
+            listOf(r.parent.id) + if (r.parent.id in expanded) r.children.map { it.id } else emptyList()
+        }
+
+    /** "Select all" ticked, partly or not: for the rows on screen. */
+    val allSelected: ToggleableState
+        get() {
+            val visible = visibleIds
+            val selected = selection.orEmpty()
+            return when {
+                visible.isNotEmpty() && selected.containsAll(visible) -> ToggleableState.On
+                visible.any { it in selected } -> ToggleableState.Indeterminate
+                else -> ToggleableState.Off
+            }
+        }
+
+    fun toggleAllSelected() {
+        val visible = visibleIds
+        val selected = selection.orEmpty()
+        onSelect(if (selected.containsAll(visible)) selected - visible.toSet() else selected + visible)
+    }
+
+    /** A row tapped while selecting. */
+    fun toggleSelected(id: Int) {
+        val selected = selection.orEmpty()
+        onSelect(if (id in selected) selected - id else selected + id)
+    }
+
+    /** A row long-pressed: selecting, with it. */
+    fun startSelecting(id: Int?) = onSelect(selection.orEmpty() + listOfNotNull(id))
+
     fun toggleType(type: String) {
         val on = filter.types.any { it.equals(type, ignoreCase = true) }
         onFilter(filter.copy(types = if (on) filter.types.filterNot { it.equals(type, ignoreCase = true) }.toSet() else filter.types + type))
@@ -380,9 +465,38 @@ private fun Handle(item: SprintItem, row: BacklogGroup?, state: BacklogState, ac
                     style = MaterialTheme.typography.bodyMedium, color = c.textMuted,
                 )
             }
+            HorizontalDivider(color = c.outline)
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.backlog_select), style = MaterialTheme.typography.bodyMedium, color = c.text) },
+                onClick = { menu = false; state.startSelecting(id) },
+            )
         }
     }
 }
+
+/** A row's start: its checkbox while selecting, its handle otherwise. */
+@Composable
+private fun Lead(item: SprintItem, row: BacklogGroup?, state: BacklogState, actions: BacklogActions, width: Dp) {
+    if (state.selecting) {
+        Box(Modifier.width(width), contentAlignment = Alignment.Center) {
+            AdoCheckbox(ToggleableState(item.id in state.selection.orEmpty()), { state.toggleSelected(item.id) })
+        }
+    } else {
+        Handle(item, row, state, actions, width)
+    }
+}
+
+/** What tapping and long-pressing a row do: open it, or select it. */
+@OptIn(ExperimentalFoundationApi::class)
+private fun Modifier.rowClicks(item: SprintItem, state: BacklogState, onOpen: (WorkItem) -> Unit): Modifier = this.combinedClickable(
+    onLongClick = { if (state.selecting) state.toggleSelected(item.id) else state.startSelecting(item.id) },
+    onClick = { if (state.selecting) state.toggleSelected(item.id) else onOpen(item.item) },
+).then(if (state.selecting) Modifier.semantics { selected = item.id in state.selection.orEmpty() } else Modifier)
+
+/** A selected row stands out. */
+@Composable
+private fun Modifier.selectedBackground(item: SprintItem, state: BacklogState): Modifier =
+    if (item.id in state.selection.orEmpty()) background(AdoTheme.colors.primaryContainer.copy(alpha = 0.5f)) else this
 
 /**
  * A row in the list: while one is dragged it floats over the others, which slide to make room.
@@ -480,7 +594,15 @@ private fun backlogColumns(sprint: Sprint): BacklogColumns {
 }
 
 @Composable
-private fun WideBacklog(sprint: Sprint, title: String, now: Instant, syncing: Boolean, actions: BacklogActions, state: BacklogState) {
+private fun WideBacklog(
+    sprint: Sprint,
+    title: String,
+    now: Instant,
+    syncing: Boolean,
+    actions: BacklogActions,
+    state: BacklogState,
+    edit: BacklogEditState,
+) {
     val c = AdoTheme.colors
     val cols = backlogColumns(sprint)
     Column(Modifier.fillMaxSize()) {
@@ -488,6 +610,14 @@ private fun WideBacklog(sprint: Sprint, title: String, now: Instant, syncing: Bo
             Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(start = 4.dp, end = 12.dp, top = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (state.selecting) {
+                SelectionBar(state.selection.orEmpty().size, state.allSelected, state::toggleAllSelected, { state.onSelect(null) }, compact = false)
+                Spacer(Modifier.weight(1f))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BatchButtons(sprint, state.selectedItems, edit, now, state.onBatch, actions.onSearchPeople, state.batchMenu)
+                }
+                return@Row
+            }
             IconButton(onClick = actions.onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), tint = c.text)
             }
@@ -502,6 +632,8 @@ private fun WideBacklog(sprint: Sprint, title: String, now: Instant, syncing: Bo
                 }
             }
             Spacer(Modifier.width(12.dp))
+            TextAction(stringResource(R.string.backlog_select), { state.startSelecting(null) })
+            Spacer(Modifier.width(8.dp))
             ScopeToggle(state.filter.mine) { state.onFilter(state.filter.copy(mine = it)) }
             Spacer(Modifier.width(12.dp))
             RefreshButton(syncing, actions.onRefresh)
@@ -539,15 +671,15 @@ private fun WideBacklog(sprint: Sprint, title: String, now: Instant, syncing: Bo
                         DragRow(row.parent.id, null, state.drag) {
                             WideRow(
                                 row.parent, child = false, row = row, open = open, cols = cols,
-                                onToggle = { state.onToggle(row.parent.id) }, onOpen = actions.onOpen,
-                            ) { Handle(row.parent, null, state, actions, Col.lead) }
+                                onToggle = { state.onToggle(row.parent.id) }, state = state, onOpen = actions.onOpen,
+                            ) { Lead(row.parent, null, state, actions, Col.lead) }
                         }
                     }
                     if (open) {
                         items(row.children, key = { "${row.parent.id}/${it.id}" }) {
                             DragRow(it.id, row.parent.id, state.drag) {
-                                WideRow(it, child = true, row = null, open = false, cols = cols, onToggle = {}, onOpen = actions.onOpen) {
-                                    Handle(it, row, state, actions, Col.lead)
+                                WideRow(it, child = true, row = null, open = false, cols = cols, onToggle = {}, state = state, onOpen = actions.onOpen) {
+                                    Lead(it, row, state, actions, Col.lead)
                                 }
                             }
                         }
@@ -558,7 +690,13 @@ private fun WideBacklog(sprint: Sprint, title: String, now: Instant, syncing: Bo
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(totalsText(state.rows, cols.remaining), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
                 Text(
-                    stringResource(if (state.reorder) R.string.backlog_hint else R.string.backlog_reorder_off),
+                    stringResource(
+                        when {
+                            state.selecting -> R.string.backlog_select_hint
+                            state.reorder -> R.string.backlog_hint
+                            else -> R.string.backlog_reorder_off
+                        },
+                    ),
                     style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1,
                 )
             }
@@ -641,15 +779,17 @@ private fun WideRow(
     open: Boolean,
     cols: BacklogColumns,
     onToggle: () -> Unit,
+    state: BacklogState,
     onOpen: (WorkItem) -> Unit,
-    /** The handle. */
+    /** The handle, or the checkbox. */
     lead: @Composable () -> Unit,
 ) {
     val c = AdoTheme.colors
     val wi = item.item
     Column {
         Row(
-            Modifier.fillMaxWidth().height(48.dp).clickable { onOpen(wi) }.padding(start = 4.dp, end = 12.dp),
+            Modifier.fillMaxWidth().height(48.dp).selectedBackground(item, state).rowClicks(item, state, onOpen)
+                .padding(start = 4.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             lead()
@@ -723,13 +863,25 @@ private fun LazyListScope.empty() = item(key = "empty") {
 // --- Phone ---
 
 @Composable
-private fun NarrowBacklog(sprint: Sprint, title: String, now: Instant, syncing: Boolean, actions: BacklogActions, state: BacklogState) {
+private fun NarrowBacklog(
+    sprint: Sprint,
+    title: String,
+    now: Instant,
+    syncing: Boolean,
+    actions: BacklogActions,
+    state: BacklogState,
+    edit: BacklogEditState,
+) {
     val c = AdoTheme.colors
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 4.dp, end = 4.dp, top = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (state.selecting) {
+                SelectionBar(state.selection.orEmpty().size, state.allSelected, state::toggleAllSelected, { state.onSelect(null) }, compact = true)
+                return@Row
+            }
             IconButton(onClick = actions.onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), tint = c.text)
             }
@@ -745,19 +897,28 @@ private fun NarrowBacklog(sprint: Sprint, title: String, now: Instant, syncing: 
                     style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
+            IconButton(onClick = { state.startSelecting(null) }) {
+                Icon(AdoIcons.Checklist, stringResource(R.string.backlog_select), tint = c.textMuted)
+            }
             RefreshButton(syncing, actions.onRefresh)
             FilterMenu(state)
         }
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            AdoFilterChip(stringResource(R.string.backlog_team), !state.filter.mine, {
-                state.onFilter(state.filter.copy(mine = !state.filter.mine))
-            })
-            AdoFilterChip(stringResource(R.string.backlog_hide_closed), state.filter.hideClosed, {
-                state.onFilter(state.filter.copy(hideClosed = !state.filter.hideClosed))
-            })
+            if (state.selecting) {
+                // The selection's changes in place of the filters
+                BatchButtons(sprint, state.selectedItems, edit, now, state.onBatch, actions.onSearchPeople, state.batchMenu)
+            } else {
+                AdoFilterChip(stringResource(R.string.backlog_team), !state.filter.mine, {
+                    state.onFilter(state.filter.copy(mine = !state.filter.mine))
+                })
+                AdoFilterChip(stringResource(R.string.backlog_hide_closed), state.filter.hideClosed, {
+                    state.onFilter(state.filter.copy(hideClosed = !state.filter.hideClosed))
+                })
+            }
         }
         AutoScroll(state)
         LazyColumn(Modifier.weight(1f).fillMaxWidth().background(c.surface), state = state.list, contentPadding = PaddingValues(bottom = 12.dp)) {
@@ -766,15 +927,15 @@ private fun NarrowBacklog(sprint: Sprint, title: String, now: Instant, syncing: 
                 val open = row.parent.id in state.expanded && row.children.isNotEmpty()
                 item(key = row.parent.id) {
                     DragRow(row.parent.id, null, state.drag) {
-                        NarrowRow(row.parent, row, open, { state.onToggle(row.parent.id) }, actions.onOpen) {
-                            Handle(row.parent, null, state, actions, NARROW_LEAD)
+                        NarrowRow(row.parent, row, open, { state.onToggle(row.parent.id) }, state, actions.onOpen) {
+                            Lead(row.parent, null, state, actions, NARROW_LEAD)
                         }
                     }
                 }
                 if (open) {
                     items(row.children, key = { "${row.parent.id}/${it.id}" }) {
                         DragRow(it.id, row.parent.id, state.drag) {
-                            NarrowRow(it, null, false, {}, actions.onOpen) { Handle(it, row, state, actions, NARROW_LEAD) }
+                            NarrowRow(it, null, false, {}, state, actions.onOpen) { Lead(it, row, state, actions, NARROW_LEAD) }
                         }
                     }
                 }
@@ -823,6 +984,7 @@ private fun NarrowRow(
     row: BacklogGroup?,
     open: Boolean,
     onToggle: () -> Unit,
+    state: BacklogState,
     onOpen: (WorkItem) -> Unit,
     lead: @Composable () -> Unit,
 ) {
@@ -831,7 +993,7 @@ private fun NarrowRow(
     val child = row == null
     Column {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable { onOpen(wi) }
+            Modifier.fillMaxWidth().heightIn(min = 52.dp).selectedBackground(item, state).rowClicks(item, state, onOpen)
                 .padding(start = 4.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -81,6 +81,12 @@ object AdoIcons {
             " -2,0.9 -2,2s0.9,2 2,2 2,-0.9 2,-2 -0.9,-2 -2,-2z",
     )
 
+    val Checklist = icon(
+        "Checklist",
+        "M22,7h-9v2h9V7zM22,15h-9v2h9V15zM5.54,11L2,7.46l1.41,-1.41l2.12,2.12l4.24,-4.24l1.41,1.41L5.54,11z" +
+            "M5.54,19L2,15.46l1.41,-1.41l2.12,2.12l4.24,-4.24l1.41,1.41L5.54,19z",
+    )
+
     private fun icon(name: String, path: String) = ImageVector.Builder(
         name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f,
     ).addPath(addPathNodes(path), fill = SolidColor(Color.Black)).build()

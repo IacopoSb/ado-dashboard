@@ -56,6 +56,20 @@ class AdoClientSprintTest {
         assertEquals("Sprint 42", client.currentSprint("Contoso", "Backend Team"))
     }
 
+    @Test fun `the team's sprints come with their dates`() = runTest {
+        route {
+            json("""
+                {"count":2,"value":[
+                  {"id":"it-42","name":"Sprint 42","path":"Contoso\\Sprint 42","attributes":{"startDate":"2026-10-12T00:00:00Z","finishDate":"2026-10-23T00:00:00Z"}},
+                  {"id":"it-43","name":"Sprint 43","path":"Contoso\\Sprint 43","attributes":{"startDate":"2026-10-26T00:00:00Z"}}]}
+            """.trimIndent())
+        }
+        val list = client.teamIterations("Contoso", "Backend")
+        assertEquals(listOf("Contoso\\Sprint 42", "Contoso\\Sprint 43"), list.map { it.path })
+        assertEquals(Instant.parse("2026-10-26T00:00:00Z"), list[1].start)
+        assertEquals("/org/Contoso/Backend/_apis/work/teamsettings/iterations?api-version=7.1", requests.single().path)
+    }
+
     @Test fun `a team without a current sprint has none`() = runTest {
         route { json("""{"count":0,"value":[]}""") }
         assertNull(client.currentIteration("Contoso", "Backend"))

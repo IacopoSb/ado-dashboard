@@ -566,7 +566,7 @@ private fun PeopleMenu(modal: WorkItemModal, current: Person?, actions: WorkItem
 }
 
 @Composable
-private fun PersonOption(person: Person?, selected: Boolean, onClick: () -> Unit) {
+internal fun PersonOption(person: Person?, selected: Boolean, onClick: () -> Unit) {
     val c = AdoTheme.colors
     DropdownMenuItem(
         text = {

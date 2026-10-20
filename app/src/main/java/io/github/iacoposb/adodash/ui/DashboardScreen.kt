@@ -153,6 +153,9 @@ fun DashboardScreen(
     backlogExpanded: Set<Int> = emptySet(),
     /** For the screenshots: the menu of a row's handle open. */
     backlogRowMenu: Int? = null,
+    /** For the screenshots: rows selected, and a change's menu open. */
+    backlogSelection: Set<Int>? = null,
+    backlogBatchMenu: BatchKind? = null,
     /** The sprint backlog's changes being saved, and how they went. */
     backlogEdit: BacklogEditState = BacklogEditState(),
     backlogEditActions: BacklogEditActions = BacklogEditActions(),
@@ -231,12 +234,19 @@ fun DashboardScreen(
                         onOpen = onOpenWorkItem ?: { onOpen(it.url) },
                         onReorder = { backlogEditActions.onReorder(sprint, it) },
                         onDismissReorderError = backlogEditActions.onDismissReorderError,
+                        onLoadOptions = { backlogEditActions.onLoadOptions(sprint) },
+                        onSearchPeople = { backlogEditActions.onSearchPeople(sprint, it) },
+                        onBatch = backlogEditActions.onBatch,
+                        onRetryBatch = backlogEditActions.onRetryBatch,
+                        onDismissBatch = backlogEditActions.onDismissBatch,
                     ),
                     boardTitle = viewTitle(view),
                     edit = backlogEdit,
                     initialFilter = backlogFilter,
                     initialExpanded = backlogExpanded,
                     initialRowMenu = backlogRowMenu,
+                    initialSelection = backlogSelection,
+                    initialBatchMenu = backlogBatchMenu,
                 )
             }
         }
