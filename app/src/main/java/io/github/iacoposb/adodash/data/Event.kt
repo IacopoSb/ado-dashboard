@@ -58,6 +58,13 @@ data class Event(
             null
         }
 
+    /**
+     * The work item of an assignment or of a mention in its comments, also once retired (see
+     * [EventDao.retire]); null for the rest.
+     */
+    val workItemId: Int?
+        get() = WI_KEY.matchEntire(key)?.groupValues?.get(1)?.toInt()
+
     /** The pull request of a review, comment, mention or vote, with the comment for those. */
     val pullRequest: PrCommentRef?
         get() = PR_KEY.matchEntire(key)?.let { m ->
@@ -67,6 +74,7 @@ data class Event(
     companion object {
         const val BUILD_PREFIX = "build:"
         private val WI_COMMENT = Regex("wi:(\\d+):c(\\d+)")
+        private val WI_KEY = Regex("wi:(\\d+)(?::.*)?")
         private val PR_KEY = Regex("pr:(\\d+)(?::t(\\d+):c(\\d+))?(?::.*)?")
 
         /** A comment of a pull request's thread, whoever wrote it. */

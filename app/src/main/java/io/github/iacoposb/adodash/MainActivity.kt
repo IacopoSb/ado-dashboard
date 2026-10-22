@@ -100,7 +100,7 @@ class MainActivity : ComponentActivity() {
             showUpdate = intent.getBooleanExtra(EXTRA_SHOW_UPDATE, false)
             signInRequested = intent.getBooleanExtra(EXTRA_SIGN_IN, false)
             openBuildFrom(intent)
-            openCommentFrom(intent)
+            openWorkItemFrom(intent)
             openPullRequestFrom(intent)
             openUrlFrom(intent)
         }
@@ -220,10 +220,12 @@ class MainActivity : ComponentActivity() {
                             vm.markRead(event)
                             val build = event.buildId
                             val comment = event.workItemComment
+                            val workItem = event.workItemId
                             val pr = event.pullRequest
                             when {
                                 build != null && event.project != null -> vm.openBuild(event.project, build)
-                                comment != null -> vm.openWorkItemComment(comment.workItemId, comment.commentId)
+                                comment != null -> vm.openWorkItem(comment.workItemId, comment.commentId)
+                                workItem != null -> vm.openWorkItem(workItem)
                                 pr != null -> vm.openPullRequest(pr)
                                 else -> openUrl(event.url)
                             }
@@ -329,12 +331,12 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra(EXTRA_SHOW_UPDATE, false)) showUpdate = true
         if (intent.getBooleanExtra(EXTRA_SIGN_IN, false)) signInRequested = true
         openBuildFrom(intent)
-        openCommentFrom(intent)
+        openWorkItemFrom(intent)
         openPullRequestFrom(intent)
         openUrlFrom(intent)
     }
 
-    /** From an event that opens in the browser (an assignment): read, then its page. */
+    /** From an event the app cannot open itself: read, then its page in the browser. */
     private fun openUrlFrom(intent: Intent) {
         val url = intent.getStringExtra(EXTRA_URL) ?: return
         intent.getStringExtra(EXTRA_EVENT_KEY)?.let { vm.markRead(it) }
@@ -356,13 +358,16 @@ class MainActivity : ComponentActivity() {
         intent.removeExtra(EXTRA_PR_ID)
     }
 
-    /** From a mention in a work item's comments: the work item at that comment, ready to reply. */
-    private fun openCommentFrom(intent: Intent) {
+    /**
+     * From an assignment: the work item's details; from a mention in its comments: the work item
+     * at that comment, ready to reply.
+     */
+    private fun openWorkItemFrom(intent: Intent) {
         val workItem = intent.getIntExtra(EXTRA_WORK_ITEM_ID, -1)
-        val comment = intent.getIntExtra(EXTRA_COMMENT_ID, -1)
-        if (workItem < 0 || comment < 0) return
+        if (workItem < 0) return
+        val comment = intent.getIntExtra(EXTRA_COMMENT_ID, -1).takeIf { it >= 0 }
         intent.getStringExtra(EXTRA_EVENT_KEY)?.let { vm.markRead(it) }
-        vm.openWorkItemComment(workItem, comment)
+        vm.openWorkItem(workItem, comment)
         intent.removeExtra(EXTRA_WORK_ITEM_ID)
     }
 

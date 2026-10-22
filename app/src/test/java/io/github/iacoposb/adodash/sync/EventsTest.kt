@@ -70,6 +70,15 @@ class EventsTest {
         assertEquals(null, wi.copy(kind = EventKind.ASSIGNED, key = "wi:4812:assigned").workItemComment)
     }
 
+    @Test fun `every work item event knows its work item, a retired assignment too`() {
+        val assigned = io.github.iacoposb.adodash.data.Event("wi:4812:assigned", EventKind.ASSIGNED, "", "", "", 0)
+        assertEquals(4812, assigned.workItemId)
+        assertEquals(4812, assigned.copy(key = "wi:4812:assigned:left1700000000000").workItemId)
+        assertEquals(4812, assigned.copy(kind = EventKind.MENTION, key = "wi:4812:c55").workItemId)
+        assertEquals(null, assigned.copy(key = "pr:311:review").workItemId)
+        assertEquals(null, assigned.copy(key = "build:9:failed").workItemId)
+    }
+
     @Test fun `my PRs report every comment, reviewed ones only my threads and mentions`() {
         val mine = Fakes.pr(1, me)
         val theirs = Fakes.pr(2, anna)
