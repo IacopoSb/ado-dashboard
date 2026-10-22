@@ -555,6 +555,7 @@ private fun SignalChips(screen: PrScreen, pr: PullRequest) {
             BuildSignal.SUCCEEDED -> StatusChip(stringResource(R.string.pr_build_ok), tone = Tone.Success)
             BuildSignal.FAILED -> StatusChip(stringResource(R.string.pr_build_failed), tone = Tone.Danger)
             BuildSignal.RUNNING -> StatusChip(stringResource(R.string.pr_build_running), tone = Tone.Info)
+            BuildSignal.EXPIRED -> StatusChip(stringResource(R.string.pr_build_expired), tone = Tone.Warning)
             BuildSignal.NONE -> {}
         }
         checksText(signals.failedChecks, R.string.pr_check_failed, R.plurals.pr_checks_failed)?.let { StatusChip(it, tone = Tone.Danger) }

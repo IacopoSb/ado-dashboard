@@ -301,6 +301,7 @@
     <string name="pr_build_ok">Build ok</string>
     <string name="pr_build_failed">Build failed</string>
     <string name="pr_build_running">Build running</string>
+    <string name="pr_build_expired">Build expired</string>
     <plurals name="pr_active_threads">
         <item quantity="one">%d active thread</item>
         <item quantity="other">%d active threads</item>

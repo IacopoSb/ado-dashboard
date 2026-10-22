@@ -11,7 +11,12 @@ import io.github.iacoposb.adodash.api.Vote
 
 /** The build of a pull request as its row shows it. */
 @Serializable
-enum class BuildSignal { SUCCEEDED, FAILED, RUNNING, NONE }
+enum class BuildSignal {
+    SUCCEEDED, FAILED, RUNNING,
+    /** A required build outdated (the target branch moved on): to be queued again. */
+    EXPIRED,
+    NONE,
+}
 
 /** What a pull request's row says besides its title: build, threads, conflicts, ready. */
 @Serializable
@@ -106,10 +111,17 @@ object Signals {
         "rejected", "broken" -> BuildSignal.FAILED
         "running" -> BuildSignal.RUNNING
         // Queued without a build: a manual build not requested yet, or one expired
-        "queued" -> if (e.buildId != null && !e.expired) BuildSignal.RUNNING else BuildSignal.NONE
-        "approved" -> if (e.expired) BuildSignal.NONE else BuildSignal.SUCCEEDED
+        "queued" -> when {
+            e.expired -> expired(e)
+            e.buildId != null -> BuildSignal.RUNNING
+            else -> BuildSignal.NONE
+        }
+        "approved" -> if (e.expired) expired(e) else BuildSignal.SUCCEEDED
         else -> BuildSignal.NONE
     }
+
+    /** An optional build left outdated does not hold the pull request back. */
+    private fun expired(e: PolicyEvaluation) = if (e.blocking) BuildSignal.EXPIRED else BuildSignal.NONE
 
     fun signalOf(state: BuildState): BuildSignal = when (state) {
         BuildState.SUCCEEDED -> BuildSignal.SUCCEEDED
@@ -118,10 +130,11 @@ object Signals {
         BuildState.CANCELED -> BuildSignal.NONE
     }
 
-    /** A failure wins, then a build still running; succeeded only if one did. */
+    /** A failure wins, then a build still running, then one expired; succeeded only if one did. */
     private fun combine(signals: List<BuildSignal>): BuildSignal = when {
         BuildSignal.FAILED in signals -> BuildSignal.FAILED
         BuildSignal.RUNNING in signals -> BuildSignal.RUNNING
+        BuildSignal.EXPIRED in signals -> BuildSignal.EXPIRED
         BuildSignal.SUCCEEDED in signals -> BuildSignal.SUCCEEDED
         else -> BuildSignal.NONE
     }

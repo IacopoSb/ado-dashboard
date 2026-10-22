@@ -77,6 +77,19 @@ class SignalsTest {
         assertEquals(BuildSignal.SUCCEEDED, Signals.buildOf(approvedPr, listOf(buildPolicy("approved")), listOf(failedRun)))
     }
 
+    @Test fun `a required build expired is not ok`() {
+        fun build(vararg e: PolicyEvaluation) = Signals.buildOf(approvedPr, e.toList(), emptyList())
+        assertEquals(BuildSignal.EXPIRED, build(buildPolicy("approved"), buildPolicy("approved", expired = true)))
+        assertEquals("expired while still queued", BuildSignal.EXPIRED, build(buildPolicy("queued", buildId = 7, expired = true)))
+        assertEquals("a failure wins", BuildSignal.FAILED, build(buildPolicy("approved", expired = true), buildPolicy("rejected")))
+        assertEquals("a build running wins", BuildSignal.RUNNING, build(buildPolicy("approved", expired = true), buildPolicy("running")))
+        assertEquals("an optional one does not hold it back", BuildSignal.SUCCEEDED,
+            build(buildPolicy("approved"), buildPolicy("approved", expired = true, blocking = false)))
+        val s = Signals.of(approvedPr, listOf(buildPolicy("approved", expired = true)), emptyList(), emptyList())
+        assertEquals(BuildSignal.EXPIRED, s.build)
+        assertFalse(s.readyToComplete)
+    }
+
     @Test fun `without build policies the PR's own latest builds tell`() {
         val pr = approvedPr
         val builds = listOf(

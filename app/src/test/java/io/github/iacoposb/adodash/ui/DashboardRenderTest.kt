@@ -105,6 +105,7 @@ private const val SMALL_PHONE_IT = "it-w360dp-h740dp-port-xxhdpi"
 
 /** A tablet held upright: narrower than the two-column layouts. */
 private const val PORTRAIT = "en-w800dp-h1280dp-port-mdpi"
+private const val PORTRAIT_IT = "it-w800dp-h1280dp-port-mdpi"
 
 /**
  * The screens with fake data as PNGs in app/build/outputs/roborazzi: in
@@ -495,7 +496,8 @@ class DashboardRenderTest {
 
     /**
      * The pull request rows at the width of a dashboard column: without signals the vote sits
-     * on the details line, with signals on their first line, also when they wrap.
+     * on the details line, with signals on their first line, also when they wrap. Upright: the
+     * rows are taller than the tablet.
      */
     private fun prRows(name: String, width: Int = 420, dark: Boolean = false) {
         val reviewer = listOf(Reviewer(me.id, me.name, Vote.NONE, true))
@@ -520,6 +522,9 @@ class DashboardRenderTest {
                 PrSignals(BuildSignal.FAILED, activeThreads = 12, conflicts = true)),
             Triple(Fakes.pr(331, me, "Split the notification worker", reviewers), false,
                 PrSignals(BuildSignal.RUNNING, activeThreads = 3, conflicts = true)),
+            // A required build outdated: to be queued again
+            Triple(Fakes.pr(334, me, "Rename the ledger tables", reviewers), false,
+                PrSignals(BuildSignal.EXPIRED, activeThreads = 0)),
             // Checks other than the build: a failed status, blocking comments, no work item
             Triple(Fakes.pr(332, me, "Export the activity to CSV", reviewers), false,
                 PrSignals(
@@ -560,14 +565,17 @@ class DashboardRenderTest {
         compose.onRoot().captureRoboImage("panel-headers.png")
     }
 
+    @Config(qualifiers = PORTRAIT)
     @Test fun prRows() = prRows("pr-rows")
 
-    @Config(qualifiers = "+it")
+    @Config(qualifiers = PORTRAIT_IT)
     @Test fun prRowsItalian() = prRows("pr-rows-it")
 
+    @Config(qualifiers = PORTRAIT)
     @Test fun prRowsDark() = prRows("pr-rows-dark", dark = true)
 
     /** Narrow: more signals wrap. */
+    @Config(qualifiers = PORTRAIT)
     @Test fun prRowsNarrow() = prRows("pr-rows-narrow", width = 320)
 
     /** Without Build (read): no tile, the PR rows without a build. */
@@ -1481,6 +1489,8 @@ class DashboardRenderTest {
         tab: PrTab = PrTab.OVERVIEW,
         filter: ThreadFilter = ThreadFilter.ACTIVE,
         voteState: VoteState? = null,
+        /** Two required builds outdated by the target branch, beside one that passed. */
+        expiredBuilds: Boolean = false,
     ): PrScreen {
         val it = italian
         val pr = designPr(vote)
@@ -1534,6 +1544,15 @@ class DashboardRenderTest {
                 statusGenre = "SonarQube", statusName = "quality-gate",
             ),
         )
+            .let { list ->
+                if (!expiredBuilds) return@let list
+                fun expired(name: String, buildId: Int) = io.github.iacoposb.adodash.api.PolicyEvaluation(
+                    io.github.iacoposb.adodash.api.PolicyEvaluation.BUILD_POLICY, "Build", blocking = true, enabled = true,
+                    status = "approved", buildId = buildId, expired = true, displayName = name,
+                    completedAt = now.minusSeconds(26 * 3600),
+                )
+                listOf(list[0], expired("run-tests", 975), expired("app - build & analyze", 976)) + list.drop(1)
+            }
         // The quality gate backs its policy; the coverage has none: optional
         val statuses = listOf(
             io.github.iacoposb.adodash.api.PrStatus(
@@ -1594,6 +1613,12 @@ class DashboardRenderTest {
     @Test fun prOverviewItalian() = prPage("pr-overview-it", designPrScreen())
 
     @Test fun prOverviewDark() = prPage("pr-overview-dark", designPrScreen(), dark = true)
+
+    /** Builds outdated by the target branch: "Build expired" among the chips, not "Build ok". */
+    @Test fun prOverviewExpired() = prPage("pr-overview-expired", designPrScreen(expiredBuilds = true))
+
+    @Config(qualifiers = "+it")
+    @Test fun prOverviewExpiredItalian() = prPage("pr-overview-expired-it", designPrScreen(expiredBuilds = true))
 
     /** A thread opened in the overview: its replies and the reply composer. */
     @Test fun prOverviewExpanded() = prPage("pr-overview-expanded", designPrScreen(), expanded = setOf(5))

@@ -201,6 +201,7 @@ private fun signalItems(s: PrSignals): List<SignalItem> {
             BuildSignal.SUCCEEDED -> add(SignalItem(AdoIcons.CheckCircle, stringResource(R.string.pr_build_ok), c.success, c.textMuted))
             BuildSignal.FAILED -> add(SignalItem(AdoIcons.Cancel, stringResource(R.string.pr_build_failed), c.danger, c.danger))
             BuildSignal.RUNNING -> add(SignalItem(Icons.Filled.PlayArrow, stringResource(R.string.pr_build_running), c.primary, c.textMuted))
+            BuildSignal.EXPIRED -> add(SignalItem(AdoIcons.Hourglass, stringResource(R.string.pr_build_expired), c.warning, c.textMuted))
             BuildSignal.NONE -> {}
         }
         checksText(s.failedChecks, R.string.pr_check_failed, R.plurals.pr_checks_failed)?.let {

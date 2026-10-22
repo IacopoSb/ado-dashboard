@@ -293,6 +293,7 @@
     <string name="pr_build_ok">Build ok</string>
     <string name="pr_build_failed">Build fallita</string>
     <string name="pr_build_running">Build in corso</string>
+    <string name="pr_build_expired">Build scaduta</string>
     <plurals name="pr_active_threads">
         <item quantity="one">%d thread attivo</item>
         <item quantity="many">%d thread attivi</item>
