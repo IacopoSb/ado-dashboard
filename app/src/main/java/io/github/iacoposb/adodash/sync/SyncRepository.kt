@@ -285,6 +285,11 @@ class SyncRepository(
         _state.update { s -> s.snapshot?.let { s.copy(snapshot = it.withMyVote(prId, vote)) } ?: s }
     }
 
+    /** A pull request I completed or abandoned from the app: off the dashboard at once. */
+    fun applyClosedPr(prId: Int) {
+        _state.update { s -> s.snapshot?.let { s.copy(snapshot = it.withoutPullRequest(prId)) } ?: s }
+    }
+
     /** A thread I commented in from the app: never notified back to me (see [Events.ownPrThread]). */
     suspend fun applyOwnPrComments(pr: PullRequest, thread: PrThread) {
         val s = settings.current()

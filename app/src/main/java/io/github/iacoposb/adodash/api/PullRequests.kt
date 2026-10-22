@@ -12,6 +12,48 @@ data class PullRequestDetail(
     val labels: List<String> = emptyList(),
     val workItemIds: List<Int> = emptyList(),
     val status: String = "active",
+    /** Who set auto-complete: it completes by itself once the policies pass; null when not set. */
+    val autoCompleteSetBy: Identity? = null,
+    /** The options it completes (or was set to auto-complete) with; null when none were given. */
+    val completionOptions: CompletionOptions? = null,
+    /** Why the last merge failed, as Azure DevOps says it; null when it did not. */
+    val mergeFailure: String? = null,
+    /** Who completed or abandoned it. */
+    val closedBy: Identity? = null,
+) {
+    companion object {
+        const val ACTIVE = "active"
+        const val COMPLETED = "completed"
+        const val ABANDONED = "abandoned"
+    }
+}
+
+/** How a pull request is merged into its target, as Azure DevOps names it ([api]). */
+enum class MergeStrategy(val api: String) {
+    NO_FAST_FORWARD("noFastForward"),
+    SQUASH("squash"),
+    REBASE("rebase"),
+    REBASE_MERGE("rebaseMerge");
+
+    /** Rebase and fast-forward makes no merge commit: no message to write. */
+    val hasMessage get() = this != REBASE
+
+    companion object {
+        fun of(api: String?): MergeStrategy? = entries.firstOrNull { it.api.equals(api, ignoreCase = true) }
+    }
+}
+
+/**
+ * How a pull request is completed: [bypassReason] goes with [bypassPolicy], which completes it
+ * whatever its policies say (a permission of its own).
+ */
+data class CompletionOptions(
+    val mergeStrategy: MergeStrategy = MergeStrategy.NO_FAST_FORWARD,
+    val mergeCommitMessage: String? = null,
+    val deleteSourceBranch: Boolean = false,
+    val transitionWorkItems: Boolean = false,
+    val bypassPolicy: Boolean = false,
+    val bypassReason: String? = null,
 )
 
 /** Thread statuses as Azure DevOps names them. */

@@ -28,6 +28,7 @@ import io.github.iacoposb.adodash.api.FieldChange
 import io.github.iacoposb.adodash.api.Iteration
 import io.github.iacoposb.adodash.api.Pipeline
 import io.github.iacoposb.adodash.api.LinkKind
+import io.github.iacoposb.adodash.api.MergeStrategy
 import io.github.iacoposb.adodash.api.Person
 import io.github.iacoposb.adodash.api.StateInfo
 import io.github.iacoposb.adodash.api.WiFields
@@ -1619,6 +1620,64 @@ class DashboardRenderTest {
 
     @Config(qualifiers = PHONE)
     @Test fun prPhoneVoteMenu() = prPage("pr-phone-vote-menu", designPrScreen(vote = Vote.WAITING), voteMenu = true)
+
+    /**
+     * The complete dialog over the page: the merge types the branch policy allows; [blocked] with
+     * the design's failing checks, otherwise with every check passed; [bypass] on, with a reason.
+     */
+    private fun completeScreen(blocked: Boolean = false, bypass: Boolean = false): PrScreen {
+        val base = designPrScreen(vote = Vote.APPROVED)
+        val pr = base.pr!!.copy(lastCommit = "abc123")
+        val strategy = io.github.iacoposb.adodash.api.PolicyEvaluation(
+            io.github.iacoposb.adodash.api.PolicyEvaluation.MERGE_STRATEGY_POLICY, "Require a merge strategy", blocking = true, enabled = true,
+            status = "approved",
+            mergeStrategies = setOf(MergeStrategy.NO_FAST_FORWARD, MergeStrategy.SQUASH, MergeStrategy.REBASE_MERGE),
+        )
+        val policies = (if (blocked) base.policies!! else base.policies!!.map { it.copy(status = "approved") }) + strategy
+        val draft = PrCompletion.draft(pr, base.detail, policies).copy(strategy = MergeStrategy.SQUASH).let {
+            if (bypass) it.copy(bypass = true, bypassReason = if (italian) "Hotfix per il disservizio dei pagamenti" else "Hotfix for the payments outage") else it
+        }
+        return base.copy(
+            pr = pr, policies = policies,
+            statuses = if (blocked) base.statuses else emptyList(),
+            threads = if (blocked) base.threads else base.threads.copy(items = base.threads.items.map { it.copy(status = "fixed") }),
+            close = CloseState(dialog = draft),
+        )
+    }
+
+    @Test fun prComplete() = prPage("pr-complete", completeScreen())
+
+    @Config(qualifiers = "+it")
+    @Test fun prCompleteItalian() = prPage("pr-complete-it", completeScreen())
+
+    /** Required checks failing: listed, the policies bypassed with a reason. */
+    @Test fun prCompleteBypass() = prPage("pr-complete-bypass", completeScreen(blocked = true, bypass = true))
+
+    @Config(qualifiers = "+it")
+    @Test fun prCompleteBypassItalian() = prPage("pr-complete-bypass-it", completeScreen(blocked = true, bypass = true))
+
+    /** Required checks failing, no bypass: auto-complete offered instead. */
+    @Test fun prCompleteBlocked() = prPage("pr-complete-blocked", completeScreen(blocked = true))
+
+    @Config(qualifiers = PHONE)
+    @Test fun prPhoneComplete() = prPage("pr-phone-complete", completeScreen(blocked = true, bypass = true))
+
+    private fun abandonedScreen(): PrScreen {
+        val base = designPrScreen()
+        return base.copy(detail = base.detail!!.copy(status = "abandoned", closedBy = anna))
+    }
+
+    /** Abandoned: the banner with "Reactivate", no vote and no Complete. */
+    @Test fun prAbandoned() = prPage("pr-abandoned", abandonedScreen())
+
+    @Config(qualifiers = "+it")
+    @Test fun prAbandonedItalian() = prPage("pr-abandoned-it", abandonedScreen())
+
+    /** Auto-complete set: the banner with "Cancel auto-complete". */
+    @Test fun prAutoComplete() = prPage(
+        "pr-auto-complete",
+        designPrScreen().let { it.copy(detail = it.detail!!.copy(autoCompleteSetBy = anna)) },
+    )
 
     /** A long comment collapsed with "Show all", and a reply with a code block wider than the card. */
     private fun longCommentScreen(): PrScreen {

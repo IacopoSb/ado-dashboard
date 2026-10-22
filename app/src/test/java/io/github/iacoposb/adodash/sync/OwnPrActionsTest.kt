@@ -46,6 +46,21 @@ class OwnPrActionsTest {
         assertEquals(pr, snapshot.pullRequest(311)?.copy(reviewers = pr.reviewers))
     }
 
+    @Test fun `a pull request I completed or abandoned leaves every list at once`() {
+        val mine = Fakes.pr(320, me)
+        val review = Fakes.pr(311, anna)
+        val other = Fakes.pr(330, marco)
+        val base = Snapshot(me, emptyList(), listOf(review), listOf(mine), now, signals = mapOf(311 to PrSignals(), 320 to PrSignals()))
+        val snapshot = base.copy(shown = Shown("view", emptyList(), listOf(review), listOf(mine), otherPrs = listOf(other)))
+        val after = snapshot.withoutPullRequest(311).withoutPullRequest(330)
+        assertTrue(after.reviewPrs.isEmpty())
+        assertEquals(listOf(mine), after.myPrs)
+        assertEquals(setOf(320), after.signals.keys)
+        assertTrue(after.shown!!.reviewPrs.isEmpty() && after.shown!!.otherPrs.isEmpty())
+        assertNull(after.pullRequest(311))
+        assertEquals(mine, after.pullRequest(320))
+    }
+
     @Test fun `pull request events open their page, comments at their thread`() {
         fun ref(key: String) = Event(key, EventKind.PR_COMMENT, "", "", "", 0).pullRequest
         assertEquals(PrCommentRef(311, 5, 2), ref("pr:311:t5:c2"))

@@ -196,14 +196,72 @@ class AdoClient(
                 addQueryParameter("includeWorkItemRefs", "true")
             },
         )
-        return PullRequestDetail(
-            pr = dto.toPullRequest(),
-            description = dto.description.orEmpty(),
-            labels = dto.labels.filter { it.active }.map { it.name },
-            workItemIds = dto.workItemRefs.mapNotNull { it.id.toIntOrNull() }.distinct(),
-            status = dto.status,
-        )
+        return dto.toDetail()
     }
+
+    override suspend fun completePullRequest(pr: PullRequest, lastCommit: String, options: CompletionOptions): PullRequestDetail =
+        updatePullRequest(
+            pr,
+            buildJsonObject {
+                put("status", PullRequestDetail.COMPLETED)
+                putJsonObject("lastMergeSourceCommit") { put("commitId", lastCommit) }
+                put("completionOptions", options.toJson())
+            },
+        )
+
+    override suspend fun setAutoComplete(pr: PullRequest, setById: String?, options: CompletionOptions?): PullRequestDetail =
+        updatePullRequest(
+            pr,
+            buildJsonObject {
+                // The empty id is how Azure DevOps cancels it
+                putJsonObject("autoCompleteSetBy") { put("id", setById ?: NO_ONE) }
+                if (setById != null && options != null) put("completionOptions", options.toJson())
+            },
+        )
+
+    override suspend fun setPullRequestStatus(pr: PullRequest, status: String): PullRequestDetail =
+        updatePullRequest(pr, buildJsonObject { put("status", status) })
+
+    private suspend fun updatePullRequest(pr: PullRequest, body: JsonObject): PullRequestDetail =
+        call<PullRequestDto>(
+            Request.Builder()
+                .url(url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullrequests", "${pr.id}"))
+                .patch(body.toString().toRequestBody(JSON)),
+        ).toDetail()
+
+    /** The merge commit's message only for the merge types that make one. */
+    private fun CompletionOptions.toJson() = buildJsonObject {
+        put("mergeStrategy", mergeStrategy.api)
+        put("deleteSourceBranch", deleteSourceBranch)
+        put("transitionWorkItems", transitionWorkItems)
+        if (mergeStrategy.hasMessage && !mergeCommitMessage.isNullOrBlank()) put("mergeCommitMessage", mergeCommitMessage)
+        if (bypassPolicy) {
+            put("bypassPolicy", true)
+            put("bypassReason", bypassReason.orEmpty())
+        }
+    }
+
+    private fun PullRequestDto.toDetail() = PullRequestDetail(
+        pr = toPullRequest(),
+        description = description.orEmpty(),
+        labels = labels.filter { it.active }.map { it.name },
+        workItemIds = workItemRefs.mapNotNull { it.id.toIntOrNull() }.distinct(),
+        status = status,
+        autoCompleteSetBy = autoCompleteSetBy?.takeIf { it.id.isNotEmpty() && it.id != NO_ONE }?.toIdentity(),
+        completionOptions = completionOptions?.let { o ->
+            CompletionOptions(
+                mergeStrategy = MergeStrategy.of(o.mergeStrategy)
+                    ?: if (o.squashMerge) MergeStrategy.SQUASH else MergeStrategy.NO_FAST_FORWARD,
+                mergeCommitMessage = o.mergeCommitMessage,
+                deleteSourceBranch = o.deleteSourceBranch,
+                transitionWorkItems = o.transitionWorkItems,
+                bypassPolicy = o.bypassPolicy,
+                bypassReason = o.bypassReason,
+            )
+        },
+        mergeFailure = mergeFailureMessage?.takeIf { it.isNotBlank() },
+        closedBy = closedBy?.takeIf { it.id.isNotEmpty() }?.toIdentity(),
+    )
 
     override suspend fun votePullRequest(pr: PullRequest, reviewerId: String, vote: Int): Reviewer {
         val body = buildJsonObject { put("vote", vote) }
@@ -430,8 +488,29 @@ class AdoClient(
                 completedAt = it.completedDate?.let(::instantOrNull),
                 statusGenre = settings.text("statusGenre"),
                 statusName = settings.text("statusName"),
+                mergeStrategies = if (it.configuration.type.id.equals(PolicyEvaluation.MERGE_STRATEGY_POLICY, ignoreCase = true)) {
+                    mergeStrategiesOf(settings)
+                } else {
+                    null
+                },
             )
         }
+    }
+
+    /**
+     * What a "Require a merge strategy" policy allows: its allow* settings, or for the policies
+     * saved before them, squash alone ("useSquashMerge") or the plain merge.
+     */
+    private fun mergeStrategiesOf(settings: JsonObject?): Set<MergeStrategy> {
+        fun flag(key: String) = (settings?.get(key) as? JsonPrimitive)?.booleanOrNull
+        val allowed = mapOf(
+            MergeStrategy.NO_FAST_FORWARD to flag("allowNoFastForward"),
+            MergeStrategy.SQUASH to flag("allowSquash"),
+            MergeStrategy.REBASE to flag("allowRebase"),
+            MergeStrategy.REBASE_MERGE to flag("allowRebaseMerge"),
+        )
+        if (allowed.values.any { it != null }) return allowed.filterValues { it == true }.keys
+        return if (flag("useSquashMerge") == true) setOf(MergeStrategy.SQUASH) else setOf(MergeStrategy.NO_FAST_FORWARD)
     }
 
     private fun JsonObject?.text(key: String) = (this?.get(key) as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
@@ -915,6 +994,8 @@ class AdoClient(
         private val JSON = "application/json".toMediaType()
         private val JSON_PATCH = "application/json-patch+json".toMediaType()
         private const val PR_ARTIFACT = "vstfs:///Git/PullRequestId/"
+        /** The empty identity: auto-complete set by no one is auto-complete cancelled. */
+        private const val NO_ONE = "00000000-0000-0000-0000-000000000000"
         private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
         private val WORK_ITEM_FIELDS = listOf(
             "System.Id", "System.TeamProject", "System.WorkItemType", "System.Title", "System.State",
@@ -1108,6 +1189,19 @@ private fun CommentDto.toComment(): Comment {
     val description: String? = null,
     val labels: List<LabelDto> = emptyList(),
     val workItemRefs: List<ResourceRefDto> = emptyList(),
+    val autoCompleteSetBy: IdentityDto? = null,
+    val completionOptions: CompletionOptionsDto? = null,
+    val mergeFailureMessage: String? = null,
+    val closedBy: IdentityDto? = null,
+)
+@Serializable private data class CompletionOptionsDto(
+    val mergeStrategy: String? = null,
+    val squashMerge: Boolean = false,
+    val mergeCommitMessage: String? = null,
+    val deleteSourceBranch: Boolean = false,
+    val transitionWorkItems: Boolean = false,
+    val bypassPolicy: Boolean = false,
+    val bypassReason: String? = null,
 )
 @Serializable private data class LabelDto(val name: String = "", val active: Boolean = true)
 @Serializable private data class ResourceRefDto(val id: String = "")

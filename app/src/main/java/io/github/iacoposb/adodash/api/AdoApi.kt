@@ -170,6 +170,21 @@ interface AdoApi {
     suspend fun votePullRequest(pr: PullRequest, reviewerId: String, vote: Int): Reviewer =
         throw AdoException(403, "Not supported")
 
+    /**
+     * Completes [pr] if its source branch is still at [lastCommit]: answers it as it is then, still
+     * active while the merge runs. A push in between fails with [AdoException] 409.
+     */
+    suspend fun completePullRequest(pr: PullRequest, lastCommit: String, options: CompletionOptions): PullRequestDetail =
+        throw AdoException(403, "Not supported")
+
+    /** Sets auto-complete as [setById] (me) with [options]; null [setById] cancels it. */
+    suspend fun setAutoComplete(pr: PullRequest, setById: String?, options: CompletionOptions?): PullRequestDetail =
+        throw AdoException(403, "Not supported")
+
+    /** Abandons [pr], or reactivates it: [status] "abandoned" or "active". */
+    suspend fun setPullRequestStatus(pr: PullRequest, status: String): PullRequestDetail =
+        throw AdoException(403, "Not supported")
+
     /** Replies in a thread of [pr]: [content] is markdown, mentions as `@<id>`. */
     suspend fun addPullRequestComment(pr: PullRequest, threadId: Int, parentId: Int, content: String): PrComment =
         throw AdoException(403, "Not supported")

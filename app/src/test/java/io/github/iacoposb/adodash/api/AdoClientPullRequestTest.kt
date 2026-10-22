@@ -196,4 +196,106 @@ class AdoClientPullRequestTest {
         assertEquals("/org/_apis/identities?identityIds=u-1%2Cu-2&api-version=7.1", server.takeRequest().path)
         assertEquals(mapOf("u-1" to "Luca Rossi", "u-2" to "Giò"), names)
     }
+
+    private fun body(request: okhttp3.mockwebserver.RecordedRequest) = Json.parseToJsonElement(request.body.readUtf8()).jsonObject
+
+    @Test fun `completing is a PATCH with the last commit and the options`() = runTest {
+        server.enqueue(json(prJson.replace("\"status\":\"active\"", "\"status\":\"completed\"")))
+        val options = CompletionOptions(
+            MergeStrategy.SQUASH, "Merged PR 311: Retry", deleteSourceBranch = true, transitionWorkItems = true,
+            bypassPolicy = true, bypassReason = "Hotfix",
+        )
+        val detail = client.completePullRequest(pr, "abc123", options)
+        val request = server.takeRequest()
+        assertEquals("PATCH", request.method)
+        assertEquals("/org/Contoso/_apis/git/repositories/repo-1/pullrequests/311?api-version=7.1", request.path)
+        assertEquals(
+            Json.parseToJsonElement(
+                """{"status":"completed","lastMergeSourceCommit":{"commitId":"abc123"},
+                    "completionOptions":{"mergeStrategy":"squash","deleteSourceBranch":true,"transitionWorkItems":true,
+                    "mergeCommitMessage":"Merged PR 311: Retry","bypassPolicy":true,"bypassReason":"Hotfix"}}""",
+            ),
+            body(request),
+        )
+        assertEquals("completed", detail.status)
+    }
+
+    @Test fun `rebase and fast-forward sends no message, and no bypass unless asked`() = runTest {
+        server.enqueue(json(prJson))
+        client.completePullRequest(pr, "abc123", CompletionOptions(MergeStrategy.REBASE, "Merged PR 311: Retry"))
+        val options = body(server.takeRequest())["completionOptions"]!!.jsonObject
+        assertEquals("rebase", options["mergeStrategy"]!!.jsonPrimitive.content)
+        assertNull(options["mergeCommitMessage"])
+        assertNull(options["bypassPolicy"])
+    }
+
+    @Test fun `auto-complete is set by me with the options, and cancelled by no one`() = runTest {
+        server.enqueue(
+            json(
+                prJson.replace(
+                    "\"mergeStatus\":\"succeeded\",",
+                    """"mergeStatus":"succeeded","autoCompleteSetBy":{"id":"me","displayName":"Iacopo"},
+                       "completionOptions":{"mergeStrategy":"rebaseMerge","deleteSourceBranch":true,"mergeCommitMessage":"Merged"},""",
+                ),
+            ),
+        )
+        val set = client.setAutoComplete(pr, "me", CompletionOptions(MergeStrategy.REBASE_MERGE, "Merged", deleteSourceBranch = true))
+        var request = server.takeRequest()
+        assertEquals("PATCH", request.method)
+        val sent = body(request)
+        assertEquals("me", sent["autoCompleteSetBy"]!!.jsonObject["id"]!!.jsonPrimitive.content)
+        assertEquals("rebaseMerge", sent["completionOptions"]!!.jsonObject["mergeStrategy"]!!.jsonPrimitive.content)
+        assertEquals(Identity("me", "Iacopo"), set.autoCompleteSetBy)
+        assertEquals(MergeStrategy.REBASE_MERGE, set.completionOptions?.mergeStrategy)
+        assertTrue(set.completionOptions!!.deleteSourceBranch)
+
+        server.enqueue(
+            json(prJson.replace("\"mergeStatus\":\"succeeded\",", """"mergeStatus":"succeeded","autoCompleteSetBy":{"id":"00000000-0000-0000-0000-000000000000"},""")),
+        )
+        val cancelled = client.setAutoComplete(pr, null, null)
+        request = server.takeRequest()
+        assertEquals(Json.parseToJsonElement("""{"autoCompleteSetBy":{"id":"00000000-0000-0000-0000-000000000000"}}"""), body(request))
+        assertNull(cancelled.autoCompleteSetBy)
+    }
+
+    @Test fun `abandoning and reactivating change the status alone`() = runTest {
+        server.enqueue(json(prJson.replace("\"status\":\"active\"", "\"status\":\"abandoned\",\"closedBy\":{\"id\":\"me\",\"displayName\":\"Iacopo\"}")))
+        val abandoned = client.setPullRequestStatus(pr, "abandoned")
+        assertEquals(Json.parseToJsonElement("""{"status":"abandoned"}"""), body(server.takeRequest()))
+        assertEquals("abandoned", abandoned.status)
+        assertEquals("Iacopo", abandoned.closedBy?.name)
+        server.enqueue(json(prJson))
+        client.setPullRequestStatus(pr, "active")
+        assertEquals(Json.parseToJsonElement("""{"status":"active"}"""), body(server.takeRequest()))
+    }
+
+    @Test fun `completing without permission is a 403, a push in between a 409`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(403).setBody("""{"message":"TF401027: You need the Git 'PullRequestBypassPolicy' permission"}"""))
+        val denied = assertThrows(AdoException::class.java) {
+            kotlinx.coroutines.runBlocking { client.completePullRequest(pr, "abc", CompletionOptions(bypassPolicy = true, bypassReason = "x")) }
+        }
+        assertTrue(denied.isDenied)
+        server.enqueue(MockResponse().setResponseCode(409).setBody("""{"message":"TF401181: The pull request was updated"}"""))
+        val stale = assertThrows(AdoException::class.java) {
+            kotlinx.coroutines.runBlocking { client.completePullRequest(pr, "abc", CompletionOptions()) }
+        }
+        assertEquals(409, stale.code)
+    }
+
+    @Test fun `the merge strategy policy tells the merge types allowed`() = runTest {
+        fun policy(settings: String) =
+            """{"status":"approved","configuration":{"isEnabled":true,"isBlocking":true,
+               "type":{"id":"fa4e907d-c16b-4a4c-9dfa-4916e5d9c4e1","displayName":"Require a merge strategy"},"settings":$settings}}"""
+        server.enqueue(
+            json(
+                """{"value":[${policy("""{"allowNoFastForward":false,"allowSquash":true,"allowRebase":false,"allowRebaseMerge":true}""")},
+                ${policy("""{"useSquashMerge":true}""")},
+                {"status":"approved","configuration":{"isEnabled":true,"isBlocking":true,"type":{"id":"0609b952-1397-4640-95ec-e00a01b2c241","displayName":"Build"}}}]}""",
+            ),
+        )
+        val (strategy, legacy, build) = client.policyEvaluations(pr.copy(projectId = "p-1"))
+        assertEquals(setOf(MergeStrategy.SQUASH, MergeStrategy.REBASE_MERGE), strategy.mergeStrategies)
+        assertEquals(setOf(MergeStrategy.SQUASH), legacy.mergeStrategies)
+        assertNull(build.mergeStrategies)
+    }
 }

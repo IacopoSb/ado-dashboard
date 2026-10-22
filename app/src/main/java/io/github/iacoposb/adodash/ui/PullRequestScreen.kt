@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -78,6 +79,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.iacoposb.adodash.R
 import io.github.iacoposb.adodash.api.PullRequest
+import io.github.iacoposb.adodash.api.PullRequestDetail
 import io.github.iacoposb.adodash.api.Reviewer
 import io.github.iacoposb.adodash.api.Vote
 import io.github.iacoposb.adodash.api.WorkItem
@@ -128,6 +130,17 @@ class PrActions(
     /** A line long-pressed, or its number tapped: a new thread on it. */
     val onStartFileThread: (LineRef) -> Unit = {},
     val onCancelFileThread: () -> Unit = {},
+    /** "Complete": the dialog with the merge options. */
+    val onOpenComplete: () -> Unit = {},
+    val onEditComplete: (CompleteDraft) -> Unit = {},
+    val onDismissComplete: () -> Unit = {},
+    val onComplete: () -> Unit = {},
+    val onSetAutoComplete: () -> Unit = {},
+    val onCancelAutoComplete: () -> Unit = {},
+    /** Confirmed already. */
+    val onAbandon: () -> Unit = {},
+    val onReactivate: () -> Unit = {},
+    val onDismissCloseError: () -> Unit = {},
 )
 
 /** How long the thread opened from a mention stays highlighted. */
@@ -171,49 +184,56 @@ fun PullRequestScreen(
         expanded = expanded, highlighted = highlighted,
         toggle = { id -> expanded = if (id in expanded) expanded - id else expanded + id },
     )
-    BoxWithConstraints(
-        Modifier.fillMaxSize().background(c.bg)
-            // Nothing below it is reachable
-            .clickable(remember { MutableInteractionSource() }, indication = null) {}
-            .windowInsetsPadding(WindowInsets.safeDrawing).imePadding(),
-    ) {
-        // Phones on their side too: the single column, the vote fixed at the bottom
-        val wide = maxWidth >= FullScreenModalWidth && !shortScreen()
-        Column(Modifier.fillMaxSize()) {
-            PrAppBar(screen, now, actions, wide, initialVoteMenu && wide)
-            screen.vote.error?.let { error ->
-                Banner(
-                    if (error.problem == SaveProblem.DENIED) stringResource(R.string.pr_vote_denied)
-                    else stringResource(R.string.pr_vote_failed, error.message),
-                    BannerTone.Error, Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                ) { TextAction(stringResource(R.string.pr_dismiss), actions.onDismissVoteError) }
-            }
-            val pr = screen.pr
-            when {
-                screen.error != null -> Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp)) {
-                    Text(stringResource(R.string.pr_load_failed, screen.error), style = MaterialTheme.typography.bodyMedium, color = c.danger)
-                    TextAction(stringResource(R.string.action_retry), actions.onRetry)
+    val dialog = screen.close.dialog
+    Box(Modifier.fillMaxSize()) {
+        BoxWithConstraints(
+            Modifier.fillMaxSize().background(c.bg)
+                // Nothing below it is reachable
+                .clickable(remember { MutableInteractionSource() }, indication = null) {}
+                .windowInsetsPadding(WindowInsets.safeDrawing).imePadding()
+                .then(if (dialog != null) Modifier.clearAndSetSemantics {} else Modifier),
+        ) {
+            // Phones on their side too: the single column, the vote fixed at the bottom
+            val wide = maxWidth >= FullScreenModalWidth && !shortScreen()
+            Column(Modifier.fillMaxSize()) {
+                PrAppBar(screen, now, actions, wide, initialVoteMenu && wide)
+                screen.vote.error?.let { error ->
+                    Banner(
+                        if (error.problem == SaveProblem.DENIED) stringResource(R.string.pr_vote_denied)
+                        else stringResource(R.string.pr_vote_failed, error.message),
+                        BannerTone.Error, Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    ) { TextAction(stringResource(R.string.pr_dismiss), actions.onDismissVoteError) }
                 }
-                pr == null -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(32.dp), color = c.primary, strokeWidth = 3.dp)
-                }
-                else -> {
-                    PrTabs(screen, pr, actions, wide)
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
-                        when {
-                            screen.tab == PrTab.FILES -> FilesTab(screen, now, actions, wide)
-                            screen.tab == PrTab.COMMITS -> CommitsTab(screen, now, actions, wide)
-                            screen.tab == PrTab.THREADS && wide -> WideThreads(screen, now, actions, view)
-                            screen.tab == PrTab.THREADS -> NarrowThreads(screen, now, actions, view)
-                            wide -> WideOverview(screen, pr, now, actions, view)
-                            else -> NarrowOverview(screen, pr, now, actions)
-                        }
+                val pr = screen.pr
+                if (pr != null) CloseBanners(screen, pr, actions)
+                when {
+                    screen.error != null -> Column(Modifier.weight(1f).fillMaxWidth().padding(24.dp)) {
+                        Text(stringResource(R.string.pr_load_failed, screen.error), style = MaterialTheme.typography.bodyMedium, color = c.danger)
+                        TextAction(stringResource(R.string.action_retry), actions.onRetry)
                     }
-                    // Typing a comment: the keyboard leaves little room, the votes come back after
-                    if (!wide && screen.canVote && WindowInsets.ime.getBottom(LocalDensity.current) == 0) PhoneVoteBar(screen, actions, initialVoteMenu)
+                    pr == null -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(Modifier.size(32.dp), color = c.primary, strokeWidth = 3.dp)
+                    }
+                    else -> {
+                        PrTabs(screen, pr, actions, wide)
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            when {
+                                screen.tab == PrTab.FILES -> FilesTab(screen, now, actions, wide)
+                                screen.tab == PrTab.COMMITS -> CommitsTab(screen, now, actions, wide)
+                                screen.tab == PrTab.THREADS && wide -> WideThreads(screen, now, actions, view)
+                                screen.tab == PrTab.THREADS -> NarrowThreads(screen, now, actions, view)
+                                wide -> WideOverview(screen, pr, now, actions, view)
+                                else -> NarrowOverview(screen, pr, now, actions)
+                            }
+                        }
+                        // Typing a comment: the keyboard leaves little room, the votes come back after
+                        if (!wide && screen.canVote && WindowInsets.ime.getBottom(LocalDensity.current) == 0) PhoneVoteBar(screen, actions, initialVoteMenu)
+                    }
                 }
             }
         }
+        val pr = screen.pr
+        if (dialog != null && pr != null) CompleteDialog(screen, pr, dialog, now, actions)
     }
 }
 
@@ -258,13 +278,12 @@ private fun PrAppBar(screen: PrScreen, now: Instant, actions: PrActions, wide: B
             Spacer(Modifier.width(12.dp))
             VoteButtons(screen.vote.shown, busy = screen.vote.busy, onVote = actions.onVote)
         }
-        if (wide) {
-            OverflowMenu(screen, actions, menuOpen)
-        } else if (pr != null) {
-            IconButton(onClick = { actions.onOpenUrl(pr.url) }) {
-                Icon(AdoIcons.OpenInNew, stringResource(R.string.action_open_build), tint = c.textMuted)
-            }
+        if (wide && screen.canClose) {
+            Spacer(Modifier.width(8.dp))
+            CompleteButton(screen, actions)
         }
+        // Phones: "Complete" in the menu, the vote at the bottom
+        OverflowMenu(screen, actions, menuOpen, withComplete = !wide)
     }
 }
 
@@ -336,20 +355,55 @@ private fun VoteButton(
     }
 }
 
-/** "Reset vote" and "Open in Azure DevOps". */
+/**
+ * "Reset vote" (tablets), "Complete" (phones), "Abandon" or "Reactivate", and "Open in Azure
+ * DevOps"; abandoning asks first.
+ */
 @Composable
-private fun OverflowMenu(screen: PrScreen, actions: PrActions, initiallyOpen: Boolean) {
+private fun OverflowMenu(screen: PrScreen, actions: PrActions, initiallyOpen: Boolean, withComplete: Boolean) {
     val c = AdoTheme.colors
     var open by remember { mutableStateOf(initiallyOpen) }
+    var confirmAbandon by remember { mutableStateOf(false) }
+    val idle = screen.close.busy == null && !screen.close.merging
     Box {
         IconButton(onClick = { open = true }) { Icon(Icons.Filled.MoreVert, stringResource(R.string.pr_more), tint = c.textMuted) }
         DropdownMenu(open, { open = false }, containerColor = c.surface) {
-            if (screen.canVote) {
+            if (withComplete && screen.canClose) {
+                val draft = screen.pr?.draft == true
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(if (draft) R.string.pr_complete_publish_draft else R.string.pr_complete),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    },
+                    onClick = { open = false; actions.onOpenComplete() },
+                    leadingIcon = { Icon(AdoIcons.MergeType, null, Modifier.size(18.dp)) },
+                    enabled = !draft && idle,
+                )
+            }
+            if (screen.canVote && !withComplete) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.pr_vote_reset), style = MaterialTheme.typography.bodyMedium) },
                     onClick = { open = false; actions.onVote(Vote.NONE) },
                     leadingIcon = { Icon(Icons.Filled.Refresh, null, Modifier.size(18.dp)) },
                     enabled = screen.vote.shown != Vote.NONE && !screen.vote.busy,
+                )
+            }
+            if (screen.canClose) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.pr_abandon), style = MaterialTheme.typography.bodyMedium, color = c.danger) },
+                    onClick = { open = false; confirmAbandon = true },
+                    leadingIcon = { Icon(Icons.Filled.Close, null, Modifier.size(18.dp), tint = c.danger) },
+                    enabled = idle,
+                )
+            }
+            if (screen.status == PullRequestDetail.ABANDONED) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.pr_reactivate), style = MaterialTheme.typography.bodyMedium) },
+                    onClick = { open = false; actions.onReactivate() },
+                    leadingIcon = { Icon(Icons.Filled.Refresh, null, Modifier.size(18.dp)) },
+                    enabled = idle,
                 )
             }
             screen.pr?.let { pr ->
@@ -361,6 +415,8 @@ private fun OverflowMenu(screen: PrScreen, actions: PrActions, initiallyOpen: Bo
             }
         }
     }
+    val pr = screen.pr
+    if (confirmAbandon && pr != null) AbandonConfirm(pr, actions.onAbandon) { confirmAbandon = false }
 }
 
 /** Phones: "Approve" and "Other vote" fixed at the bottom. */
@@ -718,7 +774,7 @@ private fun Checks(screen: PrScreen, pr: PullRequest, now: Instant, actions: PrA
 }
 
 @Composable
-private fun CheckLine(row: CheckRow, now: Instant, onClick: (() -> Unit)?) {
+internal fun CheckLine(row: CheckRow, now: Instant, onClick: (() -> Unit)?) {
     val c = AdoTheme.colors
     val (icon, tint) = when (row.state) {
         CheckState.OK -> AdoIcons.CheckCircle to c.success

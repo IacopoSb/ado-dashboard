@@ -240,6 +240,8 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         errorText = app::errorText,
         onVoted = { pr, vote -> app.sync.applyOwnVote(pr.id, vote) },
         onCommented = { pr, thread -> app.sync.applyOwnPrComments(pr, thread) },
+        onClosed = { pr -> app.sync.applyClosedPr(pr.id) },
+        onReactivated = { refresh() },
     )
     val pullRequest = pullRequests.state
 
@@ -279,6 +281,15 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         onRetryFile = pullRequests::retryFile,
         onStartFileThread = pullRequests::startFileThread,
         onCancelFileThread = pullRequests::cancelFileThread,
+        onOpenComplete = pullRequests::openComplete,
+        onEditComplete = pullRequests::editComplete,
+        onDismissComplete = pullRequests::dismissComplete,
+        onComplete = pullRequests::complete,
+        onSetAutoComplete = pullRequests::setAutoComplete,
+        onCancelAutoComplete = pullRequests::cancelAutoComplete,
+        onAbandon = pullRequests::abandon,
+        onReactivate = pullRequests::reactivate,
+        onDismissCloseError = pullRequests::dismissCloseError,
     )
 
     fun closeBuild() {

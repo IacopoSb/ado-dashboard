@@ -100,7 +100,7 @@ fun AdoCheckbox(state: ToggleableState, onClick: (() -> Unit)?, modifier: Modifi
 
 /**
  * The design's text field: label above, 42 dp box with a 1 dp outline (primary when focused,
- * danger with [error]), hint or error below.
+ * danger with [error]), hint or error below; [singleLine] false grows with the text from [minLines].
  */
 @Composable
 fun AdoTextField(
@@ -115,6 +115,8 @@ fun AdoTextField(
     enabled: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    singleLine: Boolean = true,
+    minLines: Int = 1,
 ) {
     val c = AdoTheme.colors
     val interaction = remember { MutableInteractionSource() }
@@ -131,7 +133,8 @@ fun AdoTextField(
                 if (error != null) error(error)
             },
             enabled = enabled,
-            singleLine = true,
+            singleLine = singleLine,
+            minLines = minLines,
             textStyle = style,
             cursorBrush = SolidColor(c.primary),
             keyboardOptions = keyboardOptions,

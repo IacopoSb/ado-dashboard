@@ -4,6 +4,7 @@ import io.github.iacoposb.adodash.api.AdoApi
 import io.github.iacoposb.adodash.api.AdoException
 import io.github.iacoposb.adodash.api.FileAnchor
 import io.github.iacoposb.adodash.api.FileContent
+import io.github.iacoposb.adodash.api.Identity
 import io.github.iacoposb.adodash.api.PrCommit
 import io.github.iacoposb.adodash.api.PrFileChange
 import io.github.iacoposb.adodash.api.PrIteration
@@ -183,14 +184,24 @@ data class PrScreen(
     val me: Person? = null,
     val files: PrFilesState = PrFilesState(),
     val commits: PrCommitsState = PrCommitsState(),
+    val close: CloseState = CloseState(),
 ) {
     fun composer(threadId: Int) = composers[threadId] ?: ComposerState()
 
     /** "active", "completed" or "abandoned". */
-    val status: String get() = detail?.status ?: "active"
+    val status: String get() = detail?.status ?: PullRequestDetail.ACTIVE
 
     /** Votes are for active pull requests that are not drafts. */
-    val canVote: Boolean get() = pr != null && me != null && !pr.draft && status == "active"
+    val canVote: Boolean get() = pr != null && me != null && !pr.draft && status == PullRequestDetail.ACTIVE
+
+    /**
+     * Complete and Abandon are offered on active pull requests (drafts too, Complete disabled):
+     * who may close it is Azure DevOps' to say.
+     */
+    val canClose: Boolean get() = pr != null && detail != null && status == PullRequestDetail.ACTIVE
+
+    /** Something keeps it from completing without bypassing the policies (see [PrCompletion.blocked]). */
+    val blocked: Boolean get() = pr != null && PrCompletion.blocked(pr, policies)
 
     companion object {
         /** The composer of a new thread on the pull request as a whole. */
@@ -214,6 +225,10 @@ class PullRequestController(
     private val onVoted: suspend (PullRequest, Int) -> Unit = { _, _ -> },
     /** After I commented in a thread: its comments are stored as seen, never notified to me. */
     private val onCommented: suspend (PullRequest, PrThread) -> Unit = { _, _ -> },
+    /** After I completed or abandoned it: off the dashboard's lists. */
+    private val onClosed: suspend (PullRequest) -> Unit = {},
+    /** After I reactivated it: back on the dashboard at the next sync. */
+    private val onReactivated: suspend (PullRequest) -> Unit = {},
     private val clock: () -> Instant = Instant::now,
     /** Where diffs are computed: off the main thread. */
     private val compute: CoroutineContext = Dispatchers.Default,
@@ -693,6 +708,161 @@ class PullRequestController(
         }
     }
 
+    /** "Complete" tapped: the dialog with the options Azure DevOps would offer. */
+    fun openComplete() = _state.update { s ->
+        val pr = s?.pr ?: return@update s
+        if (!s.canClose || s.close.dialog != null) return@update s
+        s.copy(close = s.close.copy(dialog = PrCompletion.draft(pr, s.detail, s.policies), error = null))
+    }
+
+    /** A choice changed in the dialog. */
+    fun editComplete(draft: CompleteDraft) = _state.update { s ->
+        if (s?.close?.dialog == null || s.close.busy != null) s else s.copy(close = s.close.copy(dialog = draft, error = null))
+    }
+
+    /** Closed without completing; while completing, the page goes on showing it. */
+    fun dismissComplete() = _state.update { s -> s?.copy(close = s.close.copy(dialog = null, error = null)) }
+
+    fun dismissCloseError() = _state.update { s -> s?.copy(close = s.close.copy(error = null)) }
+
+    /**
+     * Completes the pull request with the dialog's options at the commit the page shows; Azure
+     * DevOps merges it, perhaps after the call: the page shows it completing until it is read
+     * completed, or with why the merge failed.
+     */
+    fun complete() {
+        val s = _state.value ?: return
+        val pr = s.pr ?: return
+        val draft = s.close.dialog ?: return
+        val commit = pr.lastCommit ?: return
+        if (s.close.busy != null || s.close.merging || !PrCompletion.canComplete(pr, s.status, s.blocked, draft)) return
+        closeAction(s.id, CloseAction.COMPLETE, bypass = draft.bypass) { api ->
+            val saved = api.completePullRequest(pr, commit, draft.options())
+            applyDetail(s.id, saved)
+            awaitMerge(api, s.id, saved)
+        }
+    }
+
+    /** Auto-complete set by me, with the dialog's options: it completes once the policies pass. */
+    fun setAutoComplete() {
+        val s = _state.value ?: return
+        val pr = s.pr ?: return
+        val mine = s.me ?: return
+        val draft = s.close.dialog ?: return
+        if (s.close.busy != null || !PrCompletion.canAutoComplete(pr, s.status, draft)) return
+        closeAction(s.id, CloseAction.AUTO_COMPLETE) { api ->
+            val saved = api.setAutoComplete(pr, mine.id, draft.options(bypassing = false))
+            applyDetail(s.id, saved.copy(autoCompleteSetBy = saved.autoCompleteSetBy ?: Identity(mine.id, mine.name)))
+            update(s.id) { it.copy(close = it.close.copy(dialog = null)) }
+        }
+    }
+
+    fun cancelAutoComplete() {
+        val s = _state.value ?: return
+        val pr = s.pr ?: return
+        if (s.close.busy != null || s.detail?.autoCompleteSetBy == null) return
+        closeAction(s.id, CloseAction.CANCEL_AUTO_COMPLETE) { api ->
+            applyDetail(s.id, api.setAutoComplete(pr, null, null).copy(autoCompleteSetBy = null))
+        }
+    }
+
+    /** Abandons it (the page asked first): it leaves the dashboard, and can be reactivated. */
+    fun abandon() {
+        val s = _state.value ?: return
+        val pr = s.pr ?: return
+        if (s.close.busy != null || !s.canClose) return
+        closeAction(s.id, CloseAction.ABANDON) { api ->
+            val saved = api.setPullRequestStatus(pr, PullRequestDetail.ABANDONED)
+            applyDetail(s.id, saved)
+            update(s.id) { it.copy(close = it.close.copy(dialog = null)) }
+            if (saved.status == PullRequestDetail.ABANDONED) onClosed(saved.pr)
+        }
+    }
+
+    fun reactivate() {
+        val s = _state.value ?: return
+        val pr = s.pr ?: return
+        if (s.close.busy != null || s.status != PullRequestDetail.ABANDONED) return
+        closeAction(s.id, CloseAction.REACTIVATE) { api ->
+            val saved = api.setPullRequestStatus(pr, PullRequestDetail.ACTIVE)
+            applyDetail(s.id, saved)
+            if (saved.status == PullRequestDetail.ACTIVE) onReactivated(saved.pr)
+            // The policies run again
+            if (shown(s.id) != null) policies(api, saved.pr)
+        }
+    }
+
+    /**
+     * Sends [action]; refused, the reason, and for a pull request that changed meanwhile, it read
+     * again. Not among the reads: closing the page never cancels it.
+     */
+    private fun closeAction(id: Int, action: CloseAction, bypass: Boolean = false, send: suspend (AdoApi) -> Unit) {
+        update(id) { it.copy(close = it.close.copy(busy = action, error = null)) }
+        scope.launch {
+            val api = api()
+            try {
+                send(api)
+                update(id) { it.copy(close = it.close.copy(busy = null)) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val problem = when {
+                    e is AdoException && e.isDenied -> CloseProblem.DENIED
+                    e is AdoException && (e.code == 409 || e.code == 412) -> CloseProblem.STALE
+                    else -> CloseProblem.OTHER
+                }
+                update(id) {
+                    it.copy(close = it.close.copy(busy = null, merging = false, error = CloseError(action, problem, errorText(e), bypass)))
+                }
+                if (problem == CloseProblem.STALE) shown(id)?.pr?.let { reread(api, it) }
+            }
+        }
+    }
+
+    /**
+     * Completed: done when Azure DevOps answers it completed; otherwise it merges in the
+     * background, read again until it is completed or its merge failed.
+     */
+    private suspend fun awaitMerge(api: AdoApi, id: Int, first: PullRequestDetail) {
+        var detail = first
+        var polls = 0
+        update(id) { it.copy(close = it.close.copy(merging = true)) }
+        while (detail.status == PullRequestDetail.ACTIVE && !PrCompletion.mergeFailed(detail.pr) && polls < MERGE_POLLS) {
+            delay(MERGE_POLL_MS)
+            detail = api.pullRequestDetail(detail.pr)
+            applyDetail(id, detail)
+            polls++
+        }
+        val error = when {
+            detail.status == PullRequestDetail.COMPLETED -> null
+            PrCompletion.mergeFailed(detail.pr) ->
+                CloseError(CloseAction.COMPLETE, CloseProblem.MERGE_FAILED, detail.mergeFailure ?: detail.pr.mergeStatus.orEmpty())
+            else -> CloseError(CloseAction.COMPLETE, CloseProblem.SLOW)
+        }
+        // A failed merge keeps the dialog open with the reason; otherwise the page says how it went
+        update(id) {
+            it.copy(close = it.close.copy(merging = false, error = error, dialog = it.close.dialog.takeIf { error?.problem == CloseProblem.MERGE_FAILED }))
+        }
+        if (detail.status == PullRequestDetail.COMPLETED) onClosed(detail.pr)
+    }
+
+    /** What Azure DevOps answered is the pull request now; it leaves out the work items. */
+    private fun applyDetail(id: Int, saved: PullRequestDetail) = update(id) { s ->
+        val old = s.detail
+        val detail = if (old == null) saved else saved.copy(
+            workItemIds = saved.workItemIds.ifEmpty { old.workItemIds },
+            labels = saved.labels.ifEmpty { old.labels },
+            description = saved.description.ifEmpty { old.description },
+        )
+        s.copy(pr = saved.pr, detail = detail, vote = VoteMachine.synced(s.vote, myVote(saved.pr, s.me)))
+    }
+
+    /** The pull request and its policies read again: after a push made an action stale. */
+    private suspend fun reread(api: AdoApi, pr: PullRequest) {
+        runCatchingNotCancelled { api.pullRequestDetail(pr) }?.let { applyDetail(pr.id, it) }
+        shown(pr.id)?.let { policies(api, it.pr ?: pr) }
+    }
+
     /**
      * People for the mention being typed: those mentioned lately, the reviewers and the authors
      * of the comments first, at once, then the directory's search.
@@ -746,5 +916,8 @@ class PullRequestController(
         /** Up to this many files, every diff is read ahead for the counts. */
         const val PREFETCH_MAX_FILES = 30
         const val PREFETCH_PARALLEL = 3
+        /** A completed merge read again every 2 s, for a minute at most. */
+        const val MERGE_POLL_MS = 2_000L
+        const val MERGE_POLLS = 30
     }
 }

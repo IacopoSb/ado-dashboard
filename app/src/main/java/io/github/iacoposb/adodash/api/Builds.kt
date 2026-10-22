@@ -128,6 +128,8 @@ data class PolicyEvaluation(
     /** The status a "Status check" policy waits for: "SonarQube" and "quality-gate". */
     val statusGenre: String? = null,
     val statusName: String? = null,
+    /** The merge types a "Require a merge strategy" policy allows; null for other policies. */
+    val mergeStrategies: Set<MergeStrategy>? = null,
 ) {
     val isBuild get() = typeId.equals(BUILD_POLICY, ignoreCase = true)
     val isStatus get() = typeId.equals(STATUS_POLICY, ignoreCase = true)
@@ -147,6 +149,7 @@ data class PolicyEvaluation(
         const val COMMENTS_POLICY = "c6a1889d-b943-4856-b76f-9e46bb6b0df2"
         const val WORK_ITEMS_POLICY = "40e92b44-2fe1-4dd6-b3d8-74a9c21d0c6e"
         const val STATUS_POLICY = "cbdc66da-9728-4af8-aada-9a5a32e4a226"
+        const val MERGE_STRATEGY_POLICY = "fa4e907d-c16b-4a4c-9dfa-4916e5d9c4e1"
     }
 }
 

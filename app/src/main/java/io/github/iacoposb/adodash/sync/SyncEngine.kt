@@ -92,6 +92,15 @@ data class Snapshot(
         )
     }
 
+    /** Pull request [prId] completed or abandoned: gone from every list, as the next sync would have it. */
+    fun withoutPullRequest(prId: Int): Snapshot {
+        fun List<PullRequest>.drop() = filterNot { it.id == prId }
+        return copy(
+            reviewPrs = reviewPrs.drop(), myPrs = myPrs.drop(), signals = signals - prId,
+            shown = shown?.copy(reviewPrs = shown.reviewPrs.drop(), myPrs = shown.myPrs.drop(), otherPrs = shown.otherPrs.drop()),
+        )
+    }
+
     /** A pull request listed anywhere, for its page. */
     fun pullRequest(id: Int): PullRequest? =
         (reviewPrs + myPrs + shown?.let { it.reviewPrs + it.myPrs + it.otherPrs }.orEmpty()).firstOrNull { it.id == id }
