@@ -217,7 +217,7 @@ internal fun CompleteDialog(screen: PrScreen, pr: PullRequest, draft: CompleteDr
             if (twoColumns) {
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Blockers(screen, pr, draft.bypass, now)
+                        Blockers(screen, pr, draft.bypass, now, actions)
                         Bypass(draft, busy, edit)
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -226,7 +226,7 @@ internal fun CompleteDialog(screen: PrScreen, pr: PullRequest, draft: CompleteDr
                 }
             } else {
                 if (blocked) {
-                    Blockers(screen, pr, draft.bypass, now)
+                    Blockers(screen, pr, draft.bypass, now, actions)
                     Bypass(draft, busy, edit)
                 }
                 MergeOptions(pr, draft, busy, edit)
@@ -326,9 +326,12 @@ private fun Bypass(draft: CompleteDraft, busy: Boolean, edit: (CompleteDraft) ->
     }
 }
 
-/** What keeps it from completing: the checks not passed, as in "Checks and policies". */
+/**
+ * What keeps it from completing: the checks not passed, as in "Checks and policies", with
+ * "Re-queue" on the builds expired or failed.
+ */
 @Composable
-private fun Blockers(screen: PrScreen, pr: PullRequest, bypassing: Boolean, now: Instant) {
+private fun Blockers(screen: PrScreen, pr: PullRequest, bypassing: Boolean, now: Instant, actions: PrActions) {
     val active = screen.threads.activeCount.takeIf { screen.threads.loaded }
     val rows = PrCompletion.blockers(PrChecks.of(pr, screen.policies.orEmpty(), active, screen.detail?.workItemIds.orEmpty(), screen.statuses))
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -342,9 +345,14 @@ private fun Blockers(screen: PrScreen, pr: PullRequest, bypassing: Boolean, now:
             ),
             if (bypassing) BannerTone.Error else BannerTone.Warning,
         )
+        val expired = if (screen.canRequeue) PrChecks.expiredBuilds(screen.policies) else emptyList()
+        if (expired.size > 1) RequeueAll(screen, expired, actions, Modifier.align(Alignment.End))
         if (rows.isNotEmpty()) {
-            Column(Modifier.padding(horizontal = 4.dp)) { rows.forEach { CheckLine(it, now, onClick = null) } }
+            Column(Modifier.padding(horizontal = 4.dp)) {
+                rows.forEach { CheckLine(it, now, onClick = null, requeueOf(screen, it, actions), requeuing(screen, it)) }
+            }
         }
+        screen.requeue.error?.let { RequeueErrorBanner(it, actions) }
     }
 }
 

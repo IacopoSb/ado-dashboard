@@ -130,8 +130,13 @@ data class PolicyEvaluation(
     val statusName: String? = null,
     /** The merge types a "Require a merge strategy" policy allows; null for other policies. */
     val mergeStrategies: Set<MergeStrategy>? = null,
+    /** Azure DevOps' id of this evaluation, to queue it again; empty when unknown. */
+    val evaluationId: String = "",
 ) {
     val isBuild get() = typeId.equals(BUILD_POLICY, ignoreCase = true)
+
+    /** A build policy whose build is queued (or about to be) or running, not an outdated one. */
+    val building get() = isBuild && enabled && (status == "running" || (status == "queued" && !expired))
     val isStatus get() = typeId.equals(STATUS_POLICY, ignoreCase = true)
 
     /** The [PrStatus.key] of the status a "Status check" policy waits for; null for other policies. */

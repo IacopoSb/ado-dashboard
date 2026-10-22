@@ -498,6 +498,12 @@
     <string name="pr_check_optional">optional</string>
     <!-- A status check whose service has not posted yet: "SonarQube/quality-gate: waiting for the status" -->
     <string name="pr_check_status_waiting">%1$s: waiting for the status</string>
+    <!-- A build check expired or failed, run again as Azure DevOps' "Re-queue" does -->
+    <string name="pr_requeue">Re-queue</string>
+    <string name="pr_requeue_all">Re-queue all expired</string>
+    <string name="pr_requeuing">Re-queuing…</string>
+    <string name="pr_requeue_denied">You don\'t have permission to re-queue this build (a PAT needs Code, Read &amp; write)</string>
+    <string name="pr_requeue_failed">Not re-queued: %1$s</string>
     <string name="pr_reviewers">Reviewers</string>
     <string name="pr_no_reviewers">No reviewers</string>
     <string name="pr_reviewer_you">%1$s (you)</string>

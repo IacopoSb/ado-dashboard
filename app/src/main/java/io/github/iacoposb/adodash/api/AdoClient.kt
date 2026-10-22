@@ -467,34 +467,46 @@ class AdoClient(
                 addQueryParameter("artifactId", "vstfs:///CodeReview/CodeReviewId/${pr.projectId}/${pr.id}")
             },
         )
-        return list.value.map {
-            val context = it.context
-            val settings = it.configuration.settings
-            PolicyEvaluation(
-                typeId = it.configuration.type.id,
-                typeName = it.configuration.type.displayName,
-                blocking = it.configuration.isBlocking,
-                enabled = it.configuration.isEnabled,
-                status = it.status,
-                buildId = (context?.get("buildId") as? JsonPrimitive)?.intOrNull,
-                expired = (context?.get("isExpired") as? JsonPrimitive)?.booleanOrNull == true,
-                // A status check's name, when it was given one, is its "default display name"
-                displayName = settings.text("displayName") ?: settings.text("defaultDisplayName")
-                    ?: context.text("buildDefinitionName"),
-                minApprovers = (settings?.get("minimumApproverCount") as? JsonPrimitive)?.intOrNull,
-                requiredReviewerIds = (settings?.get("requiredReviewerIds") as? JsonArray)
-                    ?.mapNotNull { id -> (id as? JsonPrimitive)?.contentOrNull }.orEmpty(),
-                creatorVoteCounts = (settings?.get("creatorVoteCounts") as? JsonPrimitive)?.booleanOrNull == true,
-                completedAt = it.completedDate?.let(::instantOrNull),
-                statusGenre = settings.text("statusGenre"),
-                statusName = settings.text("statusName"),
-                mergeStrategies = if (it.configuration.type.id.equals(PolicyEvaluation.MERGE_STRATEGY_POLICY, ignoreCase = true)) {
-                    mergeStrategiesOf(settings)
-                } else {
-                    null
-                },
-            )
-        }
+        return list.value.map { it.toEvaluation() }
+    }
+
+    override suspend fun requeuePolicyEvaluation(pr: PullRequest, evaluationId: String): PolicyEvaluation {
+        require(pr.projectId.isNotEmpty()) { "Missing project id" }
+        // No body: the call itself asks the policy to run again
+        return call<PolicyEvaluationDto>(
+            Request.Builder()
+                .url(url(pr.projectId, "_apis", "policy", "evaluations", evaluationId, apiVersion = "7.1-preview.1"))
+                .patch(ByteArray(0).toRequestBody(JSON)),
+        ).toEvaluation()
+    }
+
+    private fun PolicyEvaluationDto.toEvaluation(): PolicyEvaluation {
+        val settings = configuration.settings
+        return PolicyEvaluation(
+            typeId = configuration.type.id,
+            typeName = configuration.type.displayName,
+            blocking = configuration.isBlocking,
+            enabled = configuration.isEnabled,
+            status = status,
+            evaluationId = evaluationId,
+            buildId = (context?.get("buildId") as? JsonPrimitive)?.intOrNull,
+            expired = (context?.get("isExpired") as? JsonPrimitive)?.booleanOrNull == true,
+            // A status check's name, when it was given one, is its "default display name"
+            displayName = settings.text("displayName") ?: settings.text("defaultDisplayName")
+                ?: context.text("buildDefinitionName"),
+            minApprovers = (settings?.get("minimumApproverCount") as? JsonPrimitive)?.intOrNull,
+            requiredReviewerIds = (settings?.get("requiredReviewerIds") as? JsonArray)
+                ?.mapNotNull { id -> (id as? JsonPrimitive)?.contentOrNull }.orEmpty(),
+            creatorVoteCounts = (settings?.get("creatorVoteCounts") as? JsonPrimitive)?.booleanOrNull == true,
+            completedAt = completedDate?.let(::instantOrNull),
+            statusGenre = settings.text("statusGenre"),
+            statusName = settings.text("statusName"),
+            mergeStrategies = if (configuration.type.id.equals(PolicyEvaluation.MERGE_STRATEGY_POLICY, ignoreCase = true)) {
+                mergeStrategiesOf(settings)
+            } else {
+                null
+            },
+        )
     }
 
     /**
@@ -1289,6 +1301,7 @@ private fun ThreadDto.toThread(): PrThread {
     val settings: JsonObject? = null,
 )
 @Serializable private data class PolicyEvaluationDto(
+    val evaluationId: String = "",
     val configuration: PolicyConfigurationDto = PolicyConfigurationDto(),
     val status: String = "",
     val context: JsonObject? = null,

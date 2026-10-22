@@ -60,6 +60,14 @@ interface AdoApi {
     /** The status of each policy of [pr]; needs [PullRequest.projectId]. */
     suspend fun policyEvaluations(pr: PullRequest): List<PolicyEvaluation> = emptyList()
 
+    /**
+     * Queues the evaluation [evaluationId] of a policy of [pr] again, as Azure DevOps'
+     * "Re-queue": for a build policy, a new build (cancelling one running). Throws
+     * [AdoException] 403 without the permission (a PAT without Code (read & write)).
+     */
+    suspend fun requeuePolicyEvaluation(pr: PullRequest, evaluationId: String): PolicyEvaluation =
+        throw AdoException(403, "Not supported")
+
     /** The latest status each service posted on [pr] ([PrStatus.latest]). */
     suspend fun pullRequestStatuses(pr: PullRequest): List<PrStatus> = emptyList()
 

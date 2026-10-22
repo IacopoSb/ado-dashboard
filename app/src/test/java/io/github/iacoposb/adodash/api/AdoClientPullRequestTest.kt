@@ -190,6 +190,45 @@ class AdoClientPullRequestTest {
         assertTrue(list[2].creatorVoteCounts)
     }
 
+    @Test fun `each evaluation keeps its id, to queue it again`() = runTest {
+        server.enqueue(
+            json(
+                """{"value":[{"evaluationId":"7f3c1d2e-0000-4000-8000-000000000001","status":"approved",
+                "context":{"buildId":975,"isExpired":true},
+                "configuration":{"isEnabled":true,"isBlocking":true,"type":{"id":"0609b952-1397-4640-95ec-e00a01b2c241","displayName":"Build"},"settings":{"displayName":"run-tests"}}}]}""",
+            ),
+        )
+        val (build) = client.policyEvaluations(pr.copy(projectId = "p-1"))
+        assertEquals("7f3c1d2e-0000-4000-8000-000000000001", build.evaluationId)
+        assertTrue(build.expired)
+    }
+
+    @Test fun `re-queuing is a PATCH of the evaluation with no body`() = runTest {
+        server.enqueue(
+            json(
+                """{"evaluationId":"ev-1","status":"queued","context":{"buildId":990,"isExpired":false},
+                "configuration":{"isEnabled":true,"isBlocking":true,"type":{"id":"0609b952-1397-4640-95ec-e00a01b2c241","displayName":"Build"},"settings":{"displayName":"run-tests"}}}""",
+            ),
+        )
+        val saved = client.requeuePolicyEvaluation(pr.copy(projectId = "p-1"), "ev-1")
+        val request = server.takeRequest()
+        assertEquals("PATCH", request.method)
+        assertEquals("/org/p-1/_apis/policy/evaluations/ev-1?api-version=7.1-preview.1", request.path)
+        assertEquals(0L, request.bodySize)
+        assertEquals("ev-1", saved.evaluationId)
+        assertEquals("queued", saved.status)
+        assertEquals(990, saved.buildId)
+        assertEquals(false, saved.expired)
+    }
+
+    @Test fun `re-queuing without permission is a 403`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(403).setBody("""{"message":"TF401027: You need the Git 'PullRequestContribute' permission"}"""))
+        val denied = assertThrows(AdoException::class.java) {
+            kotlinx.coroutines.runBlocking { client.requeuePolicyEvaluation(pr.copy(projectId = "p-1"), "ev-1") }
+        }
+        assertTrue(denied.isDenied)
+    }
+
     @Test fun `names of the identities mentioned`() = runTest {
         server.enqueue(json("""{"value":[{"id":"u-1","providerDisplayName":"Luca Rossi"},{"id":"u-2","customDisplayName":"Giò","providerDisplayName":"Giovanni"}]}"""))
         val names = client.identityNames(listOf("u-1", "u-2"))

@@ -12,8 +12,8 @@ enum class CheckState { OK, FAILED, RUNNING, WAITING, WARNING }
 
 /** What a row of "Checks and policies" is about, with what its text needs. */
 sealed interface CheckKind {
-    /** [name] the pipeline's, null when the policy does not say. */
-    data class Build(val name: String?, val buildId: Int?, val status: String, val expired: Boolean) : CheckKind
+    /** [name] the pipeline's, null when the policy does not say; [evaluationId] to queue it again. */
+    data class Build(val name: String?, val buildId: Int?, val status: String, val expired: Boolean, val evaluationId: String = "") : CheckKind
     data class Reviewers(val approvals: Int, val required: Int) : CheckKind
     /** A "Required reviewers" policy: [approvals] of the [required] approvals it wants. */
     data class RequiredReviewers(val approvals: Int, val required: Int) : CheckKind
@@ -51,7 +51,7 @@ object PrChecks {
         val rows = applying.map { e ->
             val status = e.statusKey?.let(byKey::get)
             val kind: CheckKind = when (e.typeId.lowercase()) {
-                PolicyEvaluation.BUILD_POLICY -> CheckKind.Build(e.displayName, e.buildId, e.status, e.expired)
+                PolicyEvaluation.BUILD_POLICY -> CheckKind.Build(e.displayName, e.buildId, e.status, e.expired, e.evaluationId)
                 PolicyEvaluation.MIN_REVIEWERS_POLICY -> CheckKind.Reviewers(
                     approvals = pr.reviewers.count { !it.group && approves(it) && counts(pr, it, e) },
                     required = e.minApprovers ?: 1,
@@ -103,6 +103,21 @@ object PrChecks {
             CheckKind.RequiredReviewers(required.count(::approvalFor), required.size)
         }
     }
+
+    /**
+     * The evaluation [row] can be queued again with, as Azure DevOps offers it: a build check
+     * expired, or whose build failed; null for the others.
+     */
+    fun requeueId(row: CheckRow): String? {
+        val kind = row.kind as? CheckKind.Build ?: return null
+        val offered = row.state == CheckState.FAILED || (kind.expired && row.state == CheckState.WAITING)
+        return kind.evaluationId.takeIf { offered && it.isNotEmpty() }
+    }
+
+    /** The build checks "Re-queue all expired" queues again. */
+    fun expiredBuilds(evaluations: List<PolicyEvaluation>?): List<String> =
+        evaluations.orEmpty().filter { it.isBuild && it.enabled && it.expired && it.status != "running" && it.status != "notApplicable" }
+            .map { it.evaluationId }.filter { it.isNotEmpty() }.distinct()
 
     private fun approves(r: Reviewer) = r.vote >= Vote.APPROVED_WITH_SUGGESTIONS
 

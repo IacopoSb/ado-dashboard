@@ -76,6 +76,12 @@ object VoteMachine {
 }
 
 /**
+ * The build checks being queued again, by evaluation id ([busy]: until the policies are read
+ * again), and why the last ones were not.
+ */
+data class RequeueState(val busy: Set<String> = emptySet(), val error: CommentError? = null)
+
+/**
  * A comment posted from the page, shown at once while it is sent; [threadId] 0 for a new thread,
  * [PrScreen.NEW_FILE_THREAD] for one on the line of a file at [anchor].
  */
@@ -185,6 +191,7 @@ data class PrScreen(
     val files: PrFilesState = PrFilesState(),
     val commits: PrCommitsState = PrCommitsState(),
     val close: CloseState = CloseState(),
+    val requeue: RequeueState = RequeueState(),
 ) {
     fun composer(threadId: Int) = composers[threadId] ?: ComposerState()
 
@@ -199,6 +206,9 @@ data class PrScreen(
      * who may close it is Azure DevOps' to say.
      */
     val canClose: Boolean get() = pr != null && detail != null && status == PullRequestDetail.ACTIVE
+
+    /** Build checks can be queued again on active pull requests, as on Azure DevOps' page. */
+    val canRequeue: Boolean get() = pr != null && pr.projectId.isNotEmpty() && status == PullRequestDetail.ACTIVE
 
     /** Something keeps it from completing without bypassing the policies (see [PrCompletion.blocked]). */
     val blocked: Boolean get() = pr != null && PrCompletion.blocked(pr, policies)
@@ -239,6 +249,8 @@ class PullRequestController(
     /** Reads of the pull request shown: cancelled when the page closes or another opens. */
     private val jobs = mutableListOf<Job>()
     private var mentionSearch: Job? = null
+    /** The policies read again while re-queued builds run; also among [jobs]. */
+    private var checksWatch: Job? = null
     /** What was typed and not sent, by "pr:thread": kept for the session. */
     private val drafts = mutableMapOf<String, Draft>()
     private val recentMentions = ArrayDeque<Person>()
@@ -857,6 +869,78 @@ class PullRequestController(
         s.copy(pr = saved.pr, detail = detail, vote = VoteMachine.synced(s.vote, myVote(saved.pr, s.me)))
     }
 
+    /** "Re-queue" on a build check: a new build, as Azure DevOps' own button. */
+    fun requeueCheck(evaluationId: String) = requeue(listOf(evaluationId))
+
+    /** "Re-queue all expired": every build check outdated by the target branch. */
+    fun requeueExpired() = requeue(PrChecks.expiredBuilds(_state.value?.policies))
+
+    fun dismissRequeueError() = _state.update { it?.copy(requeue = it.requeue.copy(error = null)) }
+
+    /**
+     * Queues the evaluations [ids] again, one after the other; once refused for lack of
+     * permission the others are not tried. The policies are then read again (each row turns to
+     * queued or running), and again now and then while the builds run.
+     */
+    private fun requeue(ids: List<String>) {
+        val s = _state.value ?: return
+        val pr = s.pr ?: return
+        if (!s.canRequeue) return
+        val todo = ids.filter { it.isNotEmpty() && it !in s.requeue.busy }.distinct()
+        if (todo.isEmpty()) return
+        val id = s.id
+        update(id) { it.copy(requeue = RequeueState(busy = it.requeue.busy + todo)) }
+        // Not among the reads: closing never cancels it
+        scope.launch {
+            val api = api()
+            var error: CommentError? = null
+            var queued = false
+            for (evaluationId in todo) {
+                try {
+                    val saved = api.requeuePolicyEvaluation(pr, evaluationId)
+                    queued = true
+                    update(id) { st ->
+                        st.copy(policies = st.policies?.map { if (it.evaluationId == evaluationId) requeued(it, saved) else it })
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    error = errorOf(e)
+                    if (e is AdoException && e.isDenied) break
+                }
+            }
+            if (queued) shown(id)?.let { policies(api, it.pr ?: pr) }
+            update(id) { it.copy(requeue = it.requeue.copy(busy = it.requeue.busy - todo.toSet(), error = error)) }
+            if (queued) watchChecks(id)
+        }
+    }
+
+    /** What the re-queue answered of an evaluation; the rest (policy, name) as read before. */
+    private fun requeued(old: PolicyEvaluation, saved: PolicyEvaluation) = old.copy(
+        status = saved.status.ifEmpty { "queued" },
+        buildId = saved.buildId,
+        expired = saved.expired,
+        completedAt = saved.completedAt,
+    )
+
+    /**
+     * The policies read again every [CHECKS_POLL_MS] while a build check is queued or running,
+     * as long as the page shows the pull request; for a while at most.
+     */
+    private fun watchChecks(id: Int) {
+        checksWatch?.cancel()
+        val job = scope.launch {
+            repeat(CHECKS_POLLS) {
+                delay(CHECKS_POLL_MS)
+                val pr = shown(id)?.pr ?: return@launch
+                policies(api(), pr)
+                if (shown(id)?.policies.orEmpty().none { it.building }) return@launch
+            }
+        }
+        checksWatch = job
+        jobs += job
+    }
+
     /** The pull request and its policies read again: after a push made an action stale. */
     private suspend fun reread(api: AdoApi, pr: PullRequest) {
         runCatchingNotCancelled { api.pullRequestDetail(pr) }?.let { applyDetail(pr.id, it) }
@@ -919,5 +1003,8 @@ class PullRequestController(
         /** A completed merge read again every 2 s, for a minute at most. */
         const val MERGE_POLL_MS = 2_000L
         const val MERGE_POLLS = 30
+        /** Re-queued builds: their checks read again every 15 s, for 20 minutes at most. */
+        const val CHECKS_POLL_MS = 15_000L
+        const val CHECKS_POLLS = 80
     }
 }

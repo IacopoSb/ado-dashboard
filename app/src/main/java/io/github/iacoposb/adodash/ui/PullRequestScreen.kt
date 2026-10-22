@@ -141,6 +141,10 @@ class PrActions(
     val onAbandon: () -> Unit = {},
     val onReactivate: () -> Unit = {},
     val onDismissCloseError: () -> Unit = {},
+    /** "Re-queue" on a build check, by its evaluation id. */
+    val onRequeueCheck: (evaluationId: String) -> Unit = {},
+    val onRequeueExpired: () -> Unit = {},
+    val onDismissRequeueError: () -> Unit = {},
 )
 
 /** How long the thread opened from a mention stays highlighted. */
@@ -728,7 +732,15 @@ private fun OverviewSections(screen: PrScreen, pr: PullRequest, now: Instant, ac
         }
     }
     Column {
-        SectionLabel(stringResource(R.string.pr_checks))
+        val expired = if (screen.canRequeue) PrChecks.expiredBuilds(screen.policies) else emptyList()
+        if (expired.size > 1) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionLabel(stringResource(R.string.pr_checks), Modifier.weight(1f).padding(top = 10.dp))
+                RequeueAll(screen, expired, actions)
+            }
+        } else {
+            SectionLabel(stringResource(R.string.pr_checks))
+        }
         Checks(screen, pr, now, actions)
     }
     Column {
@@ -757,6 +769,8 @@ private fun Checks(screen: PrScreen, pr: PullRequest, now: Instant, actions: PrA
     val active = screen.threads.activeCount.takeIf { screen.threads.loaded }
     val rows = PrChecks.of(pr, policies.orEmpty(), active, screen.detail?.workItemIds.orEmpty(), screen.statuses)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // First: a long list would hide it
+        screen.requeue.error?.let { RequeueErrorBanner(it, actions) }
         if (screen.policiesFailed) {
             Text(stringResource(R.string.pr_checks_failed), style = MaterialTheme.typography.bodyMedium, color = c.textMuted)
         } else if (rows.none { it.kind !is CheckKind.Merge }) {
@@ -769,13 +783,47 @@ private fun Checks(screen: PrScreen, pr: PullRequest, now: Instant, actions: PrA
                 is CheckKind.Status -> kind.url?.let { url -> { actions.onOpenUrl(url) } }
                 else -> null
             }
-            CheckLine(row, now, onClick)
+            CheckLine(row, now, onClick, requeueOf(screen, row, actions), requeuing(screen, row))
         }
     }
 }
 
+/** "Re-queue" on [row], when Azure DevOps offers it there. */
+internal fun requeueOf(screen: PrScreen, row: CheckRow, actions: PrActions): (() -> Unit)? =
+    PrChecks.requeueId(row)?.takeIf { screen.canRequeue }?.let { id -> { actions.onRequeueCheck(id) } }
+
+internal fun requeuing(screen: PrScreen, row: CheckRow): Boolean =
+    (row.kind as? CheckKind.Build)?.evaluationId?.let { it.isNotEmpty() && it in screen.requeue.busy } == true
+
+/** "Re-queue all expired" for the [expired] build checks; busy while they are all queued again. */
 @Composable
-internal fun CheckLine(row: CheckRow, now: Instant, onClick: (() -> Unit)?) {
+internal fun RequeueAll(screen: PrScreen, expired: List<String>, actions: PrActions, modifier: Modifier = Modifier) {
+    if (expired.all { it in screen.requeue.busy }) {
+        CircularProgressIndicator(modifier.padding(horizontal = 12.dp).size(16.dp), color = AdoTheme.colors.primary, strokeWidth = 2.dp)
+    } else {
+        TextAction(stringResource(R.string.pr_requeue_all), actions.onRequeueExpired, modifier)
+    }
+}
+
+/** Why a re-queue was refused, by the checks: the page goes on as it was. */
+@Composable
+internal fun RequeueErrorBanner(error: CommentError, actions: PrActions) {
+    val text = if (error.problem == SaveProblem.DENIED) stringResource(R.string.pr_requeue_denied)
+    else stringResource(R.string.pr_requeue_failed, error.message)
+    Banner(text, BannerTone.Error) {
+        TextAction(stringResource(R.string.pr_dismiss), actions.onDismissRequeueError)
+    }
+}
+
+@Composable
+internal fun CheckLine(
+    row: CheckRow,
+    now: Instant,
+    onClick: (() -> Unit)?,
+    /** "Re-queue" at the end of the row; [requeuing] shows it being sent instead. */
+    requeue: (() -> Unit)? = null,
+    requeuing: Boolean = false,
+) {
     val c = AdoTheme.colors
     val (icon, tint) = when (row.state) {
         CheckState.OK -> AdoIcons.CheckCircle to c.success
@@ -787,7 +835,8 @@ internal fun CheckLine(row: CheckRow, now: Instant, onClick: (() -> Unit)?) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = if (onClick != null) 48.dp else 32.dp).clip(RoundedCornerShape(8.dp))
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
-            .padding(vertical = 4.dp),
+            // "Re-queue" is as tall as a clickable row already
+            .padding(vertical = if (requeue != null || requeuing) 0.dp else 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, Modifier.size(20.dp), tint = tint)
@@ -805,6 +854,15 @@ internal fun CheckLine(row: CheckRow, now: Instant, onClick: (() -> Unit)?) {
         row.at?.takeIf { row.kind is CheckKind.Build || row.kind is CheckKind.Status }?.let {
             Spacer(Modifier.width(8.dp))
             Text(ago(it, now), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
+        }
+        if (requeuing) {
+            Spacer(Modifier.width(12.dp))
+            CircularProgressIndicator(Modifier.size(16.dp), color = c.primary, strokeWidth = 2.dp)
+            Spacer(Modifier.width(8.dp))
+            Text(stringResource(R.string.pr_requeuing), style = MaterialTheme.typography.bodySmall, color = c.textMuted, maxLines = 1)
+        } else if (requeue != null) {
+            Spacer(Modifier.width(4.dp))
+            TextAction(stringResource(R.string.pr_requeue), requeue)
         }
     }
 }

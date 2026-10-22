@@ -498,6 +498,12 @@
     <string name="pr_check_optional">facoltativa</string>
     <!-- Un controllo di stato il cui servizio non ha ancora risposto -->
     <string name="pr_check_status_waiting">%1$s: in attesa dello stato</string>
+    <!-- Una build scaduta o fallita rimessa in coda, come "Re-queue" di Azure DevOps -->
+    <string name="pr_requeue">Rimetti in coda</string>
+    <string name="pr_requeue_all">Rimetti in coda le scadute</string>
+    <string name="pr_requeuing">Accodamento…</string>
+    <string name="pr_requeue_denied">Non hai il permesso di rimettere in coda questa build (al PAT serve Code, Read &amp; write)</string>
+    <string name="pr_requeue_failed">Non rimessa in coda: %1$s</string>
     <string name="pr_reviewers">Revisori</string>
     <string name="pr_no_reviewers">Nessun revisore</string>
     <string name="pr_reviewer_you">%1$s (tu)</string>

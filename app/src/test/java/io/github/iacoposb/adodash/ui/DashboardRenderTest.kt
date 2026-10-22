@@ -1546,12 +1546,12 @@ class DashboardRenderTest {
         )
             .let { list ->
                 if (!expiredBuilds) return@let list
-                fun expired(name: String, buildId: Int) = io.github.iacoposb.adodash.api.PolicyEvaluation(
+                fun expired(name: String, buildId: Int, evaluationId: String) = io.github.iacoposb.adodash.api.PolicyEvaluation(
                     io.github.iacoposb.adodash.api.PolicyEvaluation.BUILD_POLICY, "Build", blocking = true, enabled = true,
                     status = "approved", buildId = buildId, expired = true, displayName = name,
-                    completedAt = now.minusSeconds(26 * 3600),
+                    completedAt = now.minusSeconds(26 * 3600), evaluationId = evaluationId,
                 )
-                listOf(list[0], expired("run-tests", 975), expired("app - build & analyze", 976)) + list.drop(1)
+                listOf(list[0], expired("run-tests", 975, "ev-tests"), expired("app - build & analyze", 976, "ev-app")) + list.drop(1)
             }
         // The quality gate backs its policy; the coverage has none: optional
         val statuses = listOf(
@@ -1614,11 +1614,39 @@ class DashboardRenderTest {
 
     @Test fun prOverviewDark() = prPage("pr-overview-dark", designPrScreen(), dark = true)
 
-    /** Builds outdated by the target branch: "Build expired" among the chips, not "Build ok". */
+    /**
+     * Builds outdated by the target branch: "Build expired" among the chips, not "Build ok";
+     * "Re-queue" on each, and "Re-queue all expired" by the heading.
+     */
     @Test fun prOverviewExpired() = prPage("pr-overview-expired", designPrScreen(expiredBuilds = true))
 
     @Config(qualifiers = "+it")
     @Test fun prOverviewExpiredItalian() = prPage("pr-overview-expired-it", designPrScreen(expiredBuilds = true))
+
+    /** One of them being queued again; the last re-queue refused for lack of permission. */
+    private fun requeuingScreen(error: Boolean = false) = designPrScreen(expiredBuilds = true).copy(
+        requeue = RequeueState(
+            busy = setOf("ev-tests"),
+            error = if (error) CommentError(SaveProblem.DENIED, "HTTP 403") else null,
+        ),
+    )
+
+    @Test fun prOverviewRequeuing() = prPage("pr-overview-requeuing", requeuingScreen())
+
+    @Config(qualifiers = PHONE_IT)
+    @Test fun prPhoneRequeuingItalian() = prPage("pr-phone-requeuing-it", requeuingScreen())
+
+    @Config(qualifiers = "+it")
+    @Test fun prOverviewRequeuingItalian() = prPage("pr-overview-requeuing-it", requeuingScreen())
+
+    @Test fun prOverviewRequeueDenied() = prPage("pr-overview-requeue-denied", requeuingScreen(error = true).let {
+        it.copy(requeue = it.requeue.copy(busy = emptySet()))
+    })
+
+    @Config(qualifiers = "+it")
+    @Test fun prOverviewRequeueDeniedItalian() = prPage("pr-overview-requeue-denied-it", requeuingScreen(error = true).let {
+        it.copy(requeue = it.requeue.copy(busy = emptySet()))
+    })
 
     /** A thread opened in the overview: its replies and the reply composer. */
     @Test fun prOverviewExpanded() = prPage("pr-overview-expanded", designPrScreen(), expanded = setOf(5))
@@ -1650,15 +1678,20 @@ class DashboardRenderTest {
      * The complete dialog over the page: the merge types the branch policy allows; [blocked] with
      * the design's failing checks, otherwise with every check passed; [bypass] on, with a reason.
      */
-    private fun completeScreen(blocked: Boolean = false, bypass: Boolean = false): PrScreen {
-        val base = designPrScreen(vote = Vote.APPROVED)
+    private fun completeScreen(blocked: Boolean = false, bypass: Boolean = false, expiredBuilds: Boolean = false): PrScreen {
+        val base = designPrScreen(vote = Vote.APPROVED, expiredBuilds = expiredBuilds)
         val pr = base.pr!!.copy(lastCommit = "abc123")
         val strategy = io.github.iacoposb.adodash.api.PolicyEvaluation(
             io.github.iacoposb.adodash.api.PolicyEvaluation.MERGE_STRATEGY_POLICY, "Require a merge strategy", blocking = true, enabled = true,
             status = "approved",
             mergeStrategies = setOf(MergeStrategy.NO_FAST_FORWARD, MergeStrategy.SQUASH, MergeStrategy.REBASE_MERGE),
         )
-        val policies = (if (blocked) base.policies!! else base.policies!!.map { it.copy(status = "approved") }) + strategy
+        val policies = when {
+            blocked -> base.policies!!
+            // Only the expired builds block it
+            expiredBuilds -> base.policies!!.map { if (it.expired) it else it.copy(status = "approved") }
+            else -> base.policies!!.map { it.copy(status = "approved") }
+        } + strategy
         val draft = PrCompletion.draft(pr, base.detail, policies).copy(strategy = MergeStrategy.SQUASH).let {
             if (bypass) it.copy(bypass = true, bypassReason = if (italian) "Hotfix per il disservizio dei pagamenti" else "Hotfix for the payments outage") else it
         }
@@ -1680,6 +1713,13 @@ class DashboardRenderTest {
 
     @Config(qualifiers = "+it")
     @Test fun prCompleteBypassItalian() = prPage("pr-complete-bypass-it", completeScreen(blocked = true, bypass = true))
+
+    /** Only expired builds block it: "Re-queue" on each, one being queued again. */
+    @Test fun prCompleteExpired() = prPage("pr-complete-expired", completeScreen(expiredBuilds = true).copy(requeue = RequeueState(busy = setOf("ev-app"))))
+
+    @Config(qualifiers = "+it")
+    @Test fun prCompleteExpiredItalian() =
+        prPage("pr-complete-expired-it", completeScreen(expiredBuilds = true).copy(requeue = RequeueState(busy = setOf("ev-app"))))
 
     /** Required checks failing, no bypass: auto-complete offered instead. */
     @Test fun prCompleteBlocked() = prPage("pr-complete-blocked", completeScreen(blocked = true))

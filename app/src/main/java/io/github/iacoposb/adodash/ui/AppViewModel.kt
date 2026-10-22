@@ -290,6 +290,9 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
         onAbandon = pullRequests::abandon,
         onReactivate = pullRequests::reactivate,
         onDismissCloseError = pullRequests::dismissCloseError,
+        onRequeueCheck = pullRequests::requeueCheck,
+        onRequeueExpired = pullRequests::requeueExpired,
+        onDismissRequeueError = pullRequests::dismissRequeueError,
     )
 
     fun closeBuild() {
