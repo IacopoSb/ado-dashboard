@@ -366,7 +366,19 @@ class PullRequestController(
 
     private suspend fun policies(api: AdoApi, pr: PullRequest) {
         val read = runCatchingNotCancelled { api.policyEvaluations(pr) }
-        update(pr.id) { it.copy(policies = read ?: it.policies, policiesFailed = read == null && it.policies == null) }
+        update(pr.id) { s ->
+            s.copy(policies = read?.let { keepNames(it, s.policies) } ?: s.policies, policiesFailed = read == null && s.policies == null)
+        }
+    }
+
+    /**
+     * A build check just queued again has no build yet, so no pipeline name: it keeps the name
+     * it was read with before.
+     */
+    private fun keepNames(read: List<PolicyEvaluation>, before: List<PolicyEvaluation>?): List<PolicyEvaluation> {
+        val names = before.orEmpty().filter { it.evaluationId.isNotEmpty() && it.displayName != null }
+            .associate { it.evaluationId to it.displayName }
+        return read.map { if (it.displayName == null && it.evaluationId in names) it.copy(displayName = names[it.evaluationId]) else it }
     }
 
     /** Statuses are extra: when they cannot be read, the policies are shown alone. */

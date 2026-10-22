@@ -122,6 +122,18 @@ class PullRequestRequeueTest {
         assertEquals(1, PrCompletion.blockers(PrChecks.of(pr, s.policies!!, 0, emptyList())).size)
     }
 
+    @Test fun `a check queued again keeps its name while its build has none yet`() = runTest {
+        val api = Api()
+        val c = opened(api)
+        val queued = api.policies.map {
+            if (it.evaluationId == "ev-tests") build("ev-tests", "queued", buildId = null).copy(displayName = null) else it
+        }
+        api.afterRequeue = mutableListOf(queued)
+        c.requeueCheck("ev-tests")
+        runCurrent()
+        assertEquals("ev-tests", c.state.value!!.policy("ev-tests").displayName)
+    }
+
     @Test fun `all the expired ones queued again, and once passed nothing blocks completing`() = runTest {
         val api = Api()
         val c = opened(api)

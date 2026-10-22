@@ -489,7 +489,8 @@ class AdoClient(
             enabled = configuration.isEnabled,
             status = status,
             evaluationId = evaluationId,
-            buildId = (context?.get("buildId") as? JsonPrimitive)?.intOrNull,
+            // 0 while a check queued again waits for its build
+            buildId = (context?.get("buildId") as? JsonPrimitive)?.intOrNull?.takeIf { it > 0 },
             expired = (context?.get("isExpired") as? JsonPrimitive)?.booleanOrNull == true,
             // A status check's name, when it was given one, is its "default display name"
             displayName = settings.text("displayName") ?: settings.text("defaultDisplayName")
