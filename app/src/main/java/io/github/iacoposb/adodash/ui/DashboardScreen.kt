@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -43,9 +44,11 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -422,7 +425,18 @@ private fun Panels(
                 else if (!view.activity.showsAll) TextAction(activitySummary(view.activity), { onEdit(ViewPanel.ACTIVITY) })
             },
         ) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = bottom) {
+            val list = rememberLazyListState()
+            // The list keeps its first visible item in place, so a new event would land above it,
+            // out of sight: at the top, follow it instead (requested before the next measure)
+            val first = events.firstOrNull()?.key
+            val shownFirst = remember { mutableStateOf(first) }
+            SideEffect {
+                if (first != shownFirst.value) {
+                    if (list.firstVisibleItemIndex == 0) list.requestScrollToItem(0)
+                    shownFirst.value = first
+                }
+            }
+            LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = bottom) {
                 when {
                     events.isNotEmpty() -> Unit
                     loading && state.snapshot == null -> skeleton(syncing)
