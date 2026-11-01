@@ -76,6 +76,9 @@ class AppViewModel(private val app: AdoApp) : ViewModel() {
     val catalog = app.catalog.state
     private var filterSync: Job? = null
 
+    /** The images of comments and descriptions, read with the current credentials. */
+    val images = ImageLoader { url -> app.api(app.settings.current()).image(url) }
+
     val update = app.updater.state
     /** Version for the dashboard banner: known, newer and not dismissed. */
     val updateBanner: StateFlow<String?> = combine(app.updater.state, app.updater.dismissed) { s, dismissed ->

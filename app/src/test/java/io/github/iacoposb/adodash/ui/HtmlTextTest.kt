@@ -58,11 +58,22 @@ class HtmlTextTest {
             HtmlText.parse("<h2>Steps</h2>Open it"))
     }
 
-    @Test fun `images, scripts, styles and comments left out`() {
+    @Test fun `scripts, styles and comments left out`() {
         assertEquals(
             listOf("Before after"),
-            texts("""<style>p{color:red}</style><p>Before <img src="https://x/y.png" alt="shot"/><!-- note -->after</p><script>alert(1)</script>"""),
+            texts("""<style>p{color:red}</style><p>Before <!-- note -->after</p><script>alert(1)</script>"""),
         )
+    }
+
+    @Test fun `images are blocks of their own, below the text before them`() {
+        val blocks = HtmlText.parse("""<p>Before <img data-src="x" src="https://x/y.png?a=1&amp;b=2" alt="shot"/>after</p><img src=''>""")
+        assertEquals(listOf("Before", "", "after"), blocks.map { it.text })
+        assertEquals(RichImage("https://x/y.png?a=1&b=2", "shot"), blocks[1].image)
+    }
+
+    @Test fun `an image in a list item is indented under it`() {
+        val blocks = HtmlText.parse("""<ul><li>Step<img src="https://x/a.png"></li></ul>""")
+        assertEquals(RichBlock(emptyList(), indent = 1, image = RichImage("https://x/a.png")), blocks[1])
     }
 
     @Test fun `tables keep their cells apart`() {

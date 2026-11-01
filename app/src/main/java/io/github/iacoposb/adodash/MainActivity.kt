@@ -18,6 +18,7 @@ import androidx.activity.viewModels
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,7 @@ import io.github.iacoposb.adodash.ui.AdoTheme
 import io.github.iacoposb.adodash.ui.AppViewModel
 import io.github.iacoposb.adodash.ui.DashboardScreen
 import io.github.iacoposb.adodash.ui.EditorTarget
+import io.github.iacoposb.adodash.ui.LocalImages
 import io.github.iacoposb.adodash.ui.editorTargetSaver
 import io.github.iacoposb.adodash.ui.NotificationActions
 import io.github.iacoposb.adodash.data.SoundTarget
@@ -109,154 +111,156 @@ class MainActivity : ComponentActivity() {
         refreshNotificationsAllowed()
 
         setContent {
-            AdoTheme {
-                val settings = vm.settings.collectAsStateWithLifecycle().value ?: return@AdoTheme
-                val sync by vm.sync.collectAsStateWithLifecycle()
-                val events by vm.events.collectAsStateWithLifecycle()
-                val save by vm.save.collectAsStateWithLifecycle()
-                val update by vm.update.collectAsStateWithLifecycle()
-                val updateBanner by vm.updateBanner.collectAsStateWithLifecycle()
-                val catalog by vm.catalog.collectAsStateWithLifecycle()
-                val launchChoiceMade by vm.launchChoiceMade.collectAsStateWithLifecycle()
-                val buildDetail by vm.build.collectAsStateWithLifecycle()
-                val pipelines by vm.pipelines.collectAsStateWithLifecycle()
-                val workItem by vm.workItem.collectAsStateWithLifecycle()
-                val workItemsReadOnly by vm.workItemsReadOnly.collectAsStateWithLifecycle()
-                val pullRequest by vm.pullRequest.collectAsStateWithLifecycle()
-                val backlogEdit by vm.backlogEdit.collectAsStateWithLifecycle()
-                val online by vm.online.collectAsStateWithLifecycle()
-                val choices = viewChoices(settings.views, catalog, settings.filters, sync.snapshot)
-                var editing by rememberSaveable { mutableStateOf(false) }
-                val close = { editing = false; showUpdate = false }
+            CompositionLocalProvider(LocalImages provides vm.images) {
+                AdoTheme {
+                    val settings = vm.settings.collectAsStateWithLifecycle().value ?: return@AdoTheme
+                    val sync by vm.sync.collectAsStateWithLifecycle()
+                    val events by vm.events.collectAsStateWithLifecycle()
+                    val save by vm.save.collectAsStateWithLifecycle()
+                    val update by vm.update.collectAsStateWithLifecycle()
+                    val updateBanner by vm.updateBanner.collectAsStateWithLifecycle()
+                    val catalog by vm.catalog.collectAsStateWithLifecycle()
+                    val launchChoiceMade by vm.launchChoiceMade.collectAsStateWithLifecycle()
+                    val buildDetail by vm.build.collectAsStateWithLifecycle()
+                    val pipelines by vm.pipelines.collectAsStateWithLifecycle()
+                    val workItem by vm.workItem.collectAsStateWithLifecycle()
+                    val workItemsReadOnly by vm.workItemsReadOnly.collectAsStateWithLifecycle()
+                    val pullRequest by vm.pullRequest.collectAsStateWithLifecycle()
+                    val backlogEdit by vm.backlogEdit.collectAsStateWithLifecycle()
+                    val online by vm.online.collectAsStateWithLifecycle()
+                    val choices = viewChoices(settings.views, catalog, settings.filters, sync.snapshot)
+                    var editing by rememberSaveable { mutableStateOf(false) }
+                    val close = { editing = false; showUpdate = false }
 
-                LaunchedEffect(showUpdate) { if (showUpdate) editing = true }
+                    LaunchedEffect(showUpdate) { if (showUpdate) editing = true }
 
-                // Microsoft's sign-in directly; a PAT is changed in the account settings
-                val signIn = {
-                    if (settings.configured && settings.authMethod == AuthMethod.ENTRA) {
-                        vm.signInAgain(this) { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
-                    } else {
-                        editing = true
+                    // Microsoft's sign-in directly; a PAT is changed in the account settings
+                    val signIn = {
+                        if (settings.configured && settings.authMethod == AuthMethod.ENTRA) {
+                            vm.signInAgain(this) { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
+                        } else {
+                            editing = true
+                        }
                     }
-                }
-                LaunchedEffect(signInRequested) {
-                    if (signInRequested) {
-                        signInRequested = false
-                        signIn()
+                    LaunchedEffect(signInRequested) {
+                        if (signInRequested) {
+                            signInRequested = false
+                            signIn()
+                        }
                     }
-                }
 
-                LaunchedEffect(settings.keepScreenOn) {
-                    if (settings.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                }
+                    LaunchedEffect(settings.keepScreenOn) {
+                        if (settings.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
 
-                if (!settings.configured || editing) {
-                    SettingsScreen(
-                        initial = settings,
-                        redirectUri = (application as AdoApp).entra.redirectUri,
-                        busy = save.busy,
-                        message = save.message,
-                        onMicrosoftSignIn = { vm.signInWithMicrosoft(this, it, close) },
-                        onPatSignIn = { form, pat -> vm.signInWithPat(form, pat, close) },
-                        onSavePreferences = { vm.savePreferences(it, close) },
-                        onSignOut = vm::signOut,
-                        onChangeOrganization = vm::changeOrganization,
-                        onBack = if (settings.configured) close else null,
-                        version = vm.version,
-                        update = update,
-                        onCheckUpdates = vm::checkUpdates,
-                        onDownloadUpdate = vm::downloadUpdate,
-                        onInstallUpdate = vm::installUpdate,
-                        showUpdate = showUpdate,
-                        catalog = catalog,
-                        onLoadCatalog = vm::loadCatalog,
-                        onFiltersChange = vm::updateFilters,
-                        buildsDenied = sync.snapshot?.buildsDenied == true,
-                        workItemsReadOnly = workItemsReadOnly,
-                        askViewAtLaunch = !settings.views.alwaysOpen,
-                        onAskViewAtLaunchChange = vm::setAskAtLaunch,
-                        notificationsAllowed = notificationsAllowed,
-                        notificationActions = remember(vm) {
-                            NotificationActions(
-                                onChange = vm::setNotifications,
-                                onAllow = ::allowNotifications,
-                                onPickSound = { pickSound(it, vm.settings.value?.notifications?.sound(it)) },
-                                onOpenSystemSettings = ::openNotificationSettings,
-                                soundTitle = ::soundTitle,
-                            )
-                        },
-                    )
-                } else if (!launchChoiceMade && !settings.views.alwaysOpen) {
-                    var newView by rememberSaveable(stateSaver = editorTargetSaver) { mutableStateOf<EditorTarget?>(null) }
-                    ViewPickerScreen(
-                        choices,
-                        onOpen = vm::chooseAtLaunch,
-                        onNewView = { newView = EditorTarget(DashboardView.newSaved(""), isNew = true) },
-                        onLoadBoards = vm::loadBoards,
-                        editorOpen = newView != null,
-                        editor = {
-                            newView?.let { target ->
-                                ViewEditor(
-                                    target, choices.options,
-                                    onSave = { newView = null; vm.saveView(it) },
-                                    onDelete = { newView = null },
-                                    onDismiss = { newView = null },
+                    if (!settings.configured || editing) {
+                        SettingsScreen(
+                            initial = settings,
+                            redirectUri = (application as AdoApp).entra.redirectUri,
+                            busy = save.busy,
+                            message = save.message,
+                            onMicrosoftSignIn = { vm.signInWithMicrosoft(this, it, close) },
+                            onPatSignIn = { form, pat -> vm.signInWithPat(form, pat, close) },
+                            onSavePreferences = { vm.savePreferences(it, close) },
+                            onSignOut = vm::signOut,
+                            onChangeOrganization = vm::changeOrganization,
+                            onBack = if (settings.configured) close else null,
+                            version = vm.version,
+                            update = update,
+                            onCheckUpdates = vm::checkUpdates,
+                            onDownloadUpdate = vm::downloadUpdate,
+                            onInstallUpdate = vm::installUpdate,
+                            showUpdate = showUpdate,
+                            catalog = catalog,
+                            onLoadCatalog = vm::loadCatalog,
+                            onFiltersChange = vm::updateFilters,
+                            buildsDenied = sync.snapshot?.buildsDenied == true,
+                            workItemsReadOnly = workItemsReadOnly,
+                            askViewAtLaunch = !settings.views.alwaysOpen,
+                            onAskViewAtLaunchChange = vm::setAskAtLaunch,
+                            notificationsAllowed = notificationsAllowed,
+                            notificationActions = remember(vm) {
+                                NotificationActions(
+                                    onChange = vm::setNotifications,
+                                    onAllow = ::allowNotifications,
+                                    onPickSound = { pickSound(it, vm.settings.value?.notifications?.sound(it)) },
+                                    onOpenSystemSettings = ::openNotificationSettings,
+                                    soundTitle = ::soundTitle,
                                 )
-                            }
-                        },
-                    )
-                } else {
-                    // Polls only while the dashboard is visible; the worker covers the rest
-                    LaunchedEffect(Unit) { repeatOnLifecycle(Lifecycle.State.STARTED) { vm.poll() } }
-                    DashboardScreen(
-                        organization = settings.organization,
-                        state = sync,
-                        events = events,
-                        onRefresh = vm::refresh,
-                        onSettings = { editing = true },
-                        onOpen = ::openUrl,
-                        onEventOpen = { event ->
-                            vm.markRead(event)
-                            val build = event.buildId
-                            val comment = event.workItemComment
-                            val workItem = event.workItemId
-                            val pr = event.pullRequest
-                            when {
-                                build != null && event.project != null -> vm.openBuild(event.project, build)
-                                comment != null -> vm.openWorkItem(comment.workItemId, comment.commentId)
-                                workItem != null -> vm.openWorkItem(workItem)
-                                pr != null -> vm.openPullRequest(pr)
-                                else -> openUrl(event.url)
-                            }
-                        },
-                        onMarkAllRead = vm::markAllRead,
-                        updateVersion = updateBanner,
-                        onUpdate = { showUpdate = true },
-                        onDismissUpdate = { updateBanner?.let(vm::dismissUpdate) },
-                        choices = choices,
-                        onOpenView = vm::openView,
-                        onOpenBoard = vm::openBoard,
-                        onSaveView = vm::saveView,
-                        onDeleteView = { vm.deleteView(it.id) },
-                        onLoadBoards = vm::loadBoards,
-                        buildDetail = buildDetail,
-                        pipelines = pipelines,
-                        onOpenPipelines = vm::openPipelines,
-                        pipelinesActions = remember(vm) { vm.pipelinesActions(::openUrl) },
-                        onRerunBuild = vm::rerunBuild,
-                        onCloseBuild = vm::closeBuild,
-                        onOpenWorkItem = vm::openWorkItem,
-                        workItem = workItem,
-                        workItemActions = remember(vm) { vm.workItemActions(::openUrl) },
-                        onOpenPullRequest = vm::openPullRequest,
-                        pullRequest = pullRequest,
-                        prActions = remember(vm) { vm.prActions(::openUrl) },
-                        backlogEdit = backlogEdit,
-                        backlogEditActions = remember(vm) { vm.backlogEditActions() },
-                        online = online,
-                        onSignIn = signIn,
-                    )
+                            },
+                        )
+                    } else if (!launchChoiceMade && !settings.views.alwaysOpen) {
+                        var newView by rememberSaveable(stateSaver = editorTargetSaver) { mutableStateOf<EditorTarget?>(null) }
+                        ViewPickerScreen(
+                            choices,
+                            onOpen = vm::chooseAtLaunch,
+                            onNewView = { newView = EditorTarget(DashboardView.newSaved(""), isNew = true) },
+                            onLoadBoards = vm::loadBoards,
+                            editorOpen = newView != null,
+                            editor = {
+                                newView?.let { target ->
+                                    ViewEditor(
+                                        target, choices.options,
+                                        onSave = { newView = null; vm.saveView(it) },
+                                        onDelete = { newView = null },
+                                        onDismiss = { newView = null },
+                                    )
+                                }
+                            },
+                        )
+                    } else {
+                        // Polls only while the dashboard is visible; the worker covers the rest
+                        LaunchedEffect(Unit) { repeatOnLifecycle(Lifecycle.State.STARTED) { vm.poll() } }
+                        DashboardScreen(
+                            organization = settings.organization,
+                            state = sync,
+                            events = events,
+                            onRefresh = vm::refresh,
+                            onSettings = { editing = true },
+                            onOpen = ::openUrl,
+                            onEventOpen = { event ->
+                                vm.markRead(event)
+                                val build = event.buildId
+                                val comment = event.workItemComment
+                                val workItem = event.workItemId
+                                val pr = event.pullRequest
+                                when {
+                                    build != null && event.project != null -> vm.openBuild(event.project, build)
+                                    comment != null -> vm.openWorkItem(comment.workItemId, comment.commentId)
+                                    workItem != null -> vm.openWorkItem(workItem)
+                                    pr != null -> vm.openPullRequest(pr)
+                                    else -> openUrl(event.url)
+                                }
+                            },
+                            onMarkAllRead = vm::markAllRead,
+                            updateVersion = updateBanner,
+                            onUpdate = { showUpdate = true },
+                            onDismissUpdate = { updateBanner?.let(vm::dismissUpdate) },
+                            choices = choices,
+                            onOpenView = vm::openView,
+                            onOpenBoard = vm::openBoard,
+                            onSaveView = vm::saveView,
+                            onDeleteView = { vm.deleteView(it.id) },
+                            onLoadBoards = vm::loadBoards,
+                            buildDetail = buildDetail,
+                            pipelines = pipelines,
+                            onOpenPipelines = vm::openPipelines,
+                            pipelinesActions = remember(vm) { vm.pipelinesActions(::openUrl) },
+                            onRerunBuild = vm::rerunBuild,
+                            onCloseBuild = vm::closeBuild,
+                            onOpenWorkItem = vm::openWorkItem,
+                            workItem = workItem,
+                            workItemActions = remember(vm) { vm.workItemActions(::openUrl) },
+                            onOpenPullRequest = vm::openPullRequest,
+                            pullRequest = pullRequest,
+                            prActions = remember(vm) { vm.prActions(::openUrl) },
+                            backlogEdit = backlogEdit,
+                            backlogEditActions = remember(vm) { vm.backlogEditActions() },
+                            online = online,
+                            onSignIn = signIn,
+                        )
+                    }
                 }
             }
         }

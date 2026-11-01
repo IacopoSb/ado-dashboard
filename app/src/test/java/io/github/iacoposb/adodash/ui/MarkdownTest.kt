@@ -69,11 +69,17 @@ class MarkdownTest {
         assertEquals("Done", blocks[2].text)
     }
 
-    @Test fun `headings are bold, quotes their text, images their description`() {
-        val blocks = Markdown.parse("## Summary\n\n> quoted\n\n![screenshot](https://x.example/a.png)")
+    @Test fun `headings are bold, quotes their text`() {
+        val blocks = Markdown.parse("## Summary\n\n> quoted")
         assertEquals(RichSpan("Summary", bold = true), blocks[0].spans.single())
         assertEquals("quoted", blocks[1].text)
-        assertEquals("screenshot", blocks[2].text)
+    }
+
+    @Test fun `images below the paragraph they are in`() {
+        val blocks = Markdown.parse("See ![screenshot](https://x.example/a.png) here\n\n- ![](https://x.example/c.png) item ![](https://x.example/b.png)")
+        assertEquals(listOf("See here", "", "item", "", ""), blocks.map { it.text })
+        assertEquals(RichImage("https://x.example/a.png", "screenshot"), blocks[1].image)
+        assertEquals(RichBlock(emptyList(), indent = 1, image = RichImage("https://x.example/b.png")), blocks[4])
     }
 
     @Test fun `a heading keeps a trailing # that is part of it, not a closing run`() {

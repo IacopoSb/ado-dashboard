@@ -231,6 +231,12 @@ interface AdoApi {
 
     /** Display names of identities by id (those mentioned as `@<id>`); those not found are left out. */
     suspend fun identityNames(ids: Collection<String>): Map<String, String> = emptyMap()
+
+    /**
+     * The bytes of an image in a comment or description at [url] (absolute, or a path on the
+     * organization's server); signed in only on Azure DevOps' own hosts.
+     */
+    suspend fun image(url: String): ByteArray = throw AdoException(403, "Not supported")
 }
 
 /** An area path of a team, with or without the areas below it. */

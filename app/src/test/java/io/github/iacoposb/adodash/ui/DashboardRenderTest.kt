@@ -13,6 +13,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -1593,13 +1594,16 @@ class DashboardRenderTest {
         voteMenu: Boolean = false,
         expanded: Set<Int> = emptySet(),
         capture: Boolean = true,
+        images: ImageLoader? = null,
     ) {
         compose.setContent {
-            AdoTheme(dark = dark, dynamic = false) {
-                DashboardScreen(
-                    "contoso", SyncState(snapshot), events(), {}, {}, {}, {}, {}, now = now,
-                    pullRequest = screen, prVoteMenu = voteMenu, prExpanded = expanded,
-                )
+            androidx.compose.runtime.CompositionLocalProvider(LocalImages provides images) {
+                AdoTheme(dark = dark, dynamic = false) {
+                    DashboardScreen(
+                        "contoso", SyncState(snapshot), events(), {}, {}, {}, {}, {}, now = now,
+                        pullRequest = screen, prVoteMenu = voteMenu, prExpanded = expanded,
+                    )
+                }
             }
         }
         if (!capture) return
@@ -1764,6 +1768,28 @@ class DashboardRenderTest {
         compose.onAllNodesWithTag(CODE_BLOCK_TAG, useUnmergedTree = true)[0].performTouchInput { swipeLeft() }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("pr-threads-long-comment-scrolled.png")
+    }
+
+    /** A screenshot pasted in a comment, and one that cannot be read: its description instead. */
+    @Test fun prThreadsImage() {
+        val base = designPrScreen(tab = PrTab.THREADS, filter = ThreadFilter.ALL)
+        val text = "The retry banner overlaps the toolbar:\n\n![banner.png](https://dev.azure.com/contoso/a.png)\n\n" +
+            "And the old one: ![old.png](https://dev.azure.com/contoso/missing.png)"
+        val thread = io.github.iacoposb.adodash.api.PrThread(
+            9, "active", listOf(io.github.iacoposb.adodash.api.PrComment(9, 1, marco, text, now.minusSeconds(600))),
+        )
+        val png = android.graphics.Bitmap.createBitmap(720, 96, android.graphics.Bitmap.Config.ARGB_8888).apply {
+            val canvas = android.graphics.Canvas(this)
+            canvas.drawColor(android.graphics.Color.rgb(0xE8, 0xEE, 0xF7))
+            val paint = android.graphics.Paint().apply { color = android.graphics.Color.rgb(0x24, 0x6F, 0xDB) }
+            canvas.drawRect(0f, 0f, 720f, 24f, paint)
+            paint.color = android.graphics.Color.rgb(0xF5, 0xB0, 0x41)
+            canvas.drawRect(40f, 40f, 680f, 72f, paint)
+        }.let { bitmap -> java.io.ByteArrayOutputStream().also { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray() }
+        val images = ImageLoader { url -> if (url.endsWith("a.png")) png else throw java.io.IOException("404") }
+        prPage("pr-threads-image", base.copy(threads = base.threads.copy(items = listOf(thread))), capture = false, images = images)
+        compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription("banner.png").fetchSemanticsNodes().isNotEmpty() }
+        compose.onRoot().captureRoboImage("pr-threads-image.png")
     }
 
     // --- Files and commits ---

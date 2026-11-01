@@ -3,7 +3,8 @@ package io.github.iacoposb.adodash.ui
 /**
  * The markdown of pull request descriptions and comments as readable text: paragraphs,
  * headings, lists, code blocks, inline code, bold, italic, links and mentions (`@<id>`, shown as
- * "@Name"). Tables, images and HTML are shown as their text. Pure.
+ * "@Name"), and images, each below the paragraph it is in. Tables and HTML are shown as their
+ * text. Pure.
  */
 object Markdown {
     /** How Azure DevOps writes a mention in a pull request: the identity's id in angle brackets. */
@@ -31,10 +32,15 @@ object Markdown {
         var indent = 0
         var inList = false
 
+        fun images(inline: Inline) =
+            inline.images.forEach { blocks += RichBlock(emptyList(), indent = if (inList) indent + 1 else 0, image = it) }
+
         fun flush() {
             if (paragraph.isNotEmpty()) {
-                val spans = Inline(names, unknown).run(paragraph.joinToString("\n").trim())
+                val inline = Inline(names, unknown)
+                val spans = inline.run(paragraph.joinToString("\n").trim())
                 if (spans.isNotEmpty()) blocks += RichBlock(spans, bullet, indent)
+                images(inline)
             }
             paragraph.clear()
             bullet = null
@@ -74,8 +80,10 @@ object Markdown {
                     inList = false
                     indent = 0
                     val text = HEADING.matchEntire(line)!!.groupValues[1]
-                    val spans = Inline(names, unknown).run(text).map { it.copy(bold = true) }
+                    val inline = Inline(names, unknown)
+                    val spans = inline.run(text).map { it.copy(bold = true) }
                     if (spans.isNotEmpty()) blocks += RichBlock(spans)
+                    images(inline)
                 }
                 LIST_ITEM.matches(line) -> {
                     flush()
@@ -112,9 +120,16 @@ object Markdown {
     /** The inline markup of a paragraph. */
     private class Inline(private val names: Map<String, String>, private val unknown: String) {
         private val out = mutableListOf<RichSpan>()
+        /** The images met, in order. */
+        val images = mutableListOf<RichImage>()
 
         fun run(text: String): List<RichSpan> {
             parse(text, RichSpan(""))
+            // Without the spaces an image at either end left
+            if (images.isNotEmpty() && out.isNotEmpty()) {
+                out[0] = out[0].copy(text = out[0].text.trimStart())
+                out[out.lastIndex] = out.last().copy(text = out.last().text.trimEnd())
+            }
             return out.filter { it.text.isNotEmpty() }
         }
 
@@ -168,9 +183,11 @@ object Markdown {
                 if (ch == '!' && i + 1 < text.length && text[i + 1] == '[') {
                     val link = linkAt(text, i + 1)
                     if (link != null) {
-                        // An image: its description
-                        plain.append(link.label)
+                        // An image: shown below, its text left out
+                        if (link.url.isNotEmpty()) images += RichImage(link.url, link.label) else plain.append(link.label)
                         i = link.end
+                        // One space where the image was
+                        if (link.url.isNotEmpty() && plain.endsWith(' ') && text.getOrNull(i) == ' ') i++
                         continue
                     }
                 }

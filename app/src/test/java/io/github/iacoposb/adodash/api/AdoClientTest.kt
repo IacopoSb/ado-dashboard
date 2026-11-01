@@ -33,6 +33,21 @@ class AdoClientTest {
         assertEquals("Basic OnNlY3JldA==", request.getHeader("Authorization"))
     }
 
+    @Test fun `images are read signed in on the organization's server only`() = runTest {
+        server.enqueue(MockResponse().setHeader("Content-Type", "image/png").setBody("png"))
+        server.enqueue(MockResponse().setHeader("Content-Type", "image/png").setBody("png"))
+        assertEquals("png", String(client.image("/org/p/_apis/wit/attachments/a1?fileName=x.png")))
+        assertEquals("Basic OnNlY3JldA==", server.takeRequest().getHeader("Authorization"))
+        // Another host: the same server under another name
+        client.image(server.url("/x.png").toString().replace("localhost", "127.0.0.1"))
+        assertEquals(null, server.takeRequest().getHeader("Authorization"))
+    }
+
+    @Test fun `an image behind the sign-in page is refused credentials`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(203).setHeader("Content-Type", "text/html").setBody("<html>"))
+        assertEquals(401, assertThrows(AdoException::class.java) { kotlinx.coroutines.runBlocking { client.image("/org/x.png") } }.code)
+    }
+
     @Test fun `pull requests are parsed with web url`() = runTest {
         server.enqueue(json("""
             {"value":[{"pullRequestId":42,"title":"Fix login","creationDate":"2026-10-15T08:00:00.1234567Z",

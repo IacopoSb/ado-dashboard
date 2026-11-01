@@ -50,22 +50,33 @@ data class RichSpan(
     fun sameStyle(other: RichSpan) = copy(text = "") == other.copy(text = "")
 }
 
+/** An image at [url], [alt] its description. */
+data class RichImage(val url: String, val alt: String = "")
+
 /**
  * A paragraph, a heading or a list item ([bullet] "•" or "1."), [indent] levels deep; a
- * [codeBlock] is shown as is, in a box.
+ * [codeBlock] is shown as is, in a box; an [image] block has no text.
  */
-data class RichBlock(val spans: List<RichSpan>, val bullet: String? = null, val indent: Int = 0, val codeBlock: Boolean = false) {
+data class RichBlock(
+    val spans: List<RichSpan>,
+    val bullet: String? = null,
+    val indent: Int = 0,
+    val codeBlock: Boolean = false,
+    val image: RichImage? = null,
+) {
     val text: String get() = spans.joinToString("") { it.text }
 }
 
 /**
  * Azure DevOps' HTML (descriptions, repro steps, comments) as readable text: paragraphs,
- * headings, lists, links, mentions, code, bold and italic. Images, scripts, styles and every
- * other tag are left out, their text kept.
+ * headings, lists, links, mentions, code, bold and italic; images as blocks of their own.
+ * Scripts, styles and every other tag are left out, their text kept.
  */
 object HtmlText {
     private val TOKEN = Regex("<!--[\\s\\S]*?-->|<(/?)([a-zA-Z][a-zA-Z0-9]*)((?:[^>\"']|\"[^\"]*\"|'[^']*')*)/?>")
-    private val HREF = Regex("href\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", RegexOption.IGNORE_CASE)
+    private val HREF = attribute("href")
+    private val SRC = attribute("src")
+    private val ALT = attribute("alt")
     private val MENTION = Regex("data-vss-mention\\s*=", RegexOption.IGNORE_CASE)
     private val SPACES = Regex("\\s+")
     private val BLOCKS = setOf(
@@ -73,6 +84,12 @@ object HtmlText {
         "h1", "h2", "h3", "h4", "h5", "h6", "pre",
     )
     private val SKIPPED = setOf("script", "style", "head", "title")
+
+    private fun attribute(name: String) =
+        Regex("(?<![\\w-])$name\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", RegexOption.IGNORE_CASE)
+
+    private fun Regex.valueIn(attributes: String): String? =
+        find(attributes)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }?.let(::decode)
 
     /** Entities decoded, no-break spaces as plain ones (the text is wrapped as it fits). */
     fun decode(text: String): String = HtmlEntities.decode(text).replace('\u00A0', ' ')
@@ -135,10 +152,16 @@ object HtmlText {
                 "b", "strong" -> bold++
                 "i", "em" -> italic++
                 "a" -> {
-                    links.addLast(HREF.find(attributes)?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }?.let(::decode))
+                    links.addLast(HREF.valueIn(attributes))
                     mentions.addLast(MENTION.containsMatchIn(attributes))
                 }
                 "td", "th" -> if (spans.isNotEmpty()) append("  ")
+                "img" -> if (skip == 0) SRC.valueIn(attributes)?.trim()?.takeIf { it.isNotEmpty() }?.let { src ->
+                    // Below the text before it, within the list item it is in
+                    val inList = bullet != null || lists.isNotEmpty()
+                    flush()
+                    blocks += RichBlock(emptyList(), indent = if (inList) indent + 1 else 0, image = RichImage(src, ALT.valueIn(attributes).orEmpty()))
+                }
             }
         }
 
@@ -232,7 +255,9 @@ fun RichText(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         blocks.forEach { block ->
             val text = remember(block, c) { block.annotated(c, onLink) }
-            if (block.codeBlock) {
+            if (block.image != null) {
+                RichImageView(block.image, onLink, Modifier.padding(start = (block.indent * 16).dp))
+            } else if (block.codeBlock) {
                 // As wide as the card, long lines scrolled sideways rather than wrapped or cut
                 Box(
                     Modifier.fillMaxWidth().padding(start = (block.indent * 16).dp).clip(RoundedCornerShape(8.dp))

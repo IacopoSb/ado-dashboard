@@ -29,6 +29,7 @@ import kotlinx.serialization.json.putJsonObject
 import okhttp3.Credentials
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -807,6 +808,31 @@ class AdoClient(
             .map { Person(it.id, it.displayName, it.uniqueName.ifBlank { it.displayName }) }
     }
 
+    override suspend fun image(url: String): ByteArray {
+        val target = (if (url.startsWith("/")) baseUrl.resolve(url) else url.toHttpUrlOrNull())
+            ?: throw AdoException(400, "Invalid address")
+        val request = Request.Builder().url(target).get().header("Accept", "image/*")
+        // The credentials go only to the organization's server and Azure DevOps' hosts
+        if (target.host.equals(baseUrl.host, ignoreCase = true) || (target.isHttps && isAdoHost(target.host))) {
+            request.header("Authorization", authorization())
+        }
+        return withContext(Dispatchers.IO) {
+            http.newCall(request.build()).execute().use { response ->
+                val type = response.header("Content-Type").orEmpty()
+                when {
+                    response.code == 401 || response.code == 203 || (response.isSuccessful && type.startsWith("text/html")) ->
+                        throw AdoException(401, "Invalid or expired credentials")
+                    !response.isSuccessful -> throw AdoException(response.code, "HTTP ${response.code}")
+                }
+                val body = response.body ?: throw AdoException(response.code, "Empty")
+                if (body.contentLength() > MAX_IMAGE_BYTES) throw AdoException(TOO_LARGE, "Too large")
+                val bytes = body.source().apply { request(MAX_IMAGE_BYTES + 1) }.buffer
+                if (bytes.size > MAX_IMAGE_BYTES) throw AdoException(TOO_LARGE, "Too large")
+                bytes.readByteArray()
+            }
+        }
+    }
+
     override suspend fun pullRequestById(id: Int): LinkedPullRequest {
         val pr: PullRequestDto = get(url("_apis", "git", "pullrequests", "$id"))
         return pr.toPullRequest().let { LinkedPullRequest(it.id, it.title, pr.status, it.draft, it.url) }
@@ -1026,6 +1052,13 @@ class AdoClient(
 
         /** What [fetch] answers for a body over its limit: not an HTTP code. */
         private const val TOO_LARGE = -413
+
+        /** Images read at most, in bytes. */
+        private const val MAX_IMAGE_BYTES = 20L * 1024 * 1024
+
+        private fun isAdoHost(host: String) = host.lowercase().let {
+            it == "dev.azure.com" || it.endsWith(".dev.azure.com") || it.endsWith(".visualstudio.com")
+        }
 
         /** Pull request commits: pages read at most. */
         private const val MAX_COMMIT_PAGES = 5
