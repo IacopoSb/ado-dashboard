@@ -69,6 +69,14 @@ class MarkdownTest {
         assertEquals("Done", blocks[2].text)
     }
 
+    @Test fun `character references decoded, except in code and when escaped`() {
+        assertEquals(
+            "Change 'Going' from IReadOnlyList<Row>, AT&T; ok",
+            Markdown.parse("Change &#39;Going&#39; from IReadOnlyList&lt;Row&gt;, AT&T; ok").single().text,
+        )
+        assertEquals(listOf(RichSpan("&lt;", code = true), RichSpan(" &amp;")), spans("`&lt;` \\&amp;"))
+    }
+
     @Test fun `headings are bold, quotes their text`() {
         val blocks = Markdown.parse("## Summary\n\n> quoted")
         assertEquals(RichSpan("Summary", bold = true), blocks[0].spans.single())

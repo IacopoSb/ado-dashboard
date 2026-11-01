@@ -1,10 +1,12 @@
 package io.github.iacoposb.adodash.ui
 
+import io.github.iacoposb.adodash.api.HtmlEntities
+
 /**
  * The markdown of pull request descriptions and comments as readable text: paragraphs,
  * headings, lists, code blocks, inline code, bold, italic, links and mentions (`@<id>`, shown as
- * "@Name"), and images, each below the paragraph it is in. Tables and HTML are shown as their
- * text. Pure.
+ * "@Name"), and images, each below the paragraph it is in; character references decoded outside
+ * code. Tables and HTML are shown as their text. Pure.
  */
 object Markdown {
     /** How Azure DevOps writes a mention in a pull request: the identity's id in angle brackets. */
@@ -15,7 +17,7 @@ object Markdown {
     private val LIST_ITEM = Regex("^(\\s*)([-*+]|\\d{1,9}[.)])\\s+(.*)$")
     private val QUOTE = Regex("^\\s{0,3}>\\s?(.*)$")
     private val RULE = Regex("^\\s{0,3}([-*_])(\\s*\\1){2,}\\s*$")
-    private const val ESCAPABLE = "\\`*_{}[]()#+-.!<>|~@"
+    private const val ESCAPABLE = "\\`*_{}[]()#+-.!<>|~@&"
 
     /** The ids mentioned in [markdown], lowercase. */
     fun mentionIds(markdown: String): Set<String> = MENTION.findAll(markdown).map { it.groupValues[1].lowercase() }.toSet()
@@ -117,6 +119,9 @@ object Markdown {
 
     private const val MAX_INDENT = 3
 
+    /** The longest character reference: "&" and ";" around a 31-letter name. */
+    private const val MAX_REFERENCE = 32
+
     /** The inline markup of a paragraph. */
     private class Inline(private val names: Map<String, String>, private val unknown: String) {
         private val out = mutableListOf<RichSpan>()
@@ -154,6 +159,19 @@ object Markdown {
                     plain.append(text[i + 1])
                     i += 2
                     continue
+                }
+                // A character reference, as SonarQube writes quotes and angle brackets
+                if (ch == '&') {
+                    val end = text.indexOf(';', i)
+                    if (end > i && end - i <= MAX_REFERENCE) {
+                        val reference = text.substring(i, end + 1)
+                        val decoded = HtmlEntities.decode(reference)
+                        if (decoded != reference) {
+                            plain.append(decoded)
+                            i = end + 1
+                            continue
+                        }
+                    }
                 }
                 if (ch == '`') {
                     val run = text.countRun(i, '`')
