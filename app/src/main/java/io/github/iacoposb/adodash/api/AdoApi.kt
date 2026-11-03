@@ -174,7 +174,7 @@ interface AdoApi {
     /** [pr] read again with its description, labels and linked work items, for its page. */
     suspend fun pullRequestDetail(pr: PullRequest): PullRequestDetail = PullRequestDetail(pr)
 
-    /** Sets the vote of [reviewerId] (me) on [pr], adding them as a reviewer if needed. */
+    /** Sets the vote of [reviewerId] (me) on [pr], adding them as a reviewer if needed, required or not as before. */
     suspend fun votePullRequest(pr: PullRequest, reviewerId: String, vote: Int): Reviewer =
         throw AdoException(403, "Not supported")
 

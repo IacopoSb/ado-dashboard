@@ -69,8 +69,17 @@ class AdoClientPullRequestTest {
         val request = server.takeRequest()
         assertEquals("PUT", request.method)
         assertEquals("$base/reviewers/me?api-version=7.1", request.path)
-        assertEquals(10, Json.parseToJsonElement(request.body.readUtf8()).jsonObject["vote"]!!.jsonPrimitive.int)
+        val body = Json.parseToJsonElement(request.body.readUtf8()).jsonObject
+        assertEquals(10, body["vote"]!!.jsonPrimitive.int)
+        assertEquals("false", body["isRequired"]!!.jsonPrimitive.content)
         assertEquals(Reviewer("me", "Iacopo", 10, true), reviewer)
+    }
+
+    @Test fun `a required reviewer stays required after voting`() = runTest {
+        server.enqueue(json("""{"id":"me","displayName":"Iacopo","vote":10,"isRequired":true}"""))
+        client.votePullRequest(pr.copy(reviewers = listOf(Reviewer("ME", "Iacopo", 0, true))), "me", Vote.APPROVED)
+        val body = Json.parseToJsonElement(server.takeRequest().body.readUtf8()).jsonObject
+        assertEquals("true", body["isRequired"]!!.jsonPrimitive.content)
     }
 
     @Test fun `a vote refused is a 403`() = runTest {

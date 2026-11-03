@@ -265,7 +265,12 @@ class AdoClient(
     )
 
     override suspend fun votePullRequest(pr: PullRequest, reviewerId: String, vote: Int): Reviewer {
-        val body = buildJsonObject { put("vote", vote) }
+        // A PUT replaces the reviewer: without isRequired a required reviewer turns optional.
+        val required = pr.reviewers.any { it.id.equals(reviewerId, ignoreCase = true) && it.required }
+        val body = buildJsonObject {
+            put("vote", vote)
+            put("isRequired", required)
+        }
         val dto: ReviewerDto = call(
             Request.Builder()
                 .url(url(pr.project, "_apis", "git", "repositories", pr.repoId, "pullRequests", "${pr.id}", "reviewers", reviewerId))
